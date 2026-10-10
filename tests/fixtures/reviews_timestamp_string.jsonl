@@ -1,0 +1,2 @@
+{"overall": 5.0, "reviewText": "String timestamps must not be reinterpreted as epoch seconds.", "asin": "B000000001", "timestamp": "December 1, 2020"}
+{"overall": 2.0, "reviewText": "Mixed with a numeric one in the same column.", "asin": "B000000002", "timestamp": 1577836800}

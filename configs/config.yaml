@@ -23,10 +23,37 @@ paths:
 
 dataset:
   # Selected UCSD Amazon Review Data (2018) category
+  # Switching category is a one-line change (all sources below are pre-registered):
   category: "Appliances"
   sample_size: null  # null means process full category, or set integer for quick testing
   min_reviews_per_product: 5
   max_reviews_per_product: 500
+
+  # Per-category source files (FULL per-category review file + per-category metadata file).
+  # NOTE: these are deliberately NOT the 5-core subsets; the Appliances 5-core file has
+  # only ~2,277 reviews, far too few for per-product evidence analysis.
+  sources:
+    Appliances:
+      reviews_url: "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFiles/Appliances.json.gz"
+      metadata_url: "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/metaFiles2/meta_Appliances.json.gz"
+    Luxury_Beauty:
+      reviews_url: "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFiles/Luxury_Beauty.json.gz"
+      metadata_url: "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/metaFiles2/meta_Luxury_Beauty.json.gz"
+
+  # Decision rubric thresholds for notebooks/01_dataset_audit.py.
+  # All values live here (never in code); the audit prints PASS/FAIL per criterion.
+  audit:
+    # "Candidate product" = product with at least this many reviews (also used by the
+    # min_candidate_products criterion below).
+    candidate_min_reviews: 50
+    # Criterion 1: share of candidate products whose metadata has a parsable price.
+    min_price_coverage: 0.70
+    # Criterion 2: minimum number of products with >= candidate_min_reviews reviews.
+    min_candidate_products: 500
+    # Criterion 3: share of candidate products with non-empty related-product links.
+    min_related_links_share: 0.60
+    # Category to recommend switching to when any criterion FAILs.
+    fallback_category: "Luxury_Beauty"
 
 review_intel:
   # Sentiment analysis

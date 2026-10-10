@@ -1,0 +1,240 @@
+{
+  "generated_at": "2026-10-10T07:51:12+00:00",
+  "category": "Appliances",
+  "config_path": "configs\\config.yaml",
+  "source_files": {
+    "reviews": {
+      "path": "data\\raw\\Appliances.json.gz",
+      "bytes": 68569830
+    },
+    "metadata": {
+      "path": "data\\raw\\meta_Appliances.json.gz",
+      "bytes": 60207582
+    }
+  },
+  "row_counts": {
+    "reviews": 602777,
+    "products": 30445,
+    "distinct_reviewed_products": 30252,
+    "reviews_without_asin": 0,
+    "products_without_asin": 0,
+    "reviewed_products_missing_from_metadata": 14
+  },
+  "field_availability": {
+    "reviews": {
+      "vote": {
+        "present": 65262,
+        "share": 0.10826889546216927
+      },
+      "verified": {
+        "present": 602777,
+        "share": 1.0
+      },
+      "reviewText": {
+        "present": 602453,
+        "share": 0.9994624877856986
+      },
+      "unixReviewTime": {
+        "present": 602777,
+        "share": 1.0
+      }
+    },
+    "metadata": {
+      "price": {
+        "present": 20153,
+        "share": 0.6619477746756446
+      },
+      "rank": {
+        "present": 30058,
+        "share": 0.9872885531285925
+      },
+      "also_buy": {
+        "present": 8625,
+        "share": 0.28329775004105767
+      },
+      "also_view": {
+        "present": 11162,
+        "share": 0.36662834619806206
+      },
+      "brand": {
+        "present": 29861,
+        "share": 0.9808178682870751
+      },
+      "description": {
+        "present": 28139,
+        "share": 0.9242568566267039
+      },
+      "feature": {
+        "present": 26041,
+        "share": 0.8553457053703399
+      }
+    },
+    "price_parse_status": {
+      "single": 20041,
+      "missing": 10292,
+      "unparseable": 109,
+      "range": 3
+    },
+    "price_field_present": {
+      "count": 20153,
+      "share": 0.6619477746756446
+    },
+    "price_parsable": {
+      "count": 20044,
+      "share": 0.6583675480374446
+    }
+  },
+  "review_dates": {
+    "min_unix": 972259200.0,
+    "max_unix": 1538611200.0,
+    "min_iso": "2000-10-23",
+    "max_iso": "2018-10-04",
+    "records_absent": 0,
+    "records_unparsable": 0
+  },
+  "rating_distribution": {
+    "1.0": {
+      "count": 59627,
+      "share": 0.09892049630294454
+    },
+    "2.0": {
+      "count": 20734,
+      "share": 0.03439746373866289
+    },
+    "3.0": {
+      "count": 30652,
+      "share": 0.050851309854224695
+    },
+    "4.0": {
+      "count": 75476,
+      "share": 0.12521380211919167
+    },
+    "5.0": {
+      "count": 416288,
+      "share": 0.6906169279849762
+    }
+  },
+  "reviews_per_product": {
+    "mean": 19.93,
+    "distribution": {
+      "p0": 1.0,
+      "p10": 1.0,
+      "p25": 1.0,
+      "p50": 2.0,
+      "p75": 8.0,
+      "p90": 32.0,
+      "p99": 328.0,
+      "p100": 6510.0,
+      "mean": 19.93
+    },
+    "max": 6510
+  },
+  "product_review_shares": {
+    "gte_20": {
+      "threshold_reviews": 20,
+      "count": 4311,
+      "share_of_reviewed_products": 0.1425029750099167
+    },
+    "gte_50": {
+      "threshold_reviews": 50,
+      "count": 2069,
+      "share_of_reviewed_products": 0.0683921724183525
+    },
+    "gte_100": {
+      "threshold_reviews": 100,
+      "count": 1146,
+      "share_of_reviewed_products": 0.0378817929393098
+    }
+  },
+  "candidate_products": {
+    "definition": ">= 50 reviews (dataset.audit.candidate_min_reviews)",
+    "count": 2069,
+    "with_parsable_price": 1678,
+    "price_coverage": 0.8110198163363944,
+    "with_related_links": 1836,
+    "related_links_share": 0.8873852102464959,
+    "with_price_and_links": 1477,
+    "all_three_share": 0.048823218299616555
+  },
+  "related_asin_coverage": {
+    "distinct_related_asins": 64680,
+    "present_in_product_set": 12525,
+    "share": 0.1936456400742115
+  },
+  "review_text_length_chars": {
+    "p0": 1.0,
+    "p10": 14.0,
+    "p25": 34.0,
+    "p50": 88.0,
+    "p75": 198.0,
+    "p90": 433.0,
+    "p99": 1648.0,
+    "p100": 29999.0,
+    "mean": 189.43
+  },
+  "parse_stats": {
+    "reviews": {
+      "total_lines": 602777,
+      "parsed_records": 602777,
+      "empty_lines": 0,
+      "malformed_lines": 0,
+      "malformed_line_numbers": []
+    },
+    "metadata": {
+      "total_lines": 30445,
+      "parsed_records": 30445,
+      "empty_lines": 0,
+      "malformed_lines": 0,
+      "malformed_line_numbers": []
+    }
+  },
+  "rubric": {
+    "thresholds": {
+      "candidate_min_reviews": 50,
+      "min_price_coverage": 0.7,
+      "min_candidate_products": 500,
+      "min_related_links_share": 0.6,
+      "fallback_category": "Luxury_Beauty"
+    },
+    "criteria": [
+      {
+        "id": "C1",
+        "name": "price coverage among candidate products",
+        "formula": "candidates with parsable price / candidates (>= 50 reviews)",
+        "observed": 0.8110198163363944,
+        "observed_display": "81.1%",
+        "threshold": 0.7,
+        "threshold_display": "70.0%",
+        "comparator": ">=",
+        "passed": true
+      },
+      {
+        "id": "C2",
+        "name": "products with >= 50 reviews",
+        "formula": "count(reviews >= 50)",
+        "observed": 2069,
+        "observed_display": "2,069",
+        "threshold": 500,
+        "threshold_display": "500",
+        "comparator": ">=",
+        "passed": true
+      },
+      {
+        "id": "C3",
+        "name": "candidate products with related-product links",
+        "formula": "candidates with non-empty also_buy OR also_view / candidates",
+        "observed": 0.8873852102464959,
+        "observed_display": "88.7%",
+        "threshold": 0.6,
+        "threshold_display": "60.0%",
+        "comparator": ">=",
+        "passed": true
+      }
+    ],
+    "passed": 3,
+    "total": 3,
+    "all_passed": true,
+    "recommendation": "KEEP 'Appliances' - all 3 rubric criteria pass. No config change required.",
+    "config_change": null
+  }
+}

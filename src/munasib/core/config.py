@@ -44,6 +44,23 @@ class PathsConfig(BaseModel):
     logs_dir: Path = Path("logs")
 
 
+class DatasetSourceConfig(BaseModel):
+    """Remote source files for one UCSD Amazon Review Data (2018) category."""
+
+    reviews_url: str
+    metadata_url: str
+
+
+class AuditRubricConfig(BaseModel):
+    """Thresholds for the dataset acceptance rubric printed by notebooks/01_dataset_audit.py."""
+
+    candidate_min_reviews: int = 50
+    min_price_coverage: float = 0.70
+    min_candidate_products: int = 500
+    min_related_links_share: float = 0.60
+    fallback_category: str = "Luxury_Beauty"
+
+
 class DatasetConfig(BaseModel):
     """Target category and sampling constraints from UCSD Amazon Review Data (2018)."""
 
@@ -51,6 +68,8 @@ class DatasetConfig(BaseModel):
     sample_size: int | None = None
     min_reviews_per_product: int = 5
     max_reviews_per_product: int = 500
+    sources: dict[str, DatasetSourceConfig] = Field(default_factory=dict)
+    audit: AuditRubricConfig = Field(default_factory=AuditRubricConfig)
 
 
 class RatingMappingConfig(BaseModel):

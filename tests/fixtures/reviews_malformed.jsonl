@@ -1,0 +1,6 @@
+{"overall": 5.0, "reviewText": "ok", "asin": "B000000001", "unixReviewTime": 1385510400}
+{this is not json}
+{"overall": 4.0, "reviewText": "fine", "asin": "B000000002", "unixReviewTime": 1420070400}
+
+[1, 2, 3]
+{"overall": 1.0, "reviewText": "bad", "asin": "B000000003", "unixReviewTime": 1514764800}
