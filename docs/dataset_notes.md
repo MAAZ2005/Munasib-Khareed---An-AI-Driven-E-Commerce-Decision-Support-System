@@ -91,6 +91,47 @@ recommends switching by setting `dataset.category: "Luxury_Beauty"` in
 `configs/config.yaml` (and running `python scripts/download_data.py --category
 Luxury_Beauty`).
 
+## Processed dataset (`data/processed/`)
+
+```bash
+python scripts/build_dataset.py
+```
+
+The build runs four streaming passes (bounded memory): metadata ASINs, then review
+counts per product, then candidate selection (`dataset.audit.candidate_min_reviews`,
+currently 50 - read from config, never hardcoded), then cleaning of the candidate
+subset only. Built on 2026-10-10 from the raw files above:
+
+| Output | Rows | Contents |
+|---|---:|---|
+| `products.parquet` | 2,066 | cleaned title/description/features, normalised brand, parsed price/rank + `*_missing` flags, per-product review aggregates |
+| `reviews.parquet` | 425,993 | raw + cleaned text, `has_text`/`text_length`, `helpful_votes`, nullable `verified`, UTC dates, weak labels |
+| `related_products.parquet` | 84,885 | `also_bought`/`also_viewed` edges + `in_subset` flag (22,349 in-subset) |
+| `meta.json` | - | category, config values, row/drop counts, review date range, build timestamp |
+
+- **Candidate selection:** 30,252 distinct reviewed products -> 2,069 with >= 50
+  reviews (audit) -> 2,066 kept (3 of them absent from the metadata file); 28,183
+  products dropped below the threshold; 165,915 review rows dropped with
+  non-candidate products.
+- **De-duplication:** 10,869 duplicate review rows (reviewer + asin + timestamp +
+  normalised text) and 38 duplicate product rows dropped. 15 products end slightly
+  below 50 reviews *after* de-duplication - reported in `meta.json`, not hidden and
+  not re-filtered.
+- **Missing data stays missing:** 388 products have no parsable price, 13 no numeric
+  rank, 8 no brand - each flagged by a boolean (`price_missing`, `rank_missing`,
+  `brand_missing`), never imputed. 240 reviews carry no text and are kept with
+  `has_text=false`.
+- **Review dates (candidate subset):** 2001-11-08 to 2018-10-04. Downstream "recent"
+  features must anchor on `meta.json -> review_date_range.max`, never on today's date.
+
+### Weak labels - read before reporting metrics
+
+`sentiment_label_weak` in `reviews.parquet` is **weak supervision derived from the
+star rating** (1-2 negative, 3 neutral, 4-5 positive; boundaries from
+`review_intel.sentiment.rating_mapping` in `configs/config.yaml`). It assumes rating
+and sentiment agree and is therefore **not true sentiment**. Every metric, chart or
+claim built on this column must state that it uses weak labels.
+
 ## Re-running the audit
 
 ```bash

@@ -9,7 +9,7 @@ simply too large for the repository.
 |---|---|---|
 | `raw/` | Downloaded ``.json.gz`` source files (JSON Lines) | `python scripts/download_data.py` |
 | `interim/` | Intermediate normalised extracts | future pipeline stages |
-| `processed/` | Final processed datasets feeding the DB | future pipeline stages |
+| `processed/` | Clean parquet tables (`products`, `reviews`, `related_products`) + `meta.json` | `python scripts/build_dataset.py` |
 | `db/` | SQLite serving cache (`serving_cache.sqlite`) | pipeline loader |
 
 ## Getting the raw data
@@ -33,4 +33,14 @@ Target files land in `data/raw/`:
 If the UCSD host is unreachable, the script prints the exact URLs, target paths and a
 ready-made `curl` command for a manual download; re-run it afterwards to verify.
 
-Dataset citation, access date and the audit summary live in `docs/dataset_notes.md`.
+## Building the processed dataset
+
+```bash
+python scripts/build_dataset.py   # raw -> data/processed/*.parquet + meta.json
+```
+
+Candidate threshold, label boundaries and paths all come from `configs/config.yaml`;
+the build is safe to re-run (outputs are rewritten from scratch each time).
+
+Dataset citation, access date, audit summary and processed-dataset facts live in
+`docs/dataset_notes.md`.
