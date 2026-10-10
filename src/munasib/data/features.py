@@ -21,16 +21,16 @@ import logging
 import pandas as pd
 
 from munasib.core.config import RatingMappingConfig
+from munasib.core.constants import (
+    SENTIMENT_LABEL_NEGATIVE,
+    SENTIMENT_LABEL_NEUTRAL,
+    SENTIMENT_LABEL_POSITIVE,
+)
 from munasib.data.loaders import is_present
 
 logger = logging.getLogger("munasib.data.features")
 
 REVIEW_ID_HASH_CHARS = 16
-
-# Label ids for weak supervision (documented in configs/config.yaml comments).
-SENTIMENT_LABEL_NEGATIVE = 0
-SENTIMENT_LABEL_NEUTRAL = 1
-SENTIMENT_LABEL_POSITIVE = 2
 
 
 def normalize_dedup_text(value: object) -> str:

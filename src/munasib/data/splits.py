@@ -28,13 +28,7 @@ import numpy as np
 import pandas as pd
 
 from munasib.core.config import SplitConfig
-
-SPLIT_TRAIN = "train"
-SPLIT_VAL = "val"
-SPLIT_TEST = "test"
-
-#: Canonical split column order used for reporting.
-SPLIT_ORDER = (SPLIT_TRAIN, SPLIT_VAL, SPLIT_TEST)
+from munasib.core.constants import SPLIT_ORDER, SPLIT_TEST, SPLIT_TRAIN, SPLIT_VAL
 
 #: Label used when a stratification value is missing (never binned silently).
 UNKNOWN_BIN = "unknown"

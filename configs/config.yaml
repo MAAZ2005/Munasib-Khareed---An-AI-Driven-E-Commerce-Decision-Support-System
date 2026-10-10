@@ -16,7 +16,7 @@ paths:
   raw_data_dir: "data/raw"
   interim_data_dir: "data/interim"
   processed_data_dir: "data/processed"
-  db_path: "data/db/serving_cache.sqlite"
+  db_path: "data/db/munasib.sqlite"
   models_dir: "models"
   reports_dir: "reports"
   logs_dir: "logs"

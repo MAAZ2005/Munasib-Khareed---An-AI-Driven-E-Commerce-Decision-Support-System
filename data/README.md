@@ -10,7 +10,7 @@ simply too large for the repository.
 | `raw/` | Downloaded ``.json.gz`` source files (JSON Lines) | `python scripts/download_data.py` |
 | `interim/` | Intermediate normalised extracts | future pipeline stages |
 | `processed/` | Clean parquet tables (`products`, `reviews`, `related_products`) + `meta.json` | `python scripts/build_dataset.py` |
-| `db/` | SQLite serving cache (`serving_cache.sqlite`) | pipeline loader |
+| `db/` | SQLite serving cache (`munasib.sqlite`) | `python scripts/ingest_db.py` |
 
 ## Getting the raw data
 

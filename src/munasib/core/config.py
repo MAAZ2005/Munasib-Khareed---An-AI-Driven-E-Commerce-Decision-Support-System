@@ -38,7 +38,7 @@ class PathsConfig(BaseModel):
     raw_data_dir: Path = Path("data/raw")
     interim_data_dir: Path = Path("data/interim")
     processed_data_dir: Path = Path("data/processed")
-    db_path: Path = Path("data/db/serving_cache.sqlite")
+    db_path: Path = Path("data/db/munasib.sqlite")
     models_dir: Path = Path("models")
     reports_dir: Path = Path("reports")
     logs_dir: Path = Path("logs")
