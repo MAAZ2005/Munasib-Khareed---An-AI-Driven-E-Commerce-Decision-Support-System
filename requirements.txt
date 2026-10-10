@@ -1,0 +1,49 @@
+# ==============================================================================
+# Munasib Khareed - Pinned Dependencies
+# ==============================================================================
+
+# PyTorch CPU build
+# For CUDA acceleration on GPU systems, replace with:
+#   --extra-index-url https://download.pytorch.org/whl/cu121
+#   torch>=2.4.0
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+
+# NLP & Deep Learning
+transformers>=4.48.0
+datasets>=3.2.0
+spacy>=3.8.0
+nltk>=3.9.1
+
+# Machine Learning & Analytics
+scikit-learn>=1.6.0
+pandas>=2.2.0
+numpy>=1.26.0
+pyarrow>=18.0.0
+scikit-fuzzy>=0.4.2
+shap>=0.46.0
+
+# API & Persistence
+fastapi>=0.115.0
+uvicorn>=0.34.0
+sqlalchemy>=2.0.36
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# UI & Visualization
+streamlit>=1.41.0
+plotly>=5.24.0
+matplotlib>=3.10.0
+
+# Networking & Utilities
+httpx>=0.28.0
+pyyaml>=6.0.2
+python-dotenv>=1.0.1
+
+# Testing & Development Tooling
+pytest>=8.3.0
+pytest-cov>=6.0.0
+ruff>=0.9.0
+mypy>=1.14.0
+pre-commit>=4.0.0
+types-PyYAML>=6.0.12

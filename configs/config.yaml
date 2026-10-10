@@ -1,0 +1,95 @@
+# ==============================================================================
+# Munasib Khareed - Master Configuration
+# ==============================================================================
+# All paths, hyperparameters, model identifiers, and seeds are declared here.
+# Values can be overridden at runtime via environment variables (MUNASIB_*).
+
+project:
+  name: "munasib"
+  display_name: "Munasib Khareed"
+  version: "0.1.0"
+  environment: "development"
+  random_seed: 42
+
+paths:
+  data_dir: "data"
+  raw_data_dir: "data/raw"
+  interim_data_dir: "data/interim"
+  processed_data_dir: "data/processed"
+  db_path: "data/db/serving_cache.sqlite"
+  models_dir: "models"
+  reports_dir: "reports"
+  logs_dir: "logs"
+
+dataset:
+  # Selected UCSD Amazon Review Data (2018) category
+  category: "Appliances"
+  sample_size: null  # null means process full category, or set integer for quick testing
+  min_reviews_per_product: 5
+  max_reviews_per_product: 500
+
+review_intel:
+  # Sentiment analysis
+  sentiment:
+    model_name: "distilbert-base-uncased"
+    max_sequence_length: 256
+    batch_size: 32
+    # Weak supervision mapping from star ratings (locked FYP design decision)
+    # Ratings 1-2: negative (0), Rating 3: neutral (1), Ratings 4-5: positive (2)
+    rating_mapping:
+      negative_max: 2
+      neutral_val: 3
+      positive_min: 4
+
+  # Aspect-based attribute extraction
+  aspects:
+    spacy_model: "en_core_web_sm"
+    min_aspect_frequency: 3
+    top_k_aspects: 10
+
+  # Evidence-strength indicators
+  evidence:
+    min_length_chars: 20
+    length_scale_chars: 200
+    weights:
+      verified_purchase: 0.50
+      helpfulness_ratio: 0.30
+      review_depth: 0.20
+
+risk:
+  fuzzy_rules_file: "configs/fuzzy_rules.yaml"
+  scale_min: 0.0
+  scale_max: 100.0
+  default_defuzzification_method: "centroid"
+
+decision:
+  criteria_weights_file: "configs/criteria_weights.yaml"
+  peer_sample_size: 20  # Sampled peer set from category for TOPSIS ranking
+  normalize_method: "vector"  # Vector normalization as standard TOPSIS practice
+
+xai:
+  # Surrogate regressor for SHAP explanation
+  surrogate_model_type: "random_forest"  # Random forest regressor fitting fuzzy/TOPSIS risk
+  n_estimators: 100
+  max_depth: 6
+  min_fidelity_r2: 0.80  # Minimum acceptable R2 score for surrogate validity
+  background_sample_size: 50
+
+verdict:
+  thresholds_file: "configs/verdict_thresholds.yaml"
+
+api:
+  host: "127.0.0.1"
+  port: 8000
+  reload: true
+  workers: 1
+  cors_origins:
+    - "http://localhost:8501"  # Streamlit default port
+    - "http://127.0.0.1:8501"
+
+logging:
+  level: "INFO"
+  file_path: "logs/munasib.log"
+  max_bytes: 10485760  # 10 MB
+  backup_count: 5
+  format: "%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d - %(message)s"

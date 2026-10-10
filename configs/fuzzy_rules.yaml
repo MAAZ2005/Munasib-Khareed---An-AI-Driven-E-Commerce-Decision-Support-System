@@ -1,0 +1,189 @@
+# ==============================================================================
+# Munasib Khareed - Fuzzy Logic Consumer Risk Assessment Rules
+# ==============================================================================
+# Defines linguistic variables, membership functions, and rule base for
+# evaluating consumer risk on a 0-100 continuous scale.
+
+variables:
+  inputs:
+    negative_sentiment:
+      description: "Fraction of negative sentiment reviews (0.0 to 1.0)"
+      universe: [0.0, 1.0]
+      terms:
+        low:
+          type: "trimf"
+          params: [0.0, 0.0, 0.35]
+        medium:
+          type: "trimf"
+          params: [0.20, 0.45, 0.70]
+        high:
+          type: "trimf"
+          params: [0.55, 1.0, 1.0]
+
+    aspect_complaint_intensity:
+      description: "Intensity and frequency of negative aspect mentions (0.0 to 1.0)"
+      universe: [0.0, 1.0]
+      terms:
+        low:
+          type: "trimf"
+          params: [0.0, 0.0, 0.35]
+        medium:
+          type: "trimf"
+          params: [0.20, 0.45, 0.70]
+        high:
+          type: "trimf"
+          params: [0.55, 1.0, 1.0]
+
+    evidence_volatility:
+      description: "Rating divergence or inconsistency in customer feedback (0.0 to 1.0)"
+      universe: [0.0, 1.0]
+      terms:
+        low:
+          type: "trimf"
+          params: [0.0, 0.0, 0.35]
+        medium:
+          type: "trimf"
+          params: [0.20, 0.45, 0.70]
+        high:
+          type: "trimf"
+          params: [0.55, 1.0, 1.0]
+
+  output:
+    consumer_risk:
+      description: "Synthesized consumer risk score (0 to 100)"
+      universe: [0.0, 100.0]
+      terms:
+        low:
+          type: "trimf"
+          params: [0.0, 15.0, 35.0]
+        moderate:
+          type: "trimf"
+          params: [25.0, 45.0, 65.0]
+        high:
+          type: "trimf"
+          params: [55.0, 75.0, 90.0]
+        critical:
+          type: "trimf"
+          params: [80.0, 95.0, 100.0]
+
+# Rule Base: IF (conditions) THEN (consumer_risk)
+rules:
+  - id: 1
+    antecedents:
+      negative_sentiment: "low"
+      aspect_complaint_intensity: "low"
+      evidence_volatility: "low"
+    consequent:
+      consumer_risk: "low"
+
+  - id: 2
+    antecedents:
+      negative_sentiment: "low"
+      aspect_complaint_intensity: "low"
+      evidence_volatility: "medium"
+    consequent:
+      consumer_risk: "low"
+
+  - id: 3
+    antecedents:
+      negative_sentiment: "low"
+      aspect_complaint_intensity: "medium"
+      evidence_volatility: "low"
+    consequent:
+      consumer_risk: "moderate"
+
+  - id: 4
+    antecedents:
+      negative_sentiment: "low"
+      aspect_complaint_intensity: "high"
+      evidence_volatility: "low"
+    consequent:
+      consumer_risk: "moderate"
+
+  - id: 5
+    antecedents:
+      negative_sentiment: "medium"
+      aspect_complaint_intensity: "low"
+      evidence_volatility: "low"
+    consequent:
+      consumer_risk: "moderate"
+
+  - id: 6
+    antecedents:
+      negative_sentiment: "medium"
+      aspect_complaint_intensity: "medium"
+      evidence_volatility: "low"
+    consequent:
+      consumer_risk: "moderate"
+
+  - id: 7
+    antecedents:
+      negative_sentiment: "medium"
+      aspect_complaint_intensity: "medium"
+      evidence_volatility: "medium"
+    consequent:
+      consumer_risk: "high"
+
+  - id: 8
+    antecedents:
+      negative_sentiment: "medium"
+      aspect_complaint_intensity: "high"
+      evidence_volatility: "medium"
+    consequent:
+      consumer_risk: "high"
+
+  - id: 9
+    antecedents:
+      negative_sentiment: "high"
+      aspect_complaint_intensity: "low"
+      evidence_volatility: "low"
+    consequent:
+      consumer_risk: "high"
+
+  - id: 10
+    antecedents:
+      negative_sentiment: "high"
+      aspect_complaint_intensity: "medium"
+      evidence_volatility: "medium"
+    consequent:
+      consumer_risk: "high"
+
+  - id: 11
+    antecedents:
+      negative_sentiment: "high"
+      aspect_complaint_intensity: "high"
+      evidence_volatility: "medium"
+    consequent:
+      consumer_risk: "critical"
+
+  - id: 12
+    antecedents:
+      negative_sentiment: "high"
+      aspect_complaint_intensity: "high"
+      evidence_volatility: "high"
+    consequent:
+      consumer_risk: "critical"
+
+  - id: 13
+    antecedents:
+      negative_sentiment: "low"
+      aspect_complaint_intensity: "medium"
+      evidence_volatility: "high"
+    consequent:
+      consumer_risk: "moderate"
+
+  - id: 14
+    antecedents:
+      negative_sentiment: "medium"
+      aspect_complaint_intensity: "low"
+      evidence_volatility: "high"
+    consequent:
+      consumer_risk: "high"
+
+  - id: 15
+    antecedents:
+      negative_sentiment: "low"
+      aspect_complaint_intensity: "low"
+      evidence_volatility: "high"
+    consequent:
+      consumer_risk: "moderate"

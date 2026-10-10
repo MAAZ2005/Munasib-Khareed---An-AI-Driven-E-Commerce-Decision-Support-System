@@ -1,0 +1,33 @@
+# ==============================================================================
+# Munasib Khareed - Verdict Synthesis Thresholds
+# ==============================================================================
+# Locked FYP Rule: Verdict labels are exactly:
+#   - CONSIDER
+#   - CONSIDER WITH CAUTION
+#   - CONSUMER RISK
+#
+# Core Constraint: A product with very weak evidence can NEVER get a clean CONSIDER.
+
+verdicts:
+  consider:
+    label: "CONSIDER"
+    description: "Product demonstrates low consumer risk, high positive sentiment, and robust evidence support."
+    max_risk_score: 35.0
+    min_evidence_strength: 0.40
+    min_verified_ratio: 0.45
+
+  consider_with_caution:
+    label: "CONSIDER WITH CAUTION"
+    description: "Product demonstrates moderate risk, mixed sentiment, or insufficient verification depth."
+    max_risk_score: 65.0
+    fallback_for_weak_evidence: true
+
+  consumer_risk:
+    label: "CONSUMER RISK"
+    description: "Product presents high risk due to adverse feedback, severe aspect complaints, or poor peer ranking."
+    min_risk_score: 65.0
+
+evidence_guardrail:
+  # Hard threshold: if evidence_strength < min_evidence_for_clean_consider, verdict cannot be CONSIDER
+  min_evidence_for_clean_consider: 0.40
+  insufficient_evidence_warning: 0.20

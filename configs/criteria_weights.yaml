@@ -1,0 +1,35 @@
+# ==============================================================================
+# Munasib Khareed - Multi-Criteria Decision Analysis (TOPSIS) Weights
+# ==============================================================================
+# Criteria weights for ranking products against alternatives and category peers.
+# Weights must sum to 1.0.
+# 'type' indicates criterion orientation: 'benefit' (maximize) or 'cost' (minimize).
+
+criteria:
+  sentiment_positivity:
+    description: "Proportion of positive review sentiment (DistilBERT classification)"
+    weight: 0.25
+    type: "benefit"
+
+  risk_score:
+    description: "Fuzzy logic consumer risk assessment (0-100 scale, lower is safer)"
+    weight: 0.30
+    type: "cost"
+
+  evidence_strength:
+    description: "Review depth, length, and credibility indicator (0-1 scale)"
+    weight: 0.20
+    type: "benefit"
+
+  verified_purchase_ratio:
+    description: "Ratio of reviews originating from verified purchases (0-1 scale)"
+    weight: 0.15
+    type: "benefit"
+
+  average_rating:
+    description: "Normalized star rating average (1-5 scaled to 0-1)"
+    weight: 0.10
+    type: "benefit"
+
+validation:
+  sum_tolerance: 0.001  # Tolerance when verifying sum of weights equals 1.0
