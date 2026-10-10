@@ -186,10 +186,11 @@ class TestProductAggregates:
     """Per-product review statistics from the kept reviews."""
 
     def test_counts_and_bounds(self) -> None:
-        """n_reviews/first/last are computed per asin from review_datetime."""
+        """n_reviews/mean_rating/first/last are computed per asin."""
         reviews = pd.DataFrame(
             {
                 "asin": ["A", "A", "B"],
+                "rating": [5.0, 3.0, 4.0],
                 "review_datetime": pd.to_datetime(
                     ["2018-01-01", "2018-06-01", "2017-05-05"], utc=True
                 ),
@@ -199,10 +200,25 @@ class TestProductAggregates:
         row_a = aggregates[aggregates["asin"] == "A"].iloc[0]
         row_b = aggregates[aggregates["asin"] == "B"].iloc[0]
         assert int(row_a["n_reviews"]) == 2
+        assert float(row_a["mean_rating"]) == pytest.approx(4.0)  # (5 + 3) / 2
         assert str(row_a["first_review_time"]) == "2018-01-01 00:00:00+00:00"
         assert str(row_a["last_review_time"]) == "2018-06-01 00:00:00+00:00"
         assert int(row_b["n_reviews"]) == 1
+        assert float(row_b["mean_rating"]) == pytest.approx(4.0)
         assert aggregates["n_reviews"].dtype == "int32"
+        assert aggregates["mean_rating"].dtype == "float64"
+
+    def test_missing_ratings_stay_nan(self) -> None:
+        """A product with no numeric rating gets NaN mean_rating - never a guess."""
+        reviews = pd.DataFrame(
+            {
+                "asin": ["X"],
+                "rating": [float("nan")],
+                "review_datetime": pd.to_datetime(["2018-01-01"], utc=True),
+            }
+        )
+        aggregates = compute_product_review_aggregates(reviews)
+        assert pd.isna(aggregates.iloc[0]["mean_rating"])
 
 
 class TestRelatedProductsTable:

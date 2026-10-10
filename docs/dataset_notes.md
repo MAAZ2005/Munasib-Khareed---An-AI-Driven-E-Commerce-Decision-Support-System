@@ -94,7 +94,9 @@ Luxury_Beauty`).
 ## Processed dataset (`data/processed/`)
 
 ```bash
-python scripts/build_dataset.py
+python scripts/build_dataset.py                          # build (or skip when current)
+python scripts/build_dataset.py --category Appliances     # category override
+python scripts/build_dataset.py --force                   # rebuild even when current
 ```
 
 The build runs four streaming passes (bounded memory): metadata ASINs, then review
@@ -104,10 +106,11 @@ subset only. Built on 2026-10-10 from the raw files above:
 
 | Output | Rows | Contents |
 |---|---:|---|
-| `products.parquet` | 2,066 | cleaned title/description/features, normalised brand, parsed price/rank + `*_missing` flags, per-product review aggregates |
-| `reviews.parquet` | 425,993 | raw + cleaned text, `has_text`/`text_length`, `helpful_votes`, nullable `verified`, UTC dates, weak labels |
+| `products.parquet` | 2,066 | `split`, cleaned title/description/features, normalised brand, parsed price/rank + `*_missing` flags, per-product review aggregates (`n_reviews`, `mean_rating`, first/last review time) |
+| `reviews.parquet` | 425,993 | `split`, raw + cleaned text, `has_text`/`text_length`, `helpful_votes`, nullable `verified`, UTC dates, weak labels |
 | `related_products.parquet` | 84,885 | `also_bought`/`also_viewed` edges + `in_subset` flag (22,349 in-subset) |
-| `meta.json` | - | category, config values, row/drop counts, review date range, build timestamp |
+| `meta.json` | - | category, config values (incl. split seed/fractions), row/drop counts, split sizes, review date range, build timestamp |
+| `reports/data_quality_report.{json,md}` | - | auto-generated cleaning counts, missingness, distributions per split, split sizes (see below) |
 
 - **Candidate selection:** 30,252 distinct reviewed products -> 2,069 with >= 50
   reviews (audit) -> 2,066 kept (3 of them absent from the metadata file); 28,183
@@ -123,6 +126,37 @@ subset only. Built on 2026-10-10 from the raw files above:
   `has_text=false`.
 - **Review dates (candidate subset):** 2001-11-08 to 2018-10-04. Downstream "recent"
   features must anchor on `meta.json -> review_date_range.max`, never on today's date.
+
+### Train/val/test split (product level, no leakage)
+
+The split is assigned per **product**, never per review: each product is shuffled
+inside its stratum - average-rating bin x review-count bin, cut points from
+`dataset.split.rating_bin_edges` / `review_count_bin_edges` - with
+`dataset.split.seed` (42) and allocated by the configured fractions
+(0.70/0.15/0.15). Every review inherits its product's split, so no product can
+appear in two splits. Both parquet tables carry a `split` column; `meta.json`
+records the seeded config and the per-split sizes:
+
+| Split | Products | Reviews |
+|---|---:|---:|
+| train | 1,444 | 303,317 |
+| val | 310 | 62,961 |
+| test | 312 | 59,715 |
+
+Re-running the build with the same config and inputs reproduces byte-identical
+split assignments; `meta.json -> settings` records everything that feeds the
+freshness check (`--force` bypasses it).
+
+### Data-quality report (`reports/data_quality_report.{json,md}`)
+
+Written on every build by `scripts/build_dataset.py`. It contains row counts
+before/after each cleaning step (602,777 -> 436,862 -> 425,993 reviews;
+30,445 -> 2,104 -> 2,066 products), raw-vs-clean field presence, per-column
+missingness for all three tables, rating and weak-label distributions per split,
+the reviews-per-product distribution, the review date range, and the split sizes
+with their strata (12 strata at the configured bin edges). Every number is
+computed from the frames the build produced - none are written by hand - and the
+JSON/Markdown pair is rendered from the same in-memory dict.
 
 ### Weak labels - read before reporting metrics
 

@@ -1,0 +1,578 @@
+{
+  "generated_at": "2026-10-10T11:09:54+00:00",
+  "category": "Appliances",
+  "config_path": "configs/config.yaml",
+  "settings": {
+    "candidate_min_reviews": 50,
+    "split": {
+      "train_fraction": 0.7,
+      "val_fraction": 0.15,
+      "test_fraction": 0.15,
+      "seed": 42,
+      "rating_bin_edges": [
+        3.5,
+        4.5
+      ],
+      "review_count_bin_edges": [
+        75.0,
+        150.0,
+        400.0
+      ]
+    },
+    "rating_mapping": {
+      "negative_max": 2,
+      "neutral_val": 3,
+      "positive_min": 4
+    }
+  },
+  "inputs": {
+    "reviews": {
+      "path": "data\\raw\\Appliances.json.gz",
+      "bytes": 68569830
+    },
+    "metadata": {
+      "path": "data\\raw\\meta_Appliances.json.gz",
+      "bytes": 60207582
+    }
+  },
+  "cleaning_steps": {
+    "reviews": {
+      "streamed_from_raw_file": 602777,
+      "after_candidate_filter": 436862,
+      "after_duplicate_removal": 425993,
+      "written_to_reviews_parquet": 425993
+    },
+    "products": {
+      "metadata_rows_streamed": 30445,
+      "candidate_rows_collected_before_asin_dedup": 2104,
+      "after_asin_dedup": 2066,
+      "written_to_products_parquet": 2066
+    }
+  },
+  "field_presence": {
+    "note": "Measured on the rows written to parquet: 'before' = raw source value present, 'after' = value present after cleaning.",
+    "reviews": {
+      "review_text": {
+        "rows": 425993,
+        "before_present": 425771,
+        "after_present": 425753,
+        "after_missing": 240,
+        "share_before": 0.9994788646761801,
+        "share_after": 0.9994366104607353
+      },
+      "summary": {
+        "rows": 425993,
+        "before_present": 425902,
+        "after_present": 425895,
+        "after_missing": 98,
+        "share_before": 0.9997863814663621,
+        "share_after": 0.9997699492714669
+      }
+    },
+    "products": {
+      "title": {
+        "rows": 2066,
+        "before_present": 2066,
+        "after_present": 2066,
+        "after_missing": 0,
+        "share_before": 1.0,
+        "share_after": 1.0
+      },
+      "brand": {
+        "rows": 2066,
+        "before_present": 2058,
+        "after_present": 2058,
+        "after_missing": 8,
+        "share_before": 0.9961277831558567,
+        "share_after": 0.9961277831558567
+      },
+      "description": {
+        "rows": 2066,
+        "before_present": 1932,
+        "after_present": 1932,
+        "after_missing": 134,
+        "share_before": 0.9351403678606002,
+        "share_after": 0.9351403678606002
+      },
+      "features": {
+        "rows": 2066,
+        "before_present": 1968,
+        "after_present": 1968,
+        "after_missing": 98,
+        "share_before": 0.952565343659245,
+        "share_after": 0.952565343659245
+      },
+      "rank": {
+        "rows": 2066,
+        "before_present": 2053,
+        "after_present": 2053,
+        "after_missing": 13,
+        "share_before": 0.9937076476282671,
+        "share_after": 0.9937076476282671
+      },
+      "price": {
+        "rows": 2066,
+        "before_present": 1684,
+        "after_present": 1678,
+        "after_missing": 388,
+        "share_before": 0.8151016456921588,
+        "share_after": 0.8121974830590513
+      }
+    },
+    "price_status": {
+      "single": 1676,
+      "missing": 382,
+      "unparseable": 6,
+      "range": 2
+    }
+  },
+  "missingness": {
+    "note": "Null counts (None/NaT/pd.NA); empty strings are not nulls.",
+    "tables": {
+      "products.parquet": {
+        "rows": 2066,
+        "columns": {
+          "asin": {
+            "null": 0,
+            "share": 0.0
+          },
+          "split": {
+            "null": 0,
+            "share": 0.0
+          },
+          "title": {
+            "null": 0,
+            "share": 0.0
+          },
+          "title_clean": {
+            "null": 0,
+            "share": 0.0
+          },
+          "brand": {
+            "null": 0,
+            "share": 0.0
+          },
+          "brand_clean": {
+            "null": 8,
+            "share": 0.003872216844143272
+          },
+          "brand_missing": {
+            "null": 0,
+            "share": 0.0
+          },
+          "price": {
+            "null": 388,
+            "share": 0.18780251694094868
+          },
+          "price_max": {
+            "null": 2064,
+            "share": 0.9990319457889641
+          },
+          "price_status": {
+            "null": 0,
+            "share": 0.0
+          },
+          "price_missing": {
+            "null": 0,
+            "share": 0.0
+          },
+          "rank": {
+            "null": 13,
+            "share": 0.0062923523717328175
+          },
+          "rank_value": {
+            "null": 13,
+            "share": 0.0062923523717328175
+          },
+          "rank_category": {
+            "null": 13,
+            "share": 0.0062923523717328175
+          },
+          "rank_missing": {
+            "null": 0,
+            "share": 0.0
+          },
+          "description_clean": {
+            "null": 134,
+            "share": 0.06485963213939981
+          },
+          "features_clean": {
+            "null": 98,
+            "share": 0.04743465634075508
+          },
+          "n_reviews": {
+            "null": 0,
+            "share": 0.0
+          },
+          "mean_rating": {
+            "null": 0,
+            "share": 0.0
+          },
+          "first_review_time": {
+            "null": 0,
+            "share": 0.0
+          },
+          "last_review_time": {
+            "null": 0,
+            "share": 0.0
+          }
+        }
+      },
+      "reviews.parquet": {
+        "rows": 425993,
+        "columns": {
+          "review_id": {
+            "null": 0,
+            "share": 0.0
+          },
+          "asin": {
+            "null": 0,
+            "share": 0.0
+          },
+          "split": {
+            "null": 0,
+            "share": 0.0
+          },
+          "reviewer_id": {
+            "null": 0,
+            "share": 0.0
+          },
+          "rating": {
+            "null": 0,
+            "share": 0.0
+          },
+          "review_text_raw": {
+            "null": 222,
+            "share": 0.0005211353238198749
+          },
+          "review_text_clean": {
+            "null": 240,
+            "share": 0.0005633895392647297
+          },
+          "summary_raw": {
+            "null": 91,
+            "share": 0.00021361853363787667
+          },
+          "summary_clean": {
+            "null": 98,
+            "share": 0.00023005072853309795
+          },
+          "has_text": {
+            "null": 0,
+            "share": 0.0
+          },
+          "text_length": {
+            "null": 0,
+            "share": 0.0
+          },
+          "helpful_votes": {
+            "null": 0,
+            "share": 0.0
+          },
+          "verified": {
+            "null": 0,
+            "share": 0.0
+          },
+          "review_datetime": {
+            "null": 0,
+            "share": 0.0
+          },
+          "review_year": {
+            "null": 0,
+            "share": 0.0
+          },
+          "review_month": {
+            "null": 0,
+            "share": 0.0
+          },
+          "sentiment_label_weak": {
+            "null": 0,
+            "share": 0.0
+          }
+        }
+      },
+      "related_products.parquet": {
+        "rows": 84885,
+        "columns": {
+          "asin": {
+            "null": 0,
+            "share": 0.0
+          },
+          "related_asin": {
+            "null": 0,
+            "share": 0.0
+          },
+          "relation_type": {
+            "null": 0,
+            "share": 0.0
+          },
+          "in_subset": {
+            "null": 0,
+            "share": 0.0
+          }
+        }
+      }
+    }
+  },
+  "split_sizes": {
+    "config": {
+      "train_fraction": 0.7,
+      "val_fraction": 0.15,
+      "test_fraction": 0.15,
+      "seed": 42,
+      "rating_bin_edges": [
+        3.5,
+        4.5
+      ],
+      "review_count_bin_edges": [
+        75.0,
+        150.0,
+        400.0
+      ]
+    },
+    "per_split": {
+      "train": {
+        "products": 1444,
+        "products_share": 0.6989351403678606,
+        "reviews": 303317,
+        "reviews_share": 0.7120234370048334
+      },
+      "val": {
+        "products": 310,
+        "products_share": 0.15004840271055178,
+        "reviews": 62961,
+        "reviews_share": 0.14779820325686102
+      },
+      "test": {
+        "products": 312,
+        "products_share": 0.1510164569215876,
+        "reviews": 59715,
+        "reviews_share": 0.14017835973830556
+      }
+    },
+    "strata": [
+      {
+        "stratum": "rating=3.5-4.5 | reviews=150-400",
+        "products": 282,
+        "train": 197,
+        "val": 42,
+        "test": 43
+      },
+      {
+        "stratum": "rating=3.5-4.5 | reviews=75-150",
+        "products": 352,
+        "train": 246,
+        "val": 53,
+        "test": 53
+      },
+      {
+        "stratum": "rating=3.5-4.5 | reviews=<=75",
+        "products": 280,
+        "train": 196,
+        "val": 42,
+        "test": 42
+      },
+      {
+        "stratum": "rating=3.5-4.5 | reviews=>400",
+        "products": 140,
+        "train": 98,
+        "val": 21,
+        "test": 21
+      },
+      {
+        "stratum": "rating=<=3.5 | reviews=150-400",
+        "products": 16,
+        "train": 11,
+        "val": 2,
+        "test": 3
+      },
+      {
+        "stratum": "rating=<=3.5 | reviews=75-150",
+        "products": 45,
+        "train": 31,
+        "val": 7,
+        "test": 7
+      },
+      {
+        "stratum": "rating=<=3.5 | reviews=<=75",
+        "products": 59,
+        "train": 41,
+        "val": 9,
+        "test": 9
+      },
+      {
+        "stratum": "rating=<=3.5 | reviews=>400",
+        "products": 6,
+        "train": 4,
+        "val": 1,
+        "test": 1
+      },
+      {
+        "stratum": "rating=>4.5 | reviews=150-400",
+        "products": 220,
+        "train": 154,
+        "val": 33,
+        "test": 33
+      },
+      {
+        "stratum": "rating=>4.5 | reviews=75-150",
+        "products": 307,
+        "train": 215,
+        "val": 46,
+        "test": 46
+      },
+      {
+        "stratum": "rating=>4.5 | reviews=<=75",
+        "products": 287,
+        "train": 201,
+        "val": 43,
+        "test": 43
+      },
+      {
+        "stratum": "rating=>4.5 | reviews=>400",
+        "products": 72,
+        "train": 50,
+        "val": 11,
+        "test": 11
+      }
+    ],
+    "leakage_check": {
+      "product_splits_unique": true,
+      "reviews_match_product_split": true
+    }
+  },
+  "rating_distribution_per_split": {
+    "train": {
+      "1": {
+        "count": 27050,
+        "share": 0.08918062620954315
+      },
+      "2": {
+        "count": 10067,
+        "share": 0.0331896992255627
+      },
+      "3": {
+        "count": 14572,
+        "share": 0.04804214732441637
+      },
+      "4": {
+        "count": 38056,
+        "share": 0.12546609652607668
+      },
+      "5": {
+        "count": 213572,
+        "share": 0.7041214307144011
+      }
+    },
+    "val": {
+      "1": {
+        "count": 5464,
+        "share": 0.08678388208573562
+      },
+      "2": {
+        "count": 1983,
+        "share": 0.031495687806737505
+      },
+      "3": {
+        "count": 3005,
+        "share": 0.04772795857753212
+      },
+      "4": {
+        "count": 8131,
+        "share": 0.1291434380013024
+      },
+      "5": {
+        "count": 44378,
+        "share": 0.7048490335286923
+      }
+    },
+    "test": {
+      "1": {
+        "count": 5418,
+        "share": 0.0907309721175584
+      },
+      "2": {
+        "count": 1911,
+        "share": 0.03200200954534037
+      },
+      "3": {
+        "count": 3025,
+        "share": 0.05065728878841162
+      },
+      "4": {
+        "count": 7729,
+        "share": 0.1294314661307879
+      },
+      "5": {
+        "count": 41632,
+        "share": 0.6971782634179017
+      }
+    }
+  },
+  "label_distribution_per_split": {
+    "train": {
+      "0": {
+        "count": 37117,
+        "share": 0.12237032543510584
+      },
+      "1": {
+        "count": 14572,
+        "share": 0.04804214732441637
+      },
+      "2": {
+        "count": 251628,
+        "share": 0.8295875272404778
+      }
+    },
+    "val": {
+      "0": {
+        "count": 7447,
+        "share": 0.11827956989247312
+      },
+      "1": {
+        "count": 3005,
+        "share": 0.04772795857753212
+      },
+      "2": {
+        "count": 52509,
+        "share": 0.8339924715299948
+      }
+    },
+    "test": {
+      "0": {
+        "count": 7329,
+        "share": 0.12273298166289877
+      },
+      "1": {
+        "count": 3025,
+        "share": 0.05065728878841162
+      },
+      "2": {
+        "count": 49361,
+        "share": 0.8266097295486896
+      }
+    }
+  },
+  "weak_label_note": "Weak supervision from star ratings via rating_mapping (rating <= 2 -> 0 negative, rating == 3 -> 1 neutral, rating >= 4 -> 2 positive) - not true sentiment; 'null' means the review has no rating.",
+  "reviews_per_product": {
+    "min": 10.0,
+    "max": 6510.0,
+    "mean": 206.1921587608906,
+    "p10": 56.0,
+    "p25": 69.0,
+    "p50": 111.0,
+    "p75": 215.75,
+    "p90": 427.5,
+    "p99": 1484.1499999999974
+  },
+  "review_date_range": {
+    "min": "2001-11-08T00:00:00+00:00",
+    "max": "2018-10-04T00:00:00+00:00",
+    "note": "Anchored on the review data itself; downstream recency features must use this max, never today's date."
+  },
+  "row_counts": {
+    "products": 2066,
+    "reviews": 425993,
+    "related_edges": 84885
+  }
+}

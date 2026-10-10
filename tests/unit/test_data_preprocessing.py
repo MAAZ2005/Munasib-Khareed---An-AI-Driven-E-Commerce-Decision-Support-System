@@ -101,7 +101,11 @@ class TestBuildEndToEnd:
         """Threshold comes from config; only B000000001 has >= 2 reviews."""
         out = tmp_path / "processed"
         report = build_processed_dataset(
-            _settings(min_reviews=2), raw_dir=raw_dir, processed_dir=out, chunk_size=2
+            _settings(min_reviews=2),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=2,
         )
         assert report.candidate_min_reviews == 2
         assert report.products_selected == 1
@@ -122,7 +126,11 @@ class TestBuildEndToEnd:
         """Cleaned product row: parsed price/rank/brand, aggregates merged."""
         out = tmp_path / "processed"
         build_processed_dataset(
-            _settings(min_reviews=2), raw_dir=raw_dir, processed_dir=out, chunk_size=2
+            _settings(min_reviews=2),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=2,
         )
         products = pd.read_parquet(out / "products.parquet")
         assert len(products) == 1
@@ -147,7 +155,11 @@ class TestBuildEndToEnd:
         """Cleaned review rows: raw preserved, labels weak, votes 0-filled."""
         out = tmp_path / "processed"
         build_processed_dataset(
-            _settings(min_reviews=2), raw_dir=raw_dir, processed_dir=out, chunk_size=2
+            _settings(min_reviews=2),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=2,
         )
         reviews = pd.read_parquet(out / "reviews.parquet")
         assert len(reviews) == 2
@@ -171,7 +183,11 @@ class TestBuildEndToEnd:
         """Edge table from also_buy/also_view with in_subset flags."""
         out = tmp_path / "processed"
         build_processed_dataset(
-            _settings(min_reviews=2), raw_dir=raw_dir, processed_dir=out, chunk_size=2
+            _settings(min_reviews=2),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=2,
         )
         related = pd.read_parquet(out / "related_products.parquet")
         pairs = set(zip(related["asin"], related["related_asin"], related["relation_type"], strict=True))
@@ -185,7 +201,11 @@ class TestBuildEndToEnd:
         """meta.json records category, config, counts, dates, weak-label note."""
         out = tmp_path / "processed"
         report = build_processed_dataset(
-            _settings(min_reviews=2), raw_dir=raw_dir, processed_dir=out, chunk_size=2
+            _settings(min_reviews=2),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=2,
         )
         meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
         assert meta["category"] == "Appliances"
@@ -221,7 +241,11 @@ class TestBuildWithLowerThreshold:
         """All five reviewed products qualify at >= 1 review."""
         out = tmp_path / "processed"
         report = build_processed_dataset(
-            _settings(min_reviews=1), raw_dir=raw_dir, processed_dir=out, chunk_size=4
+            _settings(min_reviews=1),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=4,
         )
         assert report.products_selected == 5
         assert report.reviews_final == 6
@@ -231,7 +255,11 @@ class TestBuildWithLowerThreshold:
         """Reviews with empty/absent text stay in the table with has_text=False."""
         out = tmp_path / "processed"
         build_processed_dataset(
-            _settings(min_reviews=1), raw_dir=raw_dir, processed_dir=out, chunk_size=4
+            _settings(min_reviews=1),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=4,
         )
         reviews = pd.read_parquet(out / "reviews.parquet")
         assert len(reviews) == 6  # nothing dropped for empty text
@@ -250,7 +278,11 @@ class TestBuildWithLowerThreshold:
         """Missing/unparseable price, rank and brand get boolean flags, no imputation."""
         out = tmp_path / "processed"
         build_processed_dataset(
-            _settings(min_reviews=1), raw_dir=raw_dir, processed_dir=out, chunk_size=4
+            _settings(min_reviews=1),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=4,
         )
         products = pd.read_parquet(out / "products.parquet").set_index("asin")
         # B000000004: empty price, no rank. B000000005: CSS-garbage price, no rank.
@@ -275,7 +307,11 @@ class TestBuildWithLowerThreshold:
         """B000000004 -> B000000005 links a candidate: in_subset is True."""
         out = tmp_path / "processed"
         build_processed_dataset(
-            _settings(min_reviews=1), raw_dir=raw_dir, processed_dir=out, chunk_size=4
+            _settings(min_reviews=1),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=4,
         )
         related = pd.read_parquet(out / "related_products.parquet")
         edge = related[
@@ -329,6 +365,7 @@ class TestDuplicateHandling:
             _settings(min_reviews=2),
             raw_dir=raw,
             processed_dir=tmp_path / "processed",
+            reports_dir=tmp_path / "reports",
             chunk_size=10,
         )
         assert report.duplicate_reviews_dropped == 1
@@ -390,7 +427,142 @@ class TestParquetSchemas:
         """Round-tripped parquet schema equals the declared schema (sans metadata)."""
         out = tmp_path / "processed"
         build_processed_dataset(
-            _settings(min_reviews=1), raw_dir=raw_dir, processed_dir=out, chunk_size=4
+            _settings(min_reviews=1),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=4,
         )
         written = pq.read_schema(out / filename)
         assert written.remove_metadata() == schema.remove_metadata()
+
+
+class TestSplitColumns:
+    """Product-level split written to both tables: no leakage, inherited by reviews."""
+
+    def _build(self, raw_dir: Path, tmp_path: Path, out: Path) -> Any:
+        return build_processed_dataset(
+            _settings(min_reviews=1),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=4,
+        )
+
+    def test_split_column_written_to_both_tables(
+        self, raw_dir: Path, tmp_path: Path
+    ) -> None:
+        """products.parquet and reviews.parquet both carry a populated split."""
+        out = tmp_path / "processed"
+        self._build(raw_dir, tmp_path, out)
+        products = pd.read_parquet(out / "products.parquet")
+        reviews = pd.read_parquet(out / "reviews.parquet")
+        assert "split" in products.columns and "split" in reviews.columns
+        assert set(products["split"].astype(str)) <= {"train", "val", "test"}
+        assert set(reviews["split"].astype(str)) <= {"train", "val", "test"}
+        assert products["split"].isna().sum() == 0
+        assert reviews["split"].isna().sum() == 0
+        assert "mean_rating" in products.columns
+
+    def test_no_leakage_reviews_inherit_product_split(
+        self, raw_dir: Path, tmp_path: Path
+    ) -> None:
+        """No product spans splits; every review matches its product's split."""
+        out = tmp_path / "processed"
+        self._build(raw_dir, tmp_path, out)
+        products = pd.read_parquet(out / "products.parquet")
+        reviews = pd.read_parquet(out / "reviews.parquet")
+        assert products["asin"].duplicated().sum() == 0
+        per_product = reviews.groupby("asin", observed=True)["split"].nunique()
+        assert per_product.max() == 1
+        joined = reviews.merge(
+            products[["asin", "split"]], on="asin", suffixes=("_review", "_product")
+        )
+        assert len(joined) == len(reviews)  # every review found its product
+        assert (joined["split_review"] == joined["split_product"]).all()
+
+    def test_split_assignment_is_deterministic(
+        self, raw_dir: Path, tmp_path: Path
+    ) -> None:
+        """Two builds with the same seed produce identical splits and counts."""
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        report_a = self._build(raw_dir, tmp_path, first)
+        report_b = self._build(raw_dir, tmp_path, second)
+        products_a = pd.read_parquet(first / "products.parquet")
+        products_b = pd.read_parquet(second / "products.parquet")
+        assert (
+            products_a.set_index("asin")["split"].sort_index()
+            == products_b.set_index("asin")["split"].sort_index()
+        ).all()
+        reviews_a = pd.read_parquet(first / "reviews.parquet")
+        reviews_b = pd.read_parquet(second / "reviews.parquet")
+        assert (
+            reviews_a.set_index("review_id")["split"].sort_index()
+            == reviews_b.set_index("review_id")["split"].sort_index()
+        ).all()
+        assert report_a.reviews_final == report_b.reviews_final
+        assert report_a.products_final == report_b.products_final
+        assert report_a.split_sizes == report_b.split_sizes
+
+    def test_meta_records_split_settings_and_sizes(
+        self, raw_dir: Path, tmp_path: Path
+    ) -> None:
+        """meta.json carries the seeded split config and the per-split counts."""
+        out = tmp_path / "processed"
+        report = self._build(raw_dir, tmp_path, out)
+        meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
+        assert meta["settings"]["split"]["seed"] == 42
+        assert meta["settings"]["split"]["train_fraction"] == 0.7
+        assert meta["splits"]["grain"] == "product"
+        assert meta["splits"]["sizes"] == report.split_sizes
+        assert sum(v["products"] for v in meta["splits"]["sizes"].values()) == 5
+        assert sum(v["reviews"] for v in meta["splits"]["sizes"].values()) == 6
+
+    def test_quality_report_written(self, raw_dir: Path, tmp_path: Path) -> None:
+        """The build writes reports/data_quality_report.{json,md} with facts."""
+        out = tmp_path / "processed"
+        report = self._build(raw_dir, tmp_path, out)
+        reports_dir = tmp_path / "reports"
+        payload = json.loads(
+            (reports_dir / "data_quality_report.json").read_text(encoding="utf-8")
+        )
+        markdown = (reports_dir / "data_quality_report.md").read_text(encoding="utf-8")
+        assert report.report_files == [
+            "data_quality_report.json",
+            "data_quality_report.md",
+        ]
+        assert payload["row_counts"]["products"] == 5
+        assert payload["row_counts"]["reviews"] == 6
+        assert payload["split_sizes"]["leakage_check"]["product_splits_unique"] is True
+        assert payload["split_sizes"]["leakage_check"]["reviews_match_product_split"] is True
+        assert payload["cleaning_steps"]["reviews"]["streamed_from_raw_file"] == 6
+        assert payload["cleaning_steps"]["reviews"]["after_candidate_filter"] == 6
+        assert payload["cleaning_steps"]["products"]["after_asin_dedup"] == 5
+        assert "# Data Quality Report - Appliances" in markdown
+        assert "## Split sizes" in markdown
+        assert "6" in markdown  # computed review count appears in the render
+
+
+class TestVerifiedNullVersusFalse:
+    """``verified`` distinguishes an absent field (null) from an explicit False."""
+
+    def test_null_and_false_are_distinct(self, raw_dir: Path, tmp_path: Path) -> None:
+        out = tmp_path / "processed"
+        build_processed_dataset(
+            _settings(min_reviews=1),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=4,
+        )
+        reviews = pd.read_parquet(out / "reviews.parquet").set_index("asin")
+        # B000000004 has no "verified" field in the fixture -> null, not False.
+        assert pd.isna(reviews.loc["B000000004", "verified"])
+        # B000000002 records an explicit false -> False, not null.
+        assert bool(reviews.loc["B000000002", "verified"]) is False
+        assert not pd.isna(reviews.loc["B000000002", "verified"])
+        # B000000001 has both a true and a false row.
+        b1 = reviews.loc["B000000001", "verified"]
+        assert {bool(v) for v in b1} == {True, False}
+        assert str(reviews["verified"].dtype) == "boolean"  # nullable dtype survives

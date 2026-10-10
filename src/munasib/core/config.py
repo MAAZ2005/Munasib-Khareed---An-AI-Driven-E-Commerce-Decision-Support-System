@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from munasib.core.exceptions import ConfigError
 
@@ -61,6 +61,51 @@ class AuditRubricConfig(BaseModel):
     fallback_category: str = "Luxury_Beauty"
 
 
+class SplitConfig(BaseModel):
+    """Product-level train/val/test split (leakage-safe: reviews inherit splits).
+
+    Fractions must sum to 1.0. Stratification uses the interior bin edges below:
+    a product's average rating and review count are binned, and every product in a
+    stratum is shuffled with ``seed`` and allocated to splits by the fractions.
+    """
+
+    train_fraction: float = 0.70
+    val_fraction: float = 0.15
+    test_fraction: float = 0.15
+    seed: int = 42
+    # Interior cut points (strictly ascending). Bins: (-inf, e0], (e0, e1], ... (en, inf).
+    rating_bin_edges: list[float] = Field(default_factory=lambda: [3.5, 4.5])
+    review_count_bin_edges: list[float] = Field(default_factory=lambda: [75.0, 150.0, 400.0])
+
+    @model_validator(mode="after")
+    def _check_fractions_and_edges(self) -> "SplitConfig":
+        """Validate that fractions sum to 1.0 and bin edges ascend strictly.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When fractions are outside (0, 1], do not sum to 1.0, or
+                bin edges are not strictly ascending.
+        """
+        fractions = (self.train_fraction, self.val_fraction, self.test_fraction)
+        if any(f <= 0.0 or f > 1.0 for f in fractions):
+            raise ValueError(
+                "dataset.split fractions must be in (0, 1], got "
+                f"train={self.train_fraction}, val={self.val_fraction}, "
+                f"test={self.test_fraction}"
+            )
+        if abs(sum(fractions) - 1.0) > 1e-9:
+            raise ValueError(f"dataset.split fractions must sum to 1.0, got {sum(fractions)}")
+        for name, edges in (
+            ("rating_bin_edges", self.rating_bin_edges),
+            ("review_count_bin_edges", self.review_count_bin_edges),
+        ):
+            if any(b <= a for a, b in zip(edges, edges[1:], strict=False)):
+                raise ValueError(f"dataset.split.{name} must be strictly ascending, got {edges}")
+        return self
+
+
 class DatasetConfig(BaseModel):
     """Target category and sampling constraints from UCSD Amazon Review Data (2018)."""
 
@@ -70,6 +115,7 @@ class DatasetConfig(BaseModel):
     max_reviews_per_product: int = 500
     sources: dict[str, DatasetSourceConfig] = Field(default_factory=dict)
     audit: AuditRubricConfig = Field(default_factory=AuditRubricConfig)
+    split: SplitConfig = Field(default_factory=SplitConfig)
 
 
 class RatingMappingConfig(BaseModel):

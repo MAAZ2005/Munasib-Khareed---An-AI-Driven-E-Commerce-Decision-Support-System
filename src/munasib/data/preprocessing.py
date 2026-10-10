@@ -15,9 +15,12 @@ M2      metadata (streamed)        full rows for candidates -> product cleaning
 ======  =========================  ==============================================
 
 After the passes: de-duplication, weak-label derivation, per-product review
-aggregates, the related-products edge table, then explicit-schema parquet writes
-plus a ``meta.json`` of dataset facts (category, config values, row counts, date
-range, build timestamp).
+aggregates, the seeded product-level train/val/test split (reviews inherit their
+product's split - see :mod:`munasib.data.splits`), the related-products edge
+table, then explicit-schema parquet writes plus a ``meta.json`` of dataset facts
+(category, config values, row counts, split sizes, date range, build timestamp)
+and the auto-generated ``reports/data_quality_report.{json,md}``
+(:mod:`munasib.data.quality` - every number in it is computed from these frames).
 
 Design contract (project rules: *never fabricate*, *faithful load*):
 
@@ -71,6 +74,13 @@ from munasib.data.loaders import (
     iter_metadata_chunks,
     iter_review_chunks,
 )
+from munasib.data.quality import build_quality_report, write_quality_report
+from munasib.data.splits import (
+    SPLIT_ORDER,
+    assign_product_splits,
+    assign_review_splits,
+    split_sizes,
+)
 
 logger = logging.getLogger("munasib.data.preprocessing")
 
@@ -82,6 +92,7 @@ REVIEW_SCHEMA = pa.schema(
     [
         ("review_id", pa.string()),
         ("asin", pa.string()),
+        ("split", pa.string()),
         ("reviewer_id", pa.string()),
         ("rating", pa.float64()),
         ("review_text_raw", pa.string()),
@@ -102,6 +113,7 @@ REVIEW_SCHEMA = pa.schema(
 PRODUCT_SCHEMA = pa.schema(
     [
         ("asin", pa.string()),
+        ("split", pa.string()),
         ("title", pa.string()),
         ("title_clean", pa.string()),
         ("brand", pa.string()),
@@ -118,6 +130,7 @@ PRODUCT_SCHEMA = pa.schema(
         ("description_clean", pa.string()),
         ("features_clean", pa.list_(pa.string())),
         ("n_reviews", pa.int32()),
+        ("mean_rating", pa.float64()),
         ("first_review_time", pa.timestamp("us", tz="UTC")),
         ("last_review_time", pa.timestamp("us", tz="UTC")),
     ]
@@ -140,6 +153,60 @@ _META_FILENAME = "meta.json"
 # ------------------------------------------------------------------------------
 
 
+def settings_block(
+    candidate_min_reviews: int,
+    chunk_size: int,
+    rating_mapping: dict[str, int],
+    split_settings: dict[str, Any],
+) -> dict[str, Any]:
+    """Canonical ``settings`` block recorded in ``meta.json``.
+
+    Single source of truth shared by the build and the CLI freshness check, so
+    the two can never drift apart.
+
+    Args:
+        candidate_min_reviews: Configured candidate threshold.
+        chunk_size: Streaming chunk size used for this build.
+        rating_mapping: Weak-label rating mapping (from config).
+        split_settings: Product-level split config dump (fractions, seed, bins).
+
+    Returns:
+        JSON-serialisable settings dict.
+    """
+    return {
+        "candidate_min_reviews": candidate_min_reviews,
+        "chunk_size": chunk_size,
+        "rating_mapping": dict(rating_mapping),
+        "split": dict(split_settings),
+    }
+
+
+def current_settings_block(settings: Settings, chunk_size: int) -> dict[str, Any]:
+    """Settings block a build with ``settings``/``chunk_size`` would record.
+
+    Used by ``scripts/build_dataset.py`` to decide whether existing outputs are
+    current (skip) or stale (rebuild, unless inputs changed).
+
+    Args:
+        settings: Loaded project settings.
+        chunk_size: Streaming chunk size the run would use.
+
+    Returns:
+        Same structure as :func:`settings_block`.
+    """
+    mapping = settings.review_intel.sentiment.rating_mapping
+    return settings_block(
+        settings.dataset.audit.candidate_min_reviews,
+        chunk_size,
+        {
+            "negative_max": mapping.negative_max,
+            "neutral_val": mapping.neutral_val,
+            "positive_min": mapping.positive_min,
+        },
+        settings.dataset.split.model_dump(),
+    )
+
+
 @dataclass
 class BuildReport:
     """All accounting produced by one dataset build (mirrors ``meta.json``)."""
@@ -149,6 +216,7 @@ class BuildReport:
     candidate_min_reviews: int
     chunk_size: int
     rating_mapping: dict[str, int]
+    split_settings: dict[str, Any]
     reviews_path: str
     metadata_path: str
     reviews_bytes: int
@@ -175,6 +243,10 @@ class BuildReport:
     review_date_min: str | None = None
     review_date_max: str | None = None
     output_files: list[str] = field(default_factory=list)
+    # Product-level split (fractions/seed come from config, never hardcoded)
+    split_sizes: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Data-quality report files (reports dir, separate from the processed dir)
+    report_files: list[str] = field(default_factory=list)
 
     @property
     def reviews_dropped_not_candidate(self) -> int:
@@ -187,11 +259,12 @@ class BuildReport:
             "category": self.category,
             "built_at": self.built_at,
             "config_path": self.config_path,
-            "settings": {
-                "candidate_min_reviews": self.candidate_min_reviews,
-                "chunk_size": self.chunk_size,
-                "rating_mapping": dict(self.rating_mapping),
-            },
+            "settings": settings_block(
+                self.candidate_min_reviews,
+                self.chunk_size,
+                dict(self.rating_mapping),
+                dict(self.split_settings),
+            ),
             "inputs": {
                 "reviews": {"path": self.reviews_path, "bytes": self.reviews_bytes},
                 "metadata": {"path": self.metadata_path, "bytes": self.metadata_bytes},
@@ -230,7 +303,19 @@ class BuildReport:
                     "neutral, 4-5 positive) - not true sentiment."
                 ),
             },
+            "splits": {
+                "grain": "product",
+                "sizes": {
+                    split: dict(counts) for split, counts in self.split_sizes.items()
+                },
+                "note": (
+                    "Reviews inherit their product's split (no product appears in "
+                    "more than one split); assignment is stratified and seeded via "
+                    "settings.split."
+                ),
+            },
             "files": list(self.output_files),
+            "report_files": list(self.report_files),
         }
 
 
@@ -408,8 +493,16 @@ def build_processed_dataset(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     raw_dir: Path | None = None,
     processed_dir: Path | None = None,
+    reports_dir: Path | None = None,
 ) -> BuildReport:
-    """Build ``products``/``reviews``/``related_products`` parquet plus ``meta.json``.
+    """Build the product/review/related parquet tables, ``meta.json`` and the report.
+
+    Outputs: ``products.parquet`` (with a ``split`` column), ``reviews.parquet``
+    (with a ``split`` column), ``related_products.parquet``, ``meta.json`` in
+    ``processed_dir`` - plus ``reports/data_quality_report.{json,md}`` in
+    ``reports_dir``. The split is assigned per *product* (stratified by
+    average-rating bin and review-count bin, seeded from ``dataset.split``) and
+    every review inherits its product's split, so no product leaks across splits.
 
     Args:
         settings: Loaded project settings (category, paths, thresholds, mapping).
@@ -417,9 +510,11 @@ def build_processed_dataset(
         chunk_size: Records per streamed chunk.
         raw_dir: Override for ``paths.raw_data_dir`` (tests).
         processed_dir: Override for ``paths.processed_data_dir`` (tests).
+        reports_dir: Override for ``paths.reports_dir`` (tests).
 
     Returns:
-        :class:`BuildReport` with all drop/keep accounting and output facts.
+        :class:`BuildReport` with all drop/keep accounting, split sizes and
+        output facts.
 
     Raises:
         DataError: When the category has no registered sources, raw files are
@@ -438,6 +533,7 @@ def build_processed_dataset(
     processed_dir = (
         processed_dir if processed_dir is not None else settings.paths.processed_data_dir
     )
+    reports_dir = reports_dir if reports_dir is not None else settings.paths.reports_dir
     reviews_path = raw_dir / Path(source.reviews_url).name
     metadata_path = raw_dir / Path(source.metadata_url).name
     missing = [str(p) for p in (reviews_path, metadata_path) if not p.exists()]
@@ -445,11 +541,12 @@ def build_processed_dataset(
         raise DataError(
             "Raw file(s) not found: "
             + ", ".join(missing)
-            + ". Run `python scripts/download_data.py` first."
+            + f". Download them first: `python scripts/download_data.py --category {category}`."
         )
 
     min_reviews = settings.dataset.audit.candidate_min_reviews
     rating_mapping = settings.review_intel.sentiment.rating_mapping
+    split_config = settings.dataset.split
     report = BuildReport(
         category=category,
         config_path=config_path,
@@ -460,13 +557,22 @@ def build_processed_dataset(
             "neutral_val": rating_mapping.neutral_val,
             "positive_min": rating_mapping.positive_min,
         },
+        split_settings=split_config.model_dump(),
         reviews_path=str(reviews_path),
         metadata_path=str(metadata_path),
         reviews_bytes=reviews_path.stat().st_size,
         metadata_bytes=metadata_path.stat().st_size,
         built_at=datetime.now(UTC).isoformat(timespec="seconds"),
     )
-    logger.info("building '%s' (min %d reviews/product)", category, min_reviews)
+    logger.info(
+        "building '%s' (min %d reviews/product, split seed %d, fractions %.2f/%.2f/%.2f)",
+        category,
+        min_reviews,
+        split_config.seed,
+        split_config.train_fraction,
+        split_config.val_fraction,
+        split_config.test_fraction,
+    )
 
     # -- Pass M1: metadata ASIN set (constant memory) -------------------------
     metadata_asins: set[str] = set()
@@ -588,6 +694,36 @@ def build_processed_dataset(
     )
     report.reviews_final = len(reviews)
 
+    # -- Product aggregates from the kept reviews -----------------------------
+    aggregates = compute_product_review_aggregates(reviews)
+    products = products.merge(aggregates, on="asin", how="left", validate="one_to_one")
+    if products["n_reviews"].isna().any():
+        raise DataError(
+            "Internal inconsistency: some candidates have no kept reviews after "
+            "cleaning/deduplication."
+        )
+    report.products_below_min_after_dedup = int(
+        (products["n_reviews"] < min_reviews).sum()
+    )
+    report.products_final = len(products)
+
+    # -- Product-level split assignment (leakage-safe, seeded) ----------------
+    # Products are stratified by (average-rating bin, review-count bin) and
+    # shuffled with dataset.split.seed; reviews inherit their product's split.
+    products = assign_product_splits(products, split_config)
+    reviews = assign_review_splits(reviews, products)
+    report.split_sizes = split_sizes(products, reviews)
+    logger.info(
+        "split assignment (seed %d): products {%s}, reviews {%s}",
+        split_config.seed,
+        ", ".join(
+            f"{split}: {report.split_sizes[split]['products']}" for split in SPLIT_ORDER
+        ),
+        ", ".join(
+            f"{split}: {report.split_sizes[split]['reviews']}" for split in SPLIT_ORDER
+        ),
+    )
+
     final_reviews = reviews[[column.name for column in REVIEW_SCHEMA]]
     final_reviews = final_reviews.copy()
     final_reviews["rating"] = final_reviews["rating"].astype("float64")
@@ -603,19 +739,7 @@ def build_processed_dataset(
     final_reviews["sentiment_label_weak"] = final_reviews["sentiment_label_weak"].astype(
         "Int8"
     )
-
-    # -- Product aggregates from the kept reviews -----------------------------
-    aggregates = compute_product_review_aggregates(reviews)
-    products = products.merge(aggregates, on="asin", how="left", validate="one_to_one")
-    if products["n_reviews"].isna().any():
-        raise DataError(
-            "Internal inconsistency: some candidates have no kept reviews after "
-            "cleaning/deduplication."
-        )
-    report.products_below_min_after_dedup = int(
-        (products["n_reviews"] < min_reviews).sum()
-    )
-    report.products_final = len(products)
+    final_reviews["split"] = final_reviews["split"].astype("string")
 
     final_products = products[[column.name for column in PRODUCT_SCHEMA]].copy()
     final_products["price"] = final_products["price"].astype("float64")
@@ -625,12 +749,14 @@ def build_processed_dataset(
     final_products["rank_value"] = final_products["rank_value"].astype("Int64")
     final_products["rank_missing"] = final_products["rank_missing"].astype(bool)
     final_products["n_reviews"] = final_products["n_reviews"].astype("Int32")
+    final_products["mean_rating"] = final_products["mean_rating"].astype("float64")
     final_products["first_review_time"] = final_products["first_review_time"].astype(
         "datetime64[us, UTC]"
     )
     final_products["last_review_time"] = final_products["last_review_time"].astype(
         "datetime64[us, UTC]"
     )
+    final_products["split"] = final_products["split"].astype("string")
 
     # -- Dataset facts (dates come from the data, never from today) -----------
     review_dates = final_reviews["review_datetime"].dropna()
@@ -652,6 +778,20 @@ def build_processed_dataset(
 
     report.output_files.append(_META_FILENAME)
     meta_path = processed_dir / _META_FILENAME
+
+    # -- Data-quality report (all values computed from these frames) ----------
+    quality = build_quality_report(
+        build=report,
+        products_raw=products_raw,
+        products=final_products,
+        reviews=final_reviews,
+        related=related,
+        split_config=split_config,
+    )
+    report_paths = write_quality_report(quality, reports_dir)
+    report.report_files = [path.name for path in report_paths]
+    logger.info("wrote %s and %s", report_paths[0], report_paths[1])
+
     meta_path.write_text(
         json.dumps(report.to_meta_dict(), indent=2) + "\n", encoding="utf-8"
     )

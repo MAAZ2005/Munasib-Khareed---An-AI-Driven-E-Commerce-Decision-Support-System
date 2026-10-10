@@ -177,22 +177,26 @@ def compute_product_review_aggregates(reviews: pd.DataFrame) -> pd.DataFrame:
 
     Args:
         reviews: Final review frame (post-filtering, post-dedup) with ``asin``,
-            ``review_datetime``.
+            ``rating``, ``review_datetime``.
 
     Returns:
-        DataFrame with columns ``asin``, ``n_reviews`` (int32),
-        ``first_review_time``, ``last_review_time`` (UTC timestamps).
+        DataFrame with columns ``asin``, ``n_reviews`` (int32), ``mean_rating``
+        (float64; NaN when a product has no numeric rating - never fabricated),
+        ``first_review_time``, ``last_review_time`` (UTC timestamps). The mean
+        rating feeds the split stratification, so it is stored alongside it.
     """
     aggregates = (
         reviews.groupby("asin", sort=False)
         .agg(
             n_reviews=("review_datetime", "size"),
+            mean_rating=("rating", "mean"),
             first_review_time=("review_datetime", "min"),
             last_review_time=("review_datetime", "max"),
         )
         .reset_index()
     )
     aggregates["n_reviews"] = aggregates["n_reviews"].astype("int32")
+    aggregates["mean_rating"] = aggregates["mean_rating"].astype("float64")
     return aggregates
 
 

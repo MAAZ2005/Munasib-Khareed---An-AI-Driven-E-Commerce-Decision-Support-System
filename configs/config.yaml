@@ -55,6 +55,23 @@ dataset:
     # Category to recommend switching to when any criterion FAILs.
     fallback_category: "Luxury_Beauty"
 
+  # Product-level train/val/test split (leakage-safe: every review inherits the
+  # split of its product). Fractions must sum to 1.0. Products are stratified by
+  # average-rating bin x review-count bin, then shuffled with `seed` inside each
+  # stratum, so re-running the build with the same seed yields identical splits.
+  split:
+    train_fraction: 0.70
+    val_fraction: 0.15
+    test_fraction: 0.15
+    # Kept separate from project.random_seed so split stability is independent
+    # of other randomness; change only if you intentionally want new splits.
+    seed: 42
+    # Interior cut points (strictly ascending). Average-rating bins:
+    # (-inf, 3.5], (3.5, 4.5], (4.5, inf).
+    rating_bin_edges: [3.5, 4.5]
+    # Review-count bins: (-inf, 75], (75, 150], (150, 400], (400, inf).
+    review_count_bin_edges: [75.0, 150.0, 400.0]
+
 review_intel:
   # Sentiment analysis
   sentiment:
