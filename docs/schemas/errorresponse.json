@@ -1,0 +1,56 @@
+{
+  "description": "Error envelope returned for every non-2xx response.\n\n``code`` is a stable machine token (``PRODUCT_NOT_FOUND``, ``VALIDATION_ERROR``,\n``INTERNAL_ERROR``); the HTTP status repeats it for convenience so a client\ncan branch on either. ``detail`` carries the machine-readable particulars\n(for example the offending field and its limit).",
+  "example": {
+    "code": "PRODUCT_NOT_FOUND",
+    "detail": {
+      "asin": "B0000000000"
+    },
+    "message": "Product 'B0000000000' was not found in the serving cache.",
+    "request_id": "req-5f0a1c2d"
+  },
+  "properties": {
+    "code": {
+      "description": "Stable error token, e.g. PRODUCT_NOT_FOUND, VALIDATION_ERROR, INTERNAL_ERROR.",
+      "title": "Code",
+      "type": "string"
+    },
+    "message": {
+      "description": "Human-readable summary, safe to render.",
+      "title": "Message",
+      "type": "string"
+    },
+    "detail": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional machine-readable particulars (unknown ASIN, failing field name and bound).",
+      "title": "Detail"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Correlation id for logs, when available.",
+      "title": "Request Id"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "ErrorResponse",
+  "type": "object"
+}
