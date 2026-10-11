@@ -2,8 +2,10 @@
 
 Covers: every declared example parses; out-of-range values are rejected at the
 boundary (risk scores, indicator values, unknown verdict labels and weak-label
-codes); the analysis example round-trips through JSON; the empty-alternatives
-case validates; every JSON block in ``docs/api.md`` validates against the schema
+codes); the extensible evidence contract behaves (`details` defaults to empty,
+duplicate or out-of-range detail names are rejected, and payloads written before
+the extension still parse); the analysis example round-trips through JSON; the
+empty-alternatives case validates; every JSON block in ``docs/api.md`` validates against the schema
 named by its marker comment; and - when the SQLite serving cache exists - a
 schema is built from a real ORM product row and the example's data-derived
 numbers are cross-checked against the database (skipped when the cache is
@@ -45,6 +47,7 @@ from munasib.api.schemas import (
     VerdictLabel,
 )
 from munasib.api.schemas.alternatives import ALTERNATIVES_EMPTY_EXAMPLE
+from munasib.api.schemas.evidence import FIXED_INDICATOR_NAMES
 from munasib.api.schemas.reviews import SENTIMENT_LABEL_CODE_FOR_NAME
 
 DOCS_API = Path(__file__).resolve().parents[2] / "docs" / "api.md"
@@ -348,6 +351,105 @@ def test_unknown_split_name_in_split_sizes_is_rejected() -> None:
                 "split_sizes": {"dev": {"products": 1, "reviews": 1}},
             }
         )
+
+
+# ------------------------------------------------------------------------------
+# Extensible evidence (details) and risk indicators
+# ------------------------------------------------------------------------------
+
+
+def _indicator(name: str, value: float = 0.5) -> dict:
+    """Build a minimal EvidenceIndicator payload.
+
+    Args:
+        name: Indicator key.
+        value: Normalised 0-1 value.
+
+    Returns:
+        The payload dict; ``raw_value`` is omitted because it is optional.
+    """
+    return {"name": name, "value": value, "direction": "benefit", "description": "x"}
+
+
+def _fixed_evidence(**overrides: object) -> dict:
+    """Build the original four-field EvidenceIndicators payload.
+
+    Args:
+        **overrides: Field overrides (e.g. ``details=[...]``).
+
+    Returns:
+        The payload dict, without ``details`` unless overridden.
+    """
+    payload: dict = {
+        "verified_purchase": _indicator("verified_purchase"),
+        "helpfulness": _indicator("helpfulness_ratio"),
+        "review_depth": _indicator("review_depth"),
+        "evidence_strength": 0.7173,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_evidence_details_defaults_to_empty() -> None:
+    """The four-field payload written before the extension still validates."""
+    evidence = EvidenceIndicators.model_validate(_fixed_evidence())
+    assert evidence.details == []
+
+
+def test_example_documents_a_few_real_details() -> None:
+    """The example carries 2-3 extra signals, each 0-1 with a unique name."""
+    response = AnalysisResponse.model_validate(ANALYSIS_EXAMPLE)
+    details = response.evidence.details
+    assert 2 <= len(details) <= 3
+    names = [detail.name for detail in details]
+    assert len(names) == len(set(names))
+    assert all(0.0 <= detail.value <= 1.0 for detail in details)
+
+
+def test_duplicate_detail_names_are_rejected() -> None:
+    """A repeated name would leave clients unable to key indicators by name."""
+    payload = _fixed_evidence(
+        details=[
+            _indicator("rating_distribution_entropy", 0.9),
+            _indicator("rating_distribution_entropy", 0.4),
+        ]
+    )
+    with pytest.raises(ValidationError, match="duplicate"):
+        EvidenceIndicators.model_validate(payload)
+
+
+def test_detail_may_not_shadow_a_fixed_indicator() -> None:
+    """Reusing a fixed indicator's name is a duplicate in disguise."""
+    for name in FIXED_INDICATOR_NAMES:
+        payload = _fixed_evidence(details=[_indicator(name)])
+        with pytest.raises(ValidationError, match="shadow"):
+            EvidenceIndicators.model_validate(payload)
+
+
+@pytest.mark.parametrize("bad_value", [-0.1, 1.2])
+def test_detail_outside_unit_interval_is_rejected(bad_value: float) -> None:
+    """Details obey the same 0-1 bound as the three fixed indicators."""
+    payload = _fixed_evidence(details=[_indicator("review_volume", bad_value)])
+    with pytest.raises(ValidationError):
+        EvidenceIndicators.model_validate(payload)
+
+
+def test_payload_written_before_the_extension_still_parses() -> None:
+    """The previous example payload (no `details`, no `risk_indicators`) parses."""
+    payload = dict(ANALYSIS_EXAMPLE)
+    payload.pop("risk_indicators", None)
+    payload["evidence"] = {k: v for k, v in payload["evidence"].items() if k != "details"}
+    response = AnalysisResponse.model_validate(payload)
+    assert response.evidence.details == []
+    assert response.risk_indicators == []
+
+
+def test_risk_indicators_default_to_an_empty_list() -> None:
+    """The risk criteria are an extension point: absent means empty, not an error."""
+    payload = dict(ANALYSIS_EXAMPLE)
+    payload.pop("risk_indicators", None)
+    response = AnalysisResponse.model_validate(payload)
+    assert response.risk_indicators == []
 
 
 # ------------------------------------------------------------------------------

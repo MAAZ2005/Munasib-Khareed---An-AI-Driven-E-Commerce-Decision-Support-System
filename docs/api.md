@@ -215,6 +215,8 @@ The full analysis: review evidence, fuzzy + TOPSIS risk, explanation, alternativ
 
 - `decision` is the fuzzy assessment followed by TOPSIS: the defuzzified fuzzy value is handed to TOPSIS as an extra cost criterion (`risk_score`), and `topsis.risk_score` is the TOPSIS result combined with the fuzzy uncertainty.
 - When the risk stages cannot run, `decision`, `explanation` and `verdict` are null and `warnings` explains why - the API never fabricates scores.
+- `evidence.details` carries extra evidence signals beyond the three fixed indicators (rating-distribution entropy, helpfulness-weighted sentiment, negative-feedback concentration, ...), each a 0-1 indicator with its raw value, direction and description; names are unique within the list and never shadow the fixed indicators, so clients can key by name.
+- `risk_indicators` is the risk stage's five criteria (`product_quality`, `evidence_strength`, `rating_reliability`, `negative_feedback_concentration`, `price_position`) as top-level 0-1 indicators with direction and description; it is an empty list until that stage computes them, and it deliberately lives outside `decision.topsis`.
 - `data_basis.reference_date` anchors all recency features (2018-10-04 for this dataset).
 
 Example response `200` (schema `AnalysisResponse`):
@@ -617,8 +619,32 @@ Example response `200` (schema `AnalysisResponse`):
       "direction": "benefit",
       "description": "How substantive the review text is, from the mean character length of the reviews (206.31 characters here)."
     },
-    "evidence_strength": 0.7173
+    "evidence_strength": 0.7173,
+    "details": [
+      {
+        "name": "rating_distribution_entropy",
+        "value": 0.9173,
+        "raw_value": 1.4764,
+        "direction": "cost",
+        "description": "Shannon entropy of the star distribution normalised by log(5) (0 = one shared star, 1 = perfectly spread): 0.9173 here over the 19/4/14/7/8 star split, so opinions span all five stars and the 2.63 mean hides a divided audience."
+      },
+      {
+        "name": "helpfulness_weighted_sentiment",
+        "value": 0.5517,
+        "raw_value": 1.1034,
+        "direction": "benefit",
+        "description": "Weak labels (0 negative, 1 neutral, 2 positive) averaged with each review's helpful votes as weight and rescaled to 0-1 (raw 0-2 mean label 1.1034): 0.5517 here from 29 helpful votes across 52 reviews, above the 0.4231 unweighted value - the reviews shoppers voted useful read better than average."
+      },
+      {
+        "name": "negative_feedback_concentration",
+        "value": 0.8261,
+        "raw_value": 19.0,
+        "direction": "cost",
+        "description": "Share of the weak-negative reviews that are one-star reviews (19 of 23 here): negative feedback packed into the harshest bucket rather than spread over 2-3 stars."
+      }
+    ]
   },
+  "risk_indicators": [],
   "decision": {
     "fuzzy": {
       "input_memberships": {
@@ -1068,3 +1094,4 @@ Where the task brief left room, the simplest option was chosen and recorded here
 4. **`data_basis.date_range_start/end` are per-product** (that product's own oldest and newest review) while `reference_date` stays the dataset-wide latest review date, so recency is comparable across products.
 5. **`total_related` counts edges, `usable` counts distinct alternatives.** An ASIN linked by both `also_bought` and `also_viewed` counts twice in `total_related` but once in `usable`.
 6. **Review text is served raw** (`review_text` reads the stored raw body) while `summary` is the cleaned headline, exactly as the cache stores them.
+7. **`evidence.details` and `risk_indicators` are extension points, not fixed fields.** Evidence signals added later (rating-distribution entropy, helpfulness-weighted sentiment, ...) and the risk stage's five criteria (`product_quality`, `evidence_strength`, `rating_reliability`, `negative_feedback_concentration`, `price_position`) travel as lists of the same 0-1 indicator shape, so growing the contract never breaks existing clients. A `details` name must be unique in the list and may not reuse `verified_purchase`, `helpfulness_ratio` or `review_depth` - those already have dedicated fields, so a repeat would be ambiguous; both violations are rejected by the schema. `risk_indicators` defaults to an empty list until the risk stage computes it.

@@ -114,6 +114,16 @@ ENDPOINTS: list[dict[str, Any]] = [
             "`topsis.risk_score` is the TOPSIS result combined with the fuzzy uncertainty.",
             "When the risk stages cannot run, `decision`, `explanation` and `verdict` are "
             "null and `warnings` explains why - the API never fabricates scores.",
+            "`evidence.details` carries extra evidence signals beyond the three fixed "
+            "indicators (rating-distribution entropy, helpfulness-weighted sentiment, "
+            "negative-feedback concentration, ...), each a 0-1 indicator with its raw "
+            "value, direction and description; names are unique within the list and "
+            "never shadow the fixed indicators, so clients can key by name.",
+            "`risk_indicators` is the risk stage's five criteria (`product_quality`, "
+            "`evidence_strength`, `rating_reliability`, "
+            "`negative_feedback_concentration`, `price_position`) as top-level 0-1 "
+            "indicators with direction and description; it is an empty list until that "
+            "stage computes them, and it deliberately lives outside `decision.topsis`.",
             "`data_basis.reference_date` anchors all recency features (2018-10-04 for "
             "this dataset).",
         ],
@@ -407,6 +417,19 @@ def render_api_doc() -> str:
     out.append(
         "6. **Review text is served raw** (`review_text` reads the stored raw body) while "
         "`summary` is the cleaned headline, exactly as the cache stores them."
+    )
+    out.append(
+        "7. **`evidence.details` and `risk_indicators` are extension points, not fixed "
+        "fields.** Evidence signals added later (rating-distribution entropy, "
+        "helpfulness-weighted sentiment, ...) and the risk stage's five criteria "
+        "(`product_quality`, `evidence_strength`, `rating_reliability`, "
+        "`negative_feedback_concentration`, `price_position`) travel as lists of the "
+        "same 0-1 indicator shape, so growing the contract never breaks existing "
+        "clients. A `details` name must be unique in the list and may not reuse "
+        "`verified_purchase`, `helpfulness_ratio` or `review_depth` - those already "
+        "have dedicated fields, so a repeat would be ambiguous; both violations are "
+        "rejected by the schema. `risk_indicators` defaults to an empty list until "
+        "the risk stage computes it."
     )
     out.append("")
     return "\n".join(out)

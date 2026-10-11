@@ -379,7 +379,7 @@
       "description": "One indicator: the 0-1 value plus everything needed to audit it.",
       "properties": {
         "name": {
-          "description": "Indicator key; one of 'verified_purchase', 'helpfulness_ratio', 'review_depth'.",
+          "description": "Indicator key. The fixed evidence indicators are 'verified_purchase', 'helpfulness_ratio' and 'review_depth'; `details` entries carry additional unique keys (e.g. 'rating_distribution_entropy').",
           "title": "Name",
           "type": "string"
         },
@@ -423,7 +423,7 @@
       "type": "object"
     },
     "EvidenceIndicators": {
-      "description": "The three evidence indicators plus the composite 0-1 evidence strength.",
+      "description": "The three evidence indicators, the composite strength, and any extras.\n\n``details`` extends the contract without changing the four original fields:\neach entry is a full :class:`EvidenceIndicator` for a signal computed\nbeyond ``configs/config.yaml`` (rating-distribution entropy,\nhelpfulness-weighted sentiment, ...), so new signals need no schema change.\nA name may appear only once in ``details`` and may not shadow\n:data:`FIXED_INDICATOR_NAMES`; both violations are rejected because\nclients key indicators by name.",
       "properties": {
         "verified_purchase": {
           "$ref": "#/$defs/EvidenceIndicator",
@@ -443,6 +443,14 @@
           "minimum": 0.0,
           "title": "Evidence Strength",
           "type": "number"
+        },
+        "details": {
+          "description": "Additional evidence signals computed beyond the three fixed indicators, each with a 0-1 value, its raw value, direction and a plain-language description; empty when no extra signals were computed. Names are unique within this list and never reuse the fixed keys ('verified_purchase', 'helpfulness_ratio', 'review_depth').",
+          "items": {
+            "$ref": "#/$defs/EvidenceIndicator"
+          },
+          "title": "Details",
+          "type": "array"
         }
       },
       "required": [
@@ -1636,6 +1644,29 @@
       }
     },
     "evidence": {
+      "details": [
+        {
+          "description": "Shannon entropy of the star distribution normalised by log(5) (0 = one shared star, 1 = perfectly spread): 0.9173 here over the 19/4/14/7/8 star split, so opinions span all five stars and the 2.63 mean hides a divided audience.",
+          "direction": "cost",
+          "name": "rating_distribution_entropy",
+          "raw_value": 1.4764,
+          "value": 0.9173
+        },
+        {
+          "description": "Weak labels (0 negative, 1 neutral, 2 positive) averaged with each review's helpful votes as weight and rescaled to 0-1 (raw 0-2 mean label 1.1034): 0.5517 here from 29 helpful votes across 52 reviews, above the 0.4231 unweighted value - the reviews shoppers voted useful read better than average.",
+          "direction": "benefit",
+          "name": "helpfulness_weighted_sentiment",
+          "raw_value": 1.1034,
+          "value": 0.5517
+        },
+        {
+          "description": "Share of the weak-negative reviews that are one-star reviews (19 of 23 here): negative feedback packed into the harshest bucket rather than spread over 2-3 stars.",
+          "direction": "cost",
+          "name": "negative_feedback_concentration",
+          "raw_value": 19.0,
+          "value": 0.8261
+        }
+      ],
       "evidence_strength": 0.7173,
       "helpfulness": {
         "description": "Share of reviews that at least one other shopper found helpful (8 of 52 here); the raw value is the mean helpful-vote count per review.",
@@ -2096,6 +2127,7 @@
         "positive_share_slope": -0.0001
       }
     },
+    "risk_indicators": [],
     "risk_score": 62.5,
     "verdict": {
       "evidence_strength": 0.7173,
@@ -2145,6 +2177,14 @@
     },
     "evidence": {
       "$ref": "#/$defs/EvidenceIndicators"
+    },
+    "risk_indicators": {
+      "description": "The risk stage's five criteria as 0-1 indicators with direction and description: product_quality, evidence_strength, rating_reliability, negative_feedback_concentration and price_position. Empty until the risk stage computes them; exposed at the top level so clients do not have to reach into the TOPSIS block for risk inputs.",
+      "items": {
+        "$ref": "#/$defs/EvidenceIndicator"
+      },
+      "title": "Risk Indicators",
+      "type": "array"
     },
     "decision": {
       "anyOf": [

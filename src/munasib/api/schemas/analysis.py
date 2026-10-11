@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .alternatives import AlternativesResult
 from .common import RiskScore, UnitFloat, UtcDatetime
 from .decision import DecisionAssessment
-from .evidence import EvidenceIndicators
+from .evidence import EvidenceIndicator, EvidenceIndicators
 from .explanation import ShapExplanation
 from .products import ProductDetail
 from .review_analysis import ReviewAnalysis
@@ -198,7 +198,40 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
             "length of the reviews (206.31 characters here).",
         },
         "evidence_strength": 0.7173,
+        "details": [
+            {
+                "name": "rating_distribution_entropy",
+                "value": 0.9173,
+                "raw_value": 1.4764,
+                "direction": "cost",
+                "description": "Shannon entropy of the star distribution normalised "
+                "by log(5) (0 = one shared star, 1 = perfectly spread): 0.9173 here "
+                "over the 19/4/14/7/8 star split, so opinions span all five stars and "
+                "the 2.63 mean hides a divided audience.",
+            },
+            {
+                "name": "helpfulness_weighted_sentiment",
+                "value": 0.5517,
+                "raw_value": 1.1034,
+                "direction": "benefit",
+                "description": "Weak labels (0 negative, 1 neutral, 2 positive) "
+                "averaged with each review's helpful votes as weight and rescaled to "
+                "0-1 (raw 0-2 mean label 1.1034): 0.5517 here from 29 helpful votes "
+                "across 52 reviews, above the 0.4231 unweighted value - the reviews "
+                "shoppers voted useful read better than average.",
+            },
+            {
+                "name": "negative_feedback_concentration",
+                "value": 0.8261,
+                "raw_value": 19.0,
+                "direction": "cost",
+                "description": "Share of the weak-negative reviews that are one-star "
+                "reviews (19 of 23 here): negative feedback packed into the harshest "
+                "bucket rather than spread over 2-3 stars.",
+            },
+        ],
     },
+    "risk_indicators": [],
     "decision": {
         "fuzzy": {
             "input_memberships": {
@@ -473,6 +506,14 @@ class AnalysisResponse(BaseModel):
     product: ProductDetail = Field(description="Product profile behind the analysis.")
     review_analysis: ReviewAnalysis
     evidence: EvidenceIndicators
+    risk_indicators: list[EvidenceIndicator] = Field(
+        default_factory=list,
+        description="The risk stage's five criteria as 0-1 indicators with direction "
+        "and description: product_quality, evidence_strength, rating_reliability, "
+        "negative_feedback_concentration and price_position. Empty until the risk "
+        "stage computes them; exposed at the top level so clients do not have to "
+        "reach into the TOPSIS block for risk inputs.",
+    )
     decision: DecisionAssessment | None = Field(
         default=None,
         description="Fuzzy + TOPSIS decision; None when the risk stages could not run "
