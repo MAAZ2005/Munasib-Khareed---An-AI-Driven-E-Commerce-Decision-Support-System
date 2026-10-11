@@ -42,7 +42,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import pyarrow as pa
@@ -446,7 +446,10 @@ def _clean_product_frame(products: pd.DataFrame) -> pd.DataFrame:
     description_raw = _get_or_na(products, "description", "object")
     feature_raw = _get_or_na(products, "feature", "object")
     out["description_clean"] = [clean_description(v) for v in description_raw]
-    out["features_clean"] = [clean_features(v) for v in feature_raw]
+    # list[Any]: a column of lists-or-None is not expressible in the pandas-stubs
+    # `__setitem__` union (None is neither a scalar nor a Sequence).
+    features_clean: list[Any] = [clean_features(v) for v in feature_raw]
+    out["features_clean"] = features_clean
     return out
 
 
@@ -478,7 +481,9 @@ def _iso_or_none(value: Any) -> str | None:
     """
     if value is None or pd.isna(value):
         return None
-    return value.isoformat()
+    # `value` is a pandas Timestamp / datetime at runtime, but the Any parameter
+    # hides that from mypy: narrow the already-string result instead of returning Any.
+    return cast(str, value.isoformat())
 
 
 # ------------------------------------------------------------------------------

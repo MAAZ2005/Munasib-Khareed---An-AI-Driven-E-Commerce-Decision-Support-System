@@ -249,7 +249,11 @@ def _apply_env_overrides(raw_dict: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Updated dictionary with environment variable values applied.
     """
-    env_mappings = {
+    # Mixed tuple shapes (2 items = plain override, 3 items = override + cast
+    # function): mypy joins them to `tuple[str | type[int], ...]`, which it then
+    # refuses to index into `dict[str, Any]`. Widening the value type to
+    # `tuple[Any, ...]` documents the heterogeneous table without changing it.
+    env_mappings: dict[str, tuple[Any, ...]] = {
         "MUNASIB_ENVIRONMENT": ("project", "environment"),
         "MUNASIB_RANDOM_SEED": ("project", "random_seed", int),
         "MUNASIB_DB_PATH": ("paths", "db_path"),

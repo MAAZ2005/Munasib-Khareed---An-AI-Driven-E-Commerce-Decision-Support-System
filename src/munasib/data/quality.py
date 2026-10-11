@@ -18,8 +18,9 @@ stratification strata that produced them.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
@@ -85,7 +86,7 @@ def _missingness(frame: pd.DataFrame) -> dict[str, dict[str, Any]]:
 
 
 def _distribution(
-    frame: pd.DataFrame, column: str, split: str, key_format
+    frame: pd.DataFrame, column: str, split: str, key_format: Callable[[Any], str]
 ) -> dict[str, dict[str, float | int]]:
     """Count + within-split share of one column of the review frame.
 
@@ -145,13 +146,18 @@ def _strata_rows(products: pd.DataFrame, split_config: SplitConfig) -> list[dict
     table = table.reindex(columns=list(SPLIT_ORDER)).fillna(0)
     table["products"] = table.sum(axis=1)
     table = table.sort_index()
+    # `table` is indexed by (rating_bin, review_count_bin), but `DataFrame.iterrows`
+    # is stubbed as yielding a bare `Hashable` key; narrow it for the unpacking below.
+    stratum_rows = cast(
+        "Iterable[tuple[tuple[str, str], pd.Series[Any]]]", table.iterrows()
+    )
     return [
         {
             "stratum": f"rating={rating_bin} | reviews={count_bin}",
             "products": int(row["products"]),
             **{split: int(row[split]) for split in SPLIT_ORDER},
         }
-        for (rating_bin, count_bin), row in table.iterrows()
+        for (rating_bin, count_bin), row in stratum_rows
     ]
 
 
@@ -290,7 +296,9 @@ def build_quality_report(
     }
 
     # -- Rating / weak-label distribution per split -----------------------------
-    def _sorted_dist(column: str, key_format) -> dict[str, dict[str, dict[str, float | int]]]:
+    def _sorted_dist(
+        column: str, key_format: Callable[[Any], str]
+    ) -> dict[str, dict[str, dict[str, float | int]]]:
         """Per-split distributions with numeric keys ascending, ``"null"`` last."""
         return {
             split: dict(

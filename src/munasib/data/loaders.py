@@ -50,7 +50,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal
+from typing import IO, Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -146,7 +146,10 @@ def parse_vote(value: Any) -> int | None:
     if isinstance(value, numbers.Integral):
         return int(value)
     if isinstance(value, numbers.Real):
-        return int(value) if float(value).is_integer() else None
+        # `numbers.Real` is not typed as supporting int()/isna(), but every concrete
+        # real type does: normalise through float first (the guard needs it anyway).
+        as_float = float(value)
+        return int(as_float) if as_float.is_integer() else None
     if isinstance(value, str):
         text = value.strip().replace(",", "")
         if not text:
@@ -212,9 +215,12 @@ def parse_price(value: Any) -> tuple[float | None, float | None, str]:
     if isinstance(value, bool):
         return None, None, "unparseable"
     if isinstance(value, numbers.Real):
-        if pd.isna(value):  # NaN from a JSON null in a typed column
+        # `pd.isna` is stubbed only for scalars pandas knows; float() is the value
+        # that is actually returned below, so check NaN on it (same result).
+        numeric_price = float(value)
+        if pd.isna(numeric_price):  # NaN from a JSON null in a typed column
             return None, None, "missing"
-        return float(value), None, "single"
+        return numeric_price, None, "single"
 
     text = str(value).strip()
     if not text or text.lower() in {"nan", "none", "null"}:
@@ -499,8 +505,12 @@ def canonicalize_metadata_chunk(
         df["also_buy"] = top_also_buy if top_also_buy is not None else [None] * len(df)
         df["also_view"] = top_also_view if top_also_view is not None else [None] * len(df)
 
-    df["also_buy"] = [to_str_list(v) for v in df["also_buy"]]
-    df["also_view"] = [to_str_list(v) for v in df["also_view"]]
+    # Annotated as list[Any]: a column of lists-or-None is not expressible in the
+    # pandas-stubs `__setitem__` union (None is neither a scalar nor a Sequence).
+    also_buy_cells: list[Any] = [to_str_list(v) for v in df["also_buy"]]
+    also_view_cells: list[Any] = [to_str_list(v) for v in df["also_view"]]
+    df["also_buy"] = also_buy_cells
+    df["also_view"] = also_view_cells
 
     # price (price_raw is the canonical raw source once canonicalisation has run)
     if "price_raw" in df.columns:
@@ -532,7 +542,7 @@ def canonicalize_metadata_chunk(
 # ------------------------------------------------------------------------------
 
 
-def open_maybe_gzip(path: Path | str):
+def open_maybe_gzip(path: Path | str) -> IO[str]:
     """Open a file for text reading, transparently handling ``.gz`` compression.
 
     Args:
