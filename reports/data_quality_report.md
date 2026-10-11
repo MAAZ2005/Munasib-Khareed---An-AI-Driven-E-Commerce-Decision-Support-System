@@ -1,6 +1,6 @@
 # Data Quality Report - Appliances
 
-- **Generated:** 2026-10-10T11:09:54+00:00
+- **Generated:** 2026-10-10T11:31:52+00:00
 - **Category:** `Appliances`
 - **Config:** `configs/config.yaml` (`dataset.audit.candidate_min_reviews` = 50, `dataset.split.seed` = 42)
 - **Reviews file:** `data\raw\Appliances.json.gz` (68,569,830 bytes)

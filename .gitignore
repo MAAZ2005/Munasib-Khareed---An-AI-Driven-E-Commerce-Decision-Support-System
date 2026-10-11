@@ -83,3 +83,5 @@ models/*
 # Documentation and project proposal (must never be ignored)
 !docs/
 !docs/proposal.pdf
+
+logs/
