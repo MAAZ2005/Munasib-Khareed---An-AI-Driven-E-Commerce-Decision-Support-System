@@ -47,6 +47,8 @@ from munasib.api.schemas.common import (
     UtcDatetime,
 )
 from munasib.api.schemas.decision import (
+    CRITERION_NAMES,
+    CriterionName,
     DecisionAssessment,
     FiredRule,
     FuzzyAssessment,
@@ -91,11 +93,13 @@ __all__ = [
     "AnalysisResponse",
     "AspectInsight",
     "AspectPolarity",
+    "CRITERION_NAMES",
     "CategoryMetaResponse",
     "ComparisonDeltas",
     "Concern",
     "ConcernSeverity",
     "ConsumerVerdict",
+    "CriterionName",
     "DataBasis",
     "DecisionAssessment",
     "ErrorResponse",

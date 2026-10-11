@@ -213,9 +213,10 @@ Example response `200` (schema `ReviewPage`):
 
 The full analysis: review evidence, fuzzy + TOPSIS risk, explanation, alternatives and verdict.
 
-- `decision` is the fuzzy assessment followed by TOPSIS: the defuzzified fuzzy value is handed to TOPSIS as an extra cost criterion (`risk_score`), and `topsis.risk_score` is the TOPSIS result combined with the fuzzy uncertainty.
+- `decision` is the fuzzy assessment followed by TOPSIS: TOPSIS ranks on the six criteria of `configs/criteria_weights.yaml` (`product_quality` 0.25, `evidence_strength` 0.20, `rating_reliability` 0.15, `negative_feedback_concentration` 0.15, `price_position` 0.10, `fuzzy_risk` 0.15 - weights sum to 1.0). The defuzzified fuzzy value is handed to TOPSIS as the extra cost criterion `fuzzy_risk`, and `topsis.risk_score` is the TOPSIS result combined with the fuzzy uncertainty.
+- **The decision example is illustrative, not a result.** The criteria names, weights and directions come from the config, but the fuzzy/TOPSIS engine is not built yet: only `evidence_strength` (0.7173) mirrors a computed value. Everything else under `decision` - fuzzy term degrees, fired-rule strengths, the defuzzified score, the criterion values, the normalised values and the contributions - is a labelled placeholder that is never presented as a measurement.
 - When the risk stages cannot run, `decision`, `explanation` and `verdict` are null and `warnings` explains why - the API never fabricates scores.
-- `evidence.details` carries extra evidence signals beyond the three fixed indicators (rating-distribution entropy, helpfulness-weighted sentiment, negative-feedback concentration, ...), each a 0-1 indicator with its raw value, direction and description; names are unique within the list and never shadow the fixed indicators, so clients can key by name.
+- `evidence.details` carries extra evidence signals beyond the three fixed indicators (rating-distribution entropy, helpfulness-weighted sentiment, negative-severity share, ...), each a 0-1 indicator with its raw value, direction and description; names are unique within the list and never shadow the fixed indicators, so clients can key by name.
 - `risk_indicators` is the risk stage's five criteria (`product_quality`, `evidence_strength`, `rating_reliability`, `negative_feedback_concentration`, `price_position`) as top-level 0-1 indicators with direction and description; it is an empty list until that stage computes them, and it deliberately lives outside `decision.topsis`.
 - `data_basis.reference_date` anchors all recency features (2018-10-04 for this dataset).
 
@@ -636,7 +637,7 @@ Example response `200` (schema `AnalysisResponse`):
         "description": "Weak labels (0 negative, 1 neutral, 2 positive) averaged with each review's helpful votes as weight and rescaled to 0-1 (raw 0-2 mean label 1.1034): 0.5517 here from 29 helpful votes across 52 reviews, above the 0.4231 unweighted value - the reviews shoppers voted useful read better than average."
       },
       {
-        "name": "negative_feedback_concentration",
+        "name": "negative_severity_share",
         "value": 0.8261,
         "raw_value": 19.0,
         "direction": "cost",
@@ -648,25 +649,39 @@ Example response `200` (schema `AnalysisResponse`):
   "decision": {
     "fuzzy": {
       "input_memberships": {
-        "negative_sentiment": {
+        "product_quality": {
+          "term_degrees": {
+            "low": 0.02,
+            "medium": 0.62,
+            "high": 0.31
+          }
+        },
+        "evidence_strength": {
+          "term_degrees": {
+            "low": 0.11,
+            "medium": 0.55,
+            "high": 0.42
+          }
+        },
+        "rating_reliability": {
+          "term_degrees": {
+            "low": 0.14,
+            "medium": 0.88,
+            "high": 0.0
+          }
+        },
+        "negative_feedback_concentration": {
           "term_degrees": {
             "low": 0.08,
             "medium": 0.91,
             "high": 0.25
           }
         },
-        "aspect_complaint_intensity": {
+        "price_position": {
           "term_degrees": {
-            "low": 0.31,
-            "medium": 0.62,
-            "high": 0.02
-          }
-        },
-        "evidence_volatility": {
-          "term_degrees": {
-            "low": 0.0,
-            "medium": 0.88,
-            "high": 0.14
+            "low": 0.44,
+            "medium": 0.52,
+            "high": 0.12
           }
         }
       },
@@ -674,9 +689,9 @@ Example response `200` (schema `AnalysisResponse`):
         {
           "rule_id": 7,
           "antecedents": {
-            "negative_sentiment": "medium",
-            "aspect_complaint_intensity": "medium",
-            "evidence_volatility": "medium"
+            "negative_feedback_concentration": "medium",
+            "product_quality": "medium",
+            "rating_reliability": "medium"
           },
           "consequent": "high",
           "strength": 0.62
@@ -684,9 +699,9 @@ Example response `200` (schema `AnalysisResponse`):
         {
           "rule_id": 8,
           "antecedents": {
-            "negative_sentiment": "medium",
-            "aspect_complaint_intensity": "high",
-            "evidence_volatility": "medium"
+            "negative_feedback_concentration": "medium",
+            "product_quality": "low",
+            "rating_reliability": "medium"
           },
           "consequent": "high",
           "strength": 0.25
@@ -694,9 +709,9 @@ Example response `200` (schema `AnalysisResponse`):
         {
           "rule_id": 13,
           "antecedents": {
-            "negative_sentiment": "low",
-            "aspect_complaint_intensity": "medium",
-            "evidence_volatility": "high"
+            "negative_feedback_concentration": "low",
+            "product_quality": "medium",
+            "rating_reliability": "low"
           },
           "consequent": "moderate",
           "strength": 0.14
@@ -714,26 +729,17 @@ Example response `200` (schema `AnalysisResponse`):
     "topsis": {
       "criteria": [
         {
-          "name": "sentiment_positivity",
-          "description": "Proportion of positive review sentiment",
+          "name": "product_quality",
+          "description": "Product quality from review evidence, normalised 0-1 (higher is better). Illustrative value: 0.4087 scales the example product's mean rating 2.634615 from 1-5 stars to 0-1; the risk engine's quality criterion is not built yet.",
           "weight": 0.25,
           "direction": "benefit",
-          "value": 0.2885,
-          "normalized_value": 0.31,
-          "contribution": 0.06
-        },
-        {
-          "name": "risk_score",
-          "description": "Fuzzy logic consumer risk assessment (0-100 scale, lower is safer)",
-          "weight": 0.3,
-          "direction": "cost",
-          "value": 62.5,
-          "normalized_value": 0.71,
-          "contribution": 0.19
+          "value": 0.4087,
+          "normalized_value": 0.44,
+          "contribution": 0.11
         },
         {
           "name": "evidence_strength",
-          "description": "Review depth, length, and credibility indicator (0-1 scale)",
+          "description": "Review depth, length, and credibility indicator (0-1 scale); mirrors evidence.evidence_strength (0.7173).",
           "weight": 0.2,
           "direction": "benefit",
           "value": 0.7173,
@@ -741,22 +747,40 @@ Example response `200` (schema `AnalysisResponse`):
           "contribution": 0.12
         },
         {
-          "name": "verified_purchase_ratio",
-          "description": "Ratio of reviews originating from verified purchases (0-1 scale)",
+          "name": "rating_reliability",
+          "description": "Consistency of the rating signal, 0-1 (how far the ratings agree). Illustrative value: the rating-reliability criterion is not computed yet.",
           "weight": 0.15,
           "direction": "benefit",
-          "value": 0.9423,
-          "normalized_value": 0.95,
-          "contribution": 0.14
+          "value": 0.42,
+          "normalized_value": 0.46,
+          "contribution": 0.07
         },
         {
-          "name": "average_rating",
-          "description": "Normalized star rating average (1-5 scaled to 0-1)",
+          "name": "negative_feedback_concentration",
+          "description": "Concentration of negative feedback, 0-1 (higher means more negative). Illustrative value: the risk engine's concentration criterion is not computed yet; 0.4423 here is only the example's weak-negative share (23 of 52 reviews).",
+          "weight": 0.15,
+          "direction": "cost",
+          "value": 0.4423,
+          "normalized_value": 0.51,
+          "contribution": 0.08
+        },
+        {
+          "name": "price_position",
+          "description": "Price relative to peer products, 0-1 where 0 means the cheapest price relative to peers. Illustrative value: no peer price comparison has run yet; a missing price is handled explicitly later, never imputed.",
           "weight": 0.1,
-          "direction": "benefit",
-          "value": 0.4087,
-          "normalized_value": 0.45,
-          "contribution": 0.03
+          "direction": "cost",
+          "value": 0.35,
+          "normalized_value": 0.4,
+          "contribution": 0.04
+        },
+        {
+          "name": "fuzzy_risk",
+          "description": "Output of the fuzzy-logic consumer-risk stage (0-100, lower is safer), fed to TOPSIS as an extra cost criterion. Illustrative: mirrors the illustrative decision.fuzzy.defuzzified value.",
+          "weight": 0.15,
+          "direction": "cost",
+          "value": 62.5,
+          "normalized_value": 0.71,
+          "contribution": 0.09
         }
       ],
       "closeness": 0.38,
@@ -1095,3 +1119,5 @@ Where the task brief left room, the simplest option was chosen and recorded here
 5. **`total_related` counts edges, `usable` counts distinct alternatives.** An ASIN linked by both `also_bought` and `also_viewed` counts twice in `total_related` but once in `usable`.
 6. **Review text is served raw** (`review_text` reads the stored raw body) while `summary` is the cleaned headline, exactly as the cache stores them.
 7. **`evidence.details` and `risk_indicators` are extension points, not fixed fields.** Evidence signals added later (rating-distribution entropy, helpfulness-weighted sentiment, ...) and the risk stage's five criteria (`product_quality`, `evidence_strength`, `rating_reliability`, `negative_feedback_concentration`, `price_position`) travel as lists of the same 0-1 indicator shape, so growing the contract never breaks existing clients. A `details` name must be unique in the list and may not reuse `verified_purchase`, `helpfulness_ratio` or `review_depth` - those already have dedicated fields, so a repeat would be ambiguous; both violations are rejected by the schema. `risk_indicators` defaults to an empty list until the risk stage computes it.
+8. **The criterion vocabulary is mirrored in the schema.** The six TOPSIS criteria (`product_quality`, `evidence_strength`, `rating_reliability`, `negative_feedback_concentration`, `price_position`, `fuzzy_risk`) are declared in `configs/criteria_weights.yaml` and mirrored by the `CriterionName` enum, so an unknown, duplicate or missing criterion name and weights that do not sum to 1.0 are rejected at the boundary; a test keeps config and schema in sync. `price_position` reads 0 = cheapest relative to peers, and a product without a usable price must be handled explicitly by the engine later - never imputed.
+9. **The fuzzy inputs are the proposal's five criteria.** The rule base was renamed from its three old inputs onto `product_quality`, `rating_reliability` and `negative_feedback_concentration`, swapping the low/high term labels on the two axes whose direction flipped, so every rule keeps its original risk ordering; `evidence_strength` and `price_position` are declared inputs that no rule references yet, because adding antecedents would change the rule logic. Output terms (`low`, `moderate`, `high`, `critical`) and all consequents are unchanged. The SHAP example's features (`negative_sentiment_share`, `aspect_complaint_intensity`, `verified_purchase_ratio`) are pipeline feature names - a separate namespace from the criteria - and were deliberately not renamed.

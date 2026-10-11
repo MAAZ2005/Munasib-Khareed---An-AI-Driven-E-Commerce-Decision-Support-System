@@ -221,7 +221,7 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
                 "shoppers voted useful read better than average.",
             },
             {
-                "name": "negative_feedback_concentration",
+                "name": "negative_severity_share",
                 "value": 0.8261,
                 "raw_value": 19.0,
                 "direction": "cost",
@@ -235,23 +235,29 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
     "decision": {
         "fuzzy": {
             "input_memberships": {
-                "negative_sentiment": {
+                "product_quality": {
+                    "term_degrees": {"low": 0.02, "medium": 0.62, "high": 0.31}
+                },
+                "evidence_strength": {
+                    "term_degrees": {"low": 0.11, "medium": 0.55, "high": 0.42}
+                },
+                "rating_reliability": {
+                    "term_degrees": {"low": 0.14, "medium": 0.88, "high": 0.0}
+                },
+                "negative_feedback_concentration": {
                     "term_degrees": {"low": 0.08, "medium": 0.91, "high": 0.25}
                 },
-                "aspect_complaint_intensity": {
-                    "term_degrees": {"low": 0.31, "medium": 0.62, "high": 0.02}
-                },
-                "evidence_volatility": {
-                    "term_degrees": {"low": 0.0, "medium": 0.88, "high": 0.14}
+                "price_position": {
+                    "term_degrees": {"low": 0.44, "medium": 0.52, "high": 0.12}
                 },
             },
             "fired_rules": [
                 {
                     "rule_id": 7,
                     "antecedents": {
-                        "negative_sentiment": "medium",
-                        "aspect_complaint_intensity": "medium",
-                        "evidence_volatility": "medium",
+                        "negative_feedback_concentration": "medium",
+                        "product_quality": "medium",
+                        "rating_reliability": "medium",
                     },
                     "consequent": "high",
                     "strength": 0.62,
@@ -259,9 +265,9 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
                 {
                     "rule_id": 8,
                     "antecedents": {
-                        "negative_sentiment": "medium",
-                        "aspect_complaint_intensity": "high",
-                        "evidence_volatility": "medium",
+                        "negative_feedback_concentration": "medium",
+                        "product_quality": "low",
+                        "rating_reliability": "medium",
                     },
                     "consequent": "high",
                     "strength": 0.25,
@@ -269,9 +275,9 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
                 {
                     "rule_id": 13,
                     "antecedents": {
-                        "negative_sentiment": "low",
-                        "aspect_complaint_intensity": "medium",
-                        "evidence_volatility": "high",
+                        "negative_feedback_concentration": "low",
+                        "product_quality": "medium",
+                        "rating_reliability": "low",
                     },
                     "consequent": "moderate",
                     "strength": 0.14,
@@ -284,28 +290,21 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
         "topsis": {
             "criteria": [
                 {
-                    "name": "sentiment_positivity",
-                    "description": "Proportion of positive review sentiment",
+                    "name": "product_quality",
+                    "description": "Product quality from review evidence, normalised "
+                    "0-1 (higher is better). Illustrative value: 0.4087 scales the "
+                    "example product's mean rating 2.634615 from 1-5 stars to 0-1; "
+                    "the risk engine's quality criterion is not built yet.",
                     "weight": 0.25,
                     "direction": "benefit",
-                    "value": 0.2885,
-                    "normalized_value": 0.31,
-                    "contribution": 0.06,
-                },
-                {
-                    "name": "risk_score",
-                    "description": "Fuzzy logic consumer risk assessment (0-100 scale, "
-                    "lower is safer)",
-                    "weight": 0.3,
-                    "direction": "cost",
-                    "value": 62.5,
-                    "normalized_value": 0.71,
-                    "contribution": 0.19,
+                    "value": 0.4087,
+                    "normalized_value": 0.44,
+                    "contribution": 0.11,
                 },
                 {
                     "name": "evidence_strength",
                     "description": "Review depth, length, and credibility indicator "
-                    "(0-1 scale)",
+                    "(0-1 scale); mirrors evidence.evidence_strength (0.7173).",
                     "weight": 0.2,
                     "direction": "benefit",
                     "value": 0.7173,
@@ -313,23 +312,51 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
                     "contribution": 0.12,
                 },
                 {
-                    "name": "verified_purchase_ratio",
-                    "description": "Ratio of reviews originating from verified purchases "
-                    "(0-1 scale)",
+                    "name": "rating_reliability",
+                    "description": "Consistency of the rating signal, 0-1 (how far the "
+                    "ratings agree). Illustrative value: the rating-reliability "
+                    "criterion is not computed yet.",
                     "weight": 0.15,
                     "direction": "benefit",
-                    "value": 0.9423,
-                    "normalized_value": 0.95,
-                    "contribution": 0.14,
+                    "value": 0.42,
+                    "normalized_value": 0.46,
+                    "contribution": 0.07,
                 },
                 {
-                    "name": "average_rating",
-                    "description": "Normalized star rating average (1-5 scaled to 0-1)",
+                    "name": "negative_feedback_concentration",
+                    "description": "Concentration of negative feedback, 0-1 (higher "
+                    "means more negative). Illustrative value: the risk engine's "
+                    "concentration criterion is not computed yet; 0.4423 here is only "
+                    "the example's weak-negative share (23 of 52 reviews).",
+                    "weight": 0.15,
+                    "direction": "cost",
+                    "value": 0.4423,
+                    "normalized_value": 0.51,
+                    "contribution": 0.08,
+                },
+                {
+                    "name": "price_position",
+                    "description": "Price relative to peer products, 0-1 where 0 means "
+                    "the cheapest price relative to peers. Illustrative value: no peer "
+                    "price comparison has run yet; a missing price is handled "
+                    "explicitly later, never imputed.",
                     "weight": 0.1,
-                    "direction": "benefit",
-                    "value": 0.4087,
-                    "normalized_value": 0.45,
-                    "contribution": 0.03,
+                    "direction": "cost",
+                    "value": 0.35,
+                    "normalized_value": 0.4,
+                    "contribution": 0.04,
+                },
+                {
+                    "name": "fuzzy_risk",
+                    "description": "Output of the fuzzy-logic consumer-risk stage "
+                    "(0-100, lower is safer), fed to TOPSIS as an extra cost criterion. "
+                    "Illustrative: mirrors the illustrative decision.fuzzy.defuzzified "
+                    "value.",
+                    "weight": 0.15,
+                    "direction": "cost",
+                    "value": 62.5,
+                    "normalized_value": 0.71,
+                    "contribution": 0.09,
                 },
             ],
             "closeness": 0.38,

@@ -2,11 +2,18 @@
 
 Pipeline order (locked design decision): the fuzzy assessment produces a
 defuzzified risk value, that value is handed to TOPSIS as an **extra cost
-criterion** (``risk_score`` in ``configs/criteria_weights.yaml``), and the final
+criterion** (``fuzzy_risk`` in ``configs/criteria_weights.yaml``), and the final
 consumer risk score is the TOPSIS result combined with the fuzzy uncertainty.
 This module exposes both halves so a consumer - or a marker - can audit each
 step: which rules fired, with which weights, and where the product landed
 among its alternatives plus the sampled category peer set.
+
+The six TOPSIS criteria are the proposal's decision criteria
+(product_quality, evidence_strength, rating_reliability,
+negative_feedback_concentration, price_position, fuzzy_risk); they are declared
+in ``configs/criteria_weights.yaml`` and mirrored by :data:`CRITERION_NAMES`,
+which :class:`TopsisCriterion` validates against. Numeric example values that
+no engine computes yet are labelled illustrative and are never results.
 
 All degrees, weights, memberships and sub-contributions are on 0-1; the only
 0-100 quantities in this module are the fuzzy output scale and the final
@@ -16,6 +23,8 @@ times 100.
 """
 
 from __future__ import annotations
+
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -28,6 +37,26 @@ WEIGHT_SUM_TOLERANCE = 0.001
 #: Fuzzy output terms as configured in `variables.output.consumer_risk.terms` of
 #: configs/fuzzy_rules.yaml (low, moderate, high, critical).
 FUZZY_OUTPUT_TERMS = ("low", "moderate", "high", "critical")
+
+
+class CriterionName(StrEnum):
+    """The six TOPSIS criteria from `configs/criteria_weights.yaml`.
+
+    A str enum so an unknown criterion name is rejected at the API boundary
+    instead of silently entering the decision matrix; `fuzzy_risk` is the
+    fuzzy stage's output fed to TOPSIS as a cost criterion.
+    """
+
+    PRODUCT_QUALITY = "product_quality"
+    EVIDENCE_STRENGTH = "evidence_strength"
+    RATING_RELIABILITY = "rating_reliability"
+    NEGATIVE_FEEDBACK_CONCENTRATION = "negative_feedback_concentration"
+    PRICE_POSITION = "price_position"
+    FUZZY_RISK = "fuzzy_risk"
+
+
+#: Criterion keys in config order, as declared in configs/criteria_weights.yaml.
+CRITERION_NAMES: tuple[str, ...] = tuple(criterion.value for criterion in CriterionName)
 
 
 class MembershipProfile(BaseModel):
@@ -67,8 +96,9 @@ class FuzzyAssessment(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     input_memberships: dict[str, MembershipProfile] = Field(
-        description="Per input variable (negative_sentiment, aspect_complaint_intensity, "
-        "evidence_volatility): membership degrees for each linguistic term."
+        description="Per input variable (product_quality, evidence_strength, "
+        "rating_reliability, negative_feedback_concentration, price_position): "
+        "membership degrees for each linguistic term."
     )
     fired_rules: list[FiredRule] = Field(
         description="Rules that fired, strongest first."
@@ -113,9 +143,10 @@ class TopsisCriterion(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    name: str = Field(
-        description="Criterion key from configs/criteria_weights.yaml; `risk_score` is "
-        "the fuzzy criterion (cost orientation)."
+    name: CriterionName = Field(
+        description="Criterion key from configs/criteria_weights.yaml; one of "
+        + ", ".join(repr(name) for name in CRITERION_NAMES)
+        + ". `fuzzy_risk` is the fuzzy stage's output (cost orientation)."
     )
     description: str = Field(description="What the criterion measures, in plain language.")
     weight: UnitFloat = Field(description="Criterion weight (all criteria sum to 1.0).")
@@ -124,7 +155,7 @@ class TopsisCriterion(BaseModel):
     )
     value: float = Field(
         description="The subject product's value for this criterion in its natural unit "
-        "(0-1 ratios; 0-100 for risk_score)."
+        "(0-1 ratios; 0-100 for `fuzzy_risk`, the defuzzified fuzzy output)."
     )
     normalized_value: UnitFloat = Field(
         description="Vector-normalised value used inside the TOPSIS matrix."
@@ -142,7 +173,11 @@ class TopsisResult(BaseModel):
 
     criteria: list[TopsisCriterion] = Field(
         description="All criteria with the subject's values and contributions; the list "
-        "includes the fuzzy risk criterion as a cost term."
+        "includes `fuzzy_risk`, the fuzzy stage's output as a cost term. Names, weights "
+        "and directions come from configs/criteria_weights.yaml. In the documented "
+        "example only `evidence_strength` mirrors a computed value; the other values, "
+        "the normalised values and the contributions are illustrative placeholders for "
+        "the decision engine, not results."
     )
     closeness: UnitFloat = Field(
         description="TOPSIS closeness coefficient of the subject (1 = ideal, 0 = anti-ideal)."
@@ -171,8 +206,8 @@ class TopsisResult(BaseModel):
 
     @field_validator("criteria")
     @classmethod
-    def _validate_weight_sum(cls, value: list[TopsisCriterion]) -> list[TopsisCriterion]:
-        """Check that the criteria weights form a valid TOPSIS problem.
+    def _validate_criteria(cls, value: list[TopsisCriterion]) -> list[TopsisCriterion]:
+        """Check that the criteria form a valid TOPSIS problem.
 
         Args:
             value: Parsed criteria list.
@@ -181,10 +216,17 @@ class TopsisResult(BaseModel):
             The unchanged list.
 
         Raises:
-            ValueError: If the criteria list is empty or the weights do not sum to 1.
+            ValueError: If the list is empty, a criterion name repeats, or the
+                weights do not sum to 1.0 within
+                :data:`WEIGHT_SUM_TOLERANCE`. Unknown or missing names are
+                already rejected by :class:`CriterionName`.
         """
         if not value:
             raise ValueError("criteria must not be empty")
+        names = [criterion.name for criterion in value]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate criterion name(s) {duplicates}")
         total = sum(criterion.weight for criterion in value)
         if abs(total - 1.0) > WEIGHT_SUM_TOLERANCE:
             raise ValueError(
@@ -204,6 +246,8 @@ class DecisionAssessment(BaseModel):
 
 
 __all__ = [
+    "CRITERION_NAMES",
+    "CriterionName",
     "DecisionAssessment",
     "FiredRule",
     "FuzzyAssessment",

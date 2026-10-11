@@ -4,8 +4,11 @@ Covers: every declared example parses; out-of-range values are rejected at the
 boundary (risk scores, indicator values, unknown verdict labels and weak-label
 codes); the extensible evidence contract behaves (`details` defaults to empty,
 duplicate or out-of-range detail names are rejected, and payloads written before
-the extension still parse); the analysis example round-trips through JSON; the
-empty-alternatives case validates; every JSON block in ``docs/api.md`` validates against the schema
+the extension still parse); the TOPSIS criteria set is validated (unknown,
+duplicate or missing names and weights that do not sum to 1 are rejected, and
+`configs/*.yaml` cannot drift from the schema vocabulary); the analysis example
+round-trips through JSON; the empty-alternatives case validates; every JSON
+block in ``docs/api.md`` validates against the schema
 named by its marker comment; and - when the SQLite serving cache exists - a
 schema is built from a real ORM product row and the example's data-derived
 numbers are cross-checked against the database (skipped when the cache is
@@ -21,14 +24,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from munasib.api import schemas
 from munasib.api.schemas import (
     ANALYSIS_EXAMPLE,
+    CRITERION_NAMES,
     AlternativesResult,
     AnalysisResponse,
     CategoryMetaResponse,
+    CriterionName,
     ErrorResponse,
     EvidenceIndicator,
     EvidenceIndicators,
@@ -47,11 +53,13 @@ from munasib.api.schemas import (
     VerdictLabel,
 )
 from munasib.api.schemas.alternatives import ALTERNATIVES_EMPTY_EXAMPLE
+from munasib.api.schemas.decision import FUZZY_OUTPUT_TERMS
 from munasib.api.schemas.evidence import FIXED_INDICATOR_NAMES
 from munasib.api.schemas.reviews import SENTIMENT_LABEL_CODE_FOR_NAME
 
 DOCS_API = Path(__file__).resolve().parents[2] / "docs" / "api.md"
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "export_schemas.py"
+CONFIGS_DIR = Path(__file__).resolve().parents[2] / "configs"
 
 #: Models whose declared example this suite validates.
 EXAMPLE_MODELS = (
@@ -265,30 +273,182 @@ def test_fuzzy_output_term_must_be_configured() -> None:
         )
 
 
+def _topsis_criterion(name: str, weight: float, direction: str = "benefit") -> TopsisCriterion:
+    """Build one ``TopsisCriterion`` for the criteria-set validation tests.
+
+    Args:
+        name: Criterion key; one of the configured six unless rejection is expected.
+        weight: Criterion weight.
+        direction: ``"benefit"`` or ``"cost"``.
+
+    Returns:
+        The criterion exactly as the API would receive it.
+    """
+    return TopsisCriterion(
+        name=name,
+        description="x",
+        weight=weight,
+        direction=direction,
+        value=0.5,
+        normalized_value=0.5,
+        contribution=0.1,
+    )
+
+
+def _topsis_result(criteria: list[TopsisCriterion]) -> TopsisResult:
+    """Wrap criteria in a ``TopsisResult`` with the remaining required fields.
+
+    Args:
+        criteria: Criteria under test.
+
+    Returns:
+        The populated result.
+    """
+    return TopsisResult(
+        criteria=criteria,
+        closeness=0.5,
+        rank=1,
+        ranked_count=4,
+        peer_count=3,
+        percentile=100.0,
+        risk_score=10.0,
+    )
+
+
 def test_topsis_weights_must_sum_to_one() -> None:
     """A TOPSIS problem whose criteria weights do not sum to 1 is rejected."""
+    criteria = [_topsis_criterion(name, 0.3) for name in CRITERION_NAMES[:4]]
+    with pytest.raises(ValidationError, match="sum to 1"):
+        _topsis_result(criteria)
 
-    def criterion(weight: float) -> TopsisCriterion:
-        return TopsisCriterion(
-            name=f"criterion_{weight}",
-            description="x",
-            weight=weight,
+
+def test_topsis_unknown_criterion_name_is_rejected() -> None:
+    """A name outside the configured six never enters the decision matrix."""
+    with pytest.raises(ValidationError):
+        _topsis_result([_topsis_criterion("sentiment_positivity", 1.0)])
+
+
+def test_topsis_duplicate_criterion_names_are_rejected() -> None:
+    """Two criteria sharing a name would double-count a single signal."""
+    criteria = [_topsis_criterion(name, 0.2) for name in CRITERION_NAMES[:3]]
+    criteria.append(_topsis_criterion(CRITERION_NAMES[0], 0.4))
+    with pytest.raises(ValidationError, match="duplicate"):
+        _topsis_result(criteria)
+
+
+def test_topsis_criterion_requires_a_name() -> None:
+    """A criterion without a name is rejected instead of defaulting silently."""
+    with pytest.raises(ValidationError):
+        TopsisCriterion(
+            description="x",  # type: ignore[call-arg]
+            weight=0.5,
             direction="benefit",
             value=0.5,
             normalized_value=0.5,
             contribution=0.1,
         )
 
+
+def test_topsis_empty_criterion_name_is_rejected() -> None:
+    """An empty name is not one of the configured criteria either."""
     with pytest.raises(ValidationError):
-        TopsisResult(
-            criteria=[criterion(0.3), criterion(0.3), criterion(0.3), criterion(0.3)],
-            closeness=0.5,
-            rank=1,
-            ranked_count=4,
-            peer_count=3,
-            percentile=100.0,
-            risk_score=10.0,
-        )
+        _topsis_criterion("", 1.0)
+
+
+def test_criterion_name_vocabulary_is_the_proposal_six() -> None:
+    """The schema exposes exactly the proposal's six decision criteria in order."""
+    assert CRITERION_NAMES == (
+        "product_quality",
+        "evidence_strength",
+        "rating_reliability",
+        "negative_feedback_concentration",
+        "price_position",
+        "fuzzy_risk",
+    )
+    assert tuple(CriterionName) == tuple(CRITERION_NAMES)
+
+
+def _load_yaml(name: str) -> dict:
+    """Load one repository configuration file.
+
+    Args:
+        name: File name inside ``configs/``.
+
+    Returns:
+        The parsed YAML document.
+    """
+    return yaml.safe_load((CONFIGS_DIR / name).read_text(encoding="utf-8"))
+
+
+def test_config_criteria_match_the_schema_vocabulary() -> None:
+    """``configs/criteria_weights.yaml`` and the schema vocabulary cannot drift."""
+    document = _load_yaml("criteria_weights.yaml")
+    criteria = document["criteria"]
+    assert list(criteria) == list(CRITERION_NAMES)
+    assert {name: entry["type"] for name, entry in criteria.items()} == {
+        "product_quality": "benefit",
+        "evidence_strength": "benefit",
+        "rating_reliability": "benefit",
+        "negative_feedback_concentration": "cost",
+        "price_position": "cost",
+        "fuzzy_risk": "cost",
+    }
+    weights = {name: entry["weight"] for name, entry in criteria.items()}
+    assert weights == pytest.approx(
+        {
+            "product_quality": 0.25,
+            "evidence_strength": 0.20,
+            "rating_reliability": 0.15,
+            "negative_feedback_concentration": 0.15,
+            "price_position": 0.10,
+            "fuzzy_risk": 0.15,
+        }
+    )
+    total = sum(weights.values())
+    assert abs(total - 1.0) <= document["validation"]["sum_tolerance"]
+
+
+def test_fuzzy_inputs_match_the_proposal_criteria() -> None:
+    """``configs/fuzzy_rules.yaml`` declares the proposal's five input variables."""
+    document = _load_yaml("fuzzy_rules.yaml")
+    inputs = list(document["variables"]["inputs"])
+    assert inputs == [
+        "product_quality",
+        "evidence_strength",
+        "rating_reliability",
+        "negative_feedback_concentration",
+        "price_position",
+    ]
+    output_terms = document["variables"]["output"]["consumer_risk"]["terms"]
+    assert list(output_terms) == list(FUZZY_OUTPUT_TERMS)
+    for rule in document["rules"]:
+        assert set(rule["antecedents"]) <= set(inputs)
+        assert rule["consequent"]["consumer_risk"] in FUZZY_OUTPUT_TERMS
+
+
+def test_example_topsis_uses_the_configured_criteria() -> None:
+    """The documented example carries the six criteria with config weights/directions."""
+    document = _load_yaml("criteria_weights.yaml")
+    response = AnalysisResponse.model_validate(ANALYSIS_EXAMPLE)
+    assert response.decision is not None
+    criteria = {criterion.name: criterion for criterion in response.decision.topsis.criteria}
+    assert list(criteria) == list(CRITERION_NAMES)
+    for name, entry in document["criteria"].items():
+        assert criteria[name].weight == pytest.approx(entry["weight"])
+        assert criteria[name].direction == entry["type"]
+    total = sum(criterion.weight for criterion in response.decision.topsis.criteria)
+    assert abs(total - 1.0) <= 1e-3
+
+
+def test_example_detail_is_renamed_away_from_the_criterion_name() -> None:
+    """The 1-star severity detail no longer collides with the risk criterion."""
+    response = AnalysisResponse.model_validate(ANALYSIS_EXAMPLE)
+    detail_names = {detail.name for detail in response.evidence.details}
+    assert "negative_severity_share" in detail_names
+    assert "negative_feedback_concentration" not in detail_names
+    assert response.decision is not None
+    criterion_names = {criterion.name for criterion in response.decision.topsis.criteria}
+    assert "negative_feedback_concentration" in criterion_names
 
 
 def test_unknown_sentiment_label_code_is_rejected() -> None:

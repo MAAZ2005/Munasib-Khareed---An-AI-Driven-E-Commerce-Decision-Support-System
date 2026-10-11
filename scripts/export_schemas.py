@@ -109,14 +109,26 @@ ENDPOINTS: list[dict[str, Any]] = [
         "summary": "The full analysis: review evidence, fuzzy + TOPSIS risk, explanation, "
         "alternatives and verdict.",
         "notes": [
-            "`decision` is the fuzzy assessment followed by TOPSIS: the defuzzified fuzzy "
-            "value is handed to TOPSIS as an extra cost criterion (`risk_score`), and "
-            "`topsis.risk_score` is the TOPSIS result combined with the fuzzy uncertainty.",
+            "`decision` is the fuzzy assessment followed by TOPSIS: TOPSIS ranks on the "
+            "six criteria of `configs/criteria_weights.yaml` (`product_quality` 0.25, "
+            "`evidence_strength` 0.20, `rating_reliability` 0.15, "
+            "`negative_feedback_concentration` 0.15, `price_position` 0.10, "
+            "`fuzzy_risk` 0.15 - weights sum to 1.0). The defuzzified fuzzy value is "
+            "handed to TOPSIS as the extra cost criterion `fuzzy_risk`, and "
+            "`topsis.risk_score` is the TOPSIS result combined with the fuzzy "
+            "uncertainty.",
+            "**The decision example is illustrative, not a result.** The criteria names, "
+            "weights and directions come from the config, but the fuzzy/TOPSIS engine is "
+            "not built yet: only `evidence_strength` (0.7173) mirrors a computed value. "
+            "Everything else under `decision` - fuzzy term degrees, fired-rule "
+            "strengths, the defuzzified score, the criterion values, the normalised "
+            "values and the contributions - is a labelled placeholder that is never "
+            "presented as a measurement.",
             "When the risk stages cannot run, `decision`, `explanation` and `verdict` are "
             "null and `warnings` explains why - the API never fabricates scores.",
             "`evidence.details` carries extra evidence signals beyond the three fixed "
             "indicators (rating-distribution entropy, helpfulness-weighted sentiment, "
-            "negative-feedback concentration, ...), each a 0-1 indicator with its raw "
+            "negative-severity share, ...), each a 0-1 indicator with its raw "
             "value, direction and description; names are unique within the list and "
             "never shadow the fixed indicators, so clients can key by name.",
             "`risk_indicators` is the risk stage's five criteria (`product_quality`, "
@@ -430,6 +442,29 @@ def render_api_doc() -> str:
         "have dedicated fields, so a repeat would be ambiguous; both violations are "
         "rejected by the schema. `risk_indicators` defaults to an empty list until "
         "the risk stage computes it."
+    )
+    out.append(
+        "8. **The criterion vocabulary is mirrored in the schema.** The six TOPSIS "
+        "criteria (`product_quality`, `evidence_strength`, `rating_reliability`, "
+        "`negative_feedback_concentration`, `price_position`, `fuzzy_risk`) are declared "
+        "in `configs/criteria_weights.yaml` and mirrored by the `CriterionName` enum, so "
+        "an unknown, duplicate or missing criterion name and weights that do not sum to "
+        "1.0 are rejected at the boundary; a test keeps config and schema in sync. "
+        "`price_position` reads 0 = cheapest relative to peers, and a product without a "
+        "usable price must be handled explicitly by the engine later - never imputed."
+    )
+    out.append(
+        "9. **The fuzzy inputs are the proposal's five criteria.** The rule base was "
+        "renamed from its three old inputs onto `product_quality`, `rating_reliability` "
+        "and `negative_feedback_concentration`, swapping the low/high term labels on the "
+        "two axes whose direction flipped, so every rule keeps its original risk "
+        "ordering; `evidence_strength` and `price_position` are declared inputs that no "
+        "rule references yet, because adding antecedents would change the rule logic. "
+        "Output terms (`low`, `moderate`, `high`, `critical`) and all consequents are "
+        "unchanged. The SHAP example's features (`negative_sentiment_share`, "
+        "`aspect_complaint_intensity`, `verified_purchase_ratio`) are pipeline feature "
+        "names - a separate namespace from the criteria - and were deliberately not "
+        "renamed."
     )
     out.append("")
     return "\n".join(out)

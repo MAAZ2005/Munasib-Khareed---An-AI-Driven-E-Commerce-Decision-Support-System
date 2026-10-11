@@ -2,34 +2,47 @@
 # Munasib Khareed - Multi-Criteria Decision Analysis (TOPSIS) Weights
 # ==============================================================================
 # Criteria weights for ranking products against alternatives and category peers.
-# Weights must sum to 1.0.
+# The six criteria are the proposal's decision criteria (docs/proposal.pdf,
+# sections 5.f-5.h): five evidence criteria plus the fuzzy stage's output.
+# Weights must sum to 1.0 (checked against validation.sum_tolerance below by
+# tests/unit/test_schemas.py and by the API's TopsisResult schema).
 # 'type' indicates criterion orientation: 'benefit' (maximize) or 'cost' (minimize).
 
 criteria:
-  sentiment_positivity:
-    description: "Proportion of positive review sentiment (DistilBERT classification)"
+  product_quality:
+    description: "Product quality from review evidence, normalised 0-1 (higher is better)"
     weight: 0.25
     type: "benefit"
-
-  risk_score:
-    description: "Fuzzy logic consumer risk assessment (0-100 scale, lower is safer)"
-    weight: 0.30
-    type: "cost"
 
   evidence_strength:
     description: "Review depth, length, and credibility indicator (0-1 scale)"
     weight: 0.20
     type: "benefit"
 
-  verified_purchase_ratio:
-    description: "Ratio of reviews originating from verified purchases (0-1 scale)"
+  rating_reliability:
+    description: "Consistency of the rating signal, 0-1 (how far the ratings agree)"
     weight: 0.15
     type: "benefit"
 
-  average_rating:
-    description: "Normalized star rating average (1-5 scaled to 0-1)"
+  negative_feedback_concentration:
+    description: "Concentration of negative feedback, 0-1 (higher means more negative)"
+    weight: 0.15
+    type: "cost"
+
+  price_position:
+    description: "Price relative to peer products, 0-1 where 0 means the cheapest price relative to peers"
     weight: 0.10
-    type: "benefit"
+    type: "cost"
+    # 0 = cheapest relative to the peer set, 1 = priciest. A product without a
+    # usable price must be handled explicitly later (excluded from this criterion
+    # or reported as unknown) - the price is never imputed and never defaulted to 0.
+
+  fuzzy_risk:
+    description: "Output of the fuzzy-logic consumer-risk stage (0-100, lower is safer)"
+    weight: 0.15
+    type: "cost"
+    # The defuzzified score produced by the fuzzy stage, fed into TOPSIS as an
+    # extra cost criterion (locked pipeline order: fuzzy -> TOPSIS -> risk).
 
 validation:
   sum_tolerance: 0.001  # Tolerance when verifying sum of weights equals 1.0
