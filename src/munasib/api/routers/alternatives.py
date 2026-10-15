@@ -1,12 +1,13 @@
 """``GET /products/{asin}/alternatives`` - evidence-based alternatives.
 
-``total_related`` counts every related edge of the product (an ASIN linked by
-both ``also_bought`` and ``also_viewed`` counts twice) while ``usable`` counts
-the distinct alternatives that are themselves processed subset products - the
-two numbers are deliberately different, which is why a product can report 62
-edges and 11 usable alternatives. A product with nothing comparable is a valid
-answer: ``items`` is empty and ``empty_reason`` says why (about 18% of this
-category's products).
+``total_related`` counts DISTINCT related products of the product, merged across
+``also_bought`` and ``also_viewed`` and excluding the product itself, while
+``usable`` counts how many of those distinct products are themselves processed
+subset products - so ``usable`` is never greater than ``total_related``. The two
+numbers differ because links can fall outside the subset: B00009V3UF has 62
+edges collapsing to 60 distinct related products, 11 of them in the subset. A
+product with nothing comparable is a valid answer: ``items`` is empty and
+``empty_reason`` says why (about 18% of this category's products).
 """
 
 from __future__ import annotations

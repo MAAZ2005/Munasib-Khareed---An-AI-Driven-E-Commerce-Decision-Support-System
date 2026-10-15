@@ -149,9 +149,11 @@ ENDPOINTS: list[dict[str, Any]] = [
         "model": AlternativesResult,
         "summary": "Evidence-based alternatives for one product.",
         "notes": [
-            "`total_related` counts related-product edges (an ASIN linked by both "
-            "`also_bought` and `also_viewed` counts twice); `usable` counts distinct "
-            "alternatives that could actually be compared.",
+            "`total_related` counts DISTINCT related products merged across "
+            "`also_bought` and `also_viewed` (a target under both edge types counts "
+            "once, and the product itself is excluded), so it is a product count and "
+            "not an edge count; `usable` counts how many of those distinct products "
+            "are in the processed subset and can never exceed `total_related`.",
             "About 18% of products in this category have no usable alternative: `items` "
             "is then empty and `empty_reason` says why.",
             "Deltas are `alternative - subject` (a negative risk delta means safer).",
@@ -424,9 +426,13 @@ def render_api_doc() -> str:
         "date, so recency is comparable across products."
     )
     out.append(
-        "5. **`total_related` counts edges, `usable` counts distinct alternatives.** An ASIN "
-        "linked by both `also_bought` and `also_viewed` counts twice in `total_related` but "
-        "once in `usable`."
+        "5. **Both alternatives counts are per distinct product, never per edge.** "
+        "`total_related` is the number of distinct related products of the product "
+        "across `also_bought` and `also_viewed` - a target linked by both edge types "
+        "counts once and the product never counts itself - while `usable` counts how "
+        "many of those distinct products are in the processed subset, so `usable` "
+        "cannot exceed `total_related`. For `B00009V3UF` that is 60 related products "
+        "from 62 edges, 11 of them in the subset."
     )
     out.append(
         "6. **Review text is served raw** (`review_text` reads the stored raw body) while "

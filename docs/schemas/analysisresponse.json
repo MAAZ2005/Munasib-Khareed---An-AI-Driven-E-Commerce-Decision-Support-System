@@ -103,7 +103,7 @@
             "verdict": "CONSUMER RISK"
           }
         ],
-        "total_related": 62,
+        "total_related": 60,
         "usable": 11
       },
       "properties": {
@@ -125,17 +125,17 @@
             }
           ],
           "default": null,
-          "description": "Why items is empty (e.g. no related-product edges in the subset, or no edge target is itself a processed product); None when items is non-empty.",
+          "description": "Why items is empty (e.g. no related products at all, or distinct related products exist but none is itself a processed product); None when items is non-empty.",
           "title": "Empty Reason"
         },
         "total_related": {
-          "description": "Related-product edges found for the product (counting both edge types per target).",
+          "description": "Number of DISTINCT related products of this product, merged across also_bought and also_viewed (a target under both edge types counts once) and excluding the product itself. Product count, not edge count.",
           "minimum": 0,
           "title": "Total Related",
           "type": "integer"
         },
         "usable": {
-          "description": "Distinct alternatives that could actually be compared (subset products with an analysis).",
+          "description": "Number of those distinct related products that are themselves in the processed subset and could therefore be compared; never greater than total_related.",
           "minimum": 0,
           "title": "Usable",
           "type": "integer"
@@ -1522,7 +1522,7 @@
           "verdict": "CONSUMER RISK"
         }
       ],
-      "total_related": 62,
+      "total_related": 60,
       "usable": 11
     },
     "asin": "B00009V3UF",

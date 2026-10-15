@@ -1347,9 +1347,14 @@ class StubAnalysisService(AnalysisService):
     def alternatives(self, asin: str) -> AlternativesResult:
         """Return the usable alternatives for one product.
 
-        ``total_related`` counts every related edge of the product (an ASIN
-        linked by both edge types counts twice), while ``usable`` counts the
-        distinct alternatives that are themselves processed subset products.
+        Both counts are per distinct **related product**, never per edge:
+
+        * ``total_related`` is the number of distinct related products of this
+          product across ``also_bought`` and ``also_viewed`` (a target linked by
+          both edge types counts once) excluding the product itself.
+        * ``usable`` is how many of those distinct related products are
+          themselves in the processed subset, so it can never exceed
+          ``total_related``.
 
         Args:
             asin: Product ASIN.
@@ -1363,24 +1368,32 @@ class StubAnalysisService(AnalysisService):
         """
         self._get_product(asin)
         edges = list(self._related.get_related(asin, only_in_subset=False))
-        total_related = len(edges)
 
-        usable_asins = sorted({edge.related_asin for edge in edges if edge.in_subset})
+        # Collapse the edges onto distinct related products: one entry per target
+        # holding every edge type that links it, with a self-reference skipped
+        # (a product is never its own alternative).
         edge_types: dict[str, set[str]] = {}
+        in_subset_targets: set[str] = set()
         for edge in edges:
+            if edge.related_asin == asin:
+                continue
+            edge_types.setdefault(edge.related_asin, set()).add(edge.relation_type)
             if edge.in_subset:
-                edge_types.setdefault(edge.related_asin, set()).add(edge.relation_type)
+                in_subset_targets.add(edge.related_asin)
+
+        total_related = len(edge_types)
+        usable_asins = sorted(edge_types.keys() & in_subset_targets)
 
         if not usable_asins:
             if total_related == 0:
                 reason = (
-                    "no related-product edges in the processed subset "
-                    "(0 also_bought / also_viewed links)"
+                    "no related products found (0 distinct targets across "
+                    "also_bought / also_viewed)"
                 )
             else:
                 reason = (
-                    f"{total_related} related-product edge(s) found but none point to "
-                    "another processed subset product, so no alternative can be compared"
+                    f"{total_related} distinct related product(s) found, but none of them "
+                    "are in the processed subset, so no alternative can be compared"
                 )
             return AlternativesResult(
                 items=[],

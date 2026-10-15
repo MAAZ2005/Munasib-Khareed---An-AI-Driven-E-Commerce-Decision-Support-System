@@ -904,7 +904,7 @@ Example response `200` (schema `AnalysisResponse`):
       }
     ],
     "empty_reason": null,
-    "total_related": 62,
+    "total_related": 60,
     "usable": 11
   },
   "verdict": {
@@ -958,7 +958,7 @@ Example response `200` (schema `AnalysisResponse`):
 
 Evidence-based alternatives for one product.
 
-- `total_related` counts related-product edges (an ASIN linked by both `also_bought` and `also_viewed` counts twice); `usable` counts distinct alternatives that could actually be compared.
+- `total_related` counts DISTINCT related products merged across `also_bought` and `also_viewed` (a target under both edge types counts once, and the product itself is excluded), so it is a product count and not an edge count; `usable` counts how many of those distinct products are in the processed subset and can never exceed `total_related`.
 - About 18% of products in this category have no usable alternative: `items` is then empty and `empty_reason` says why.
 - Deltas are `alternative - subject` (a negative risk delta means safer).
 
@@ -1015,7 +1015,7 @@ Example response `200` (schema `AlternativesResult`):
     }
   ],
   "empty_reason": null,
-  "total_related": 62,
+  "total_related": 60,
   "usable": 11
 }
 ```
@@ -1027,7 +1027,7 @@ Empty-alternatives response `200` (schema `AlternativesResult`):
 ```json
 {
   "items": [],
-  "empty_reason": "no related-product edges in the processed subset (0 also_bought / also_viewed links)",
+  "empty_reason": "no related products found (0 distinct targets across also_bought / also_viewed)",
   "total_related": 0,
   "usable": 0
 }
@@ -1118,7 +1118,7 @@ Where the task brief left room, the simplest option was chosen and recorded here
 2. **`fuzzy.output_degrees` is a mapping** keyed by the fuzzy output terms in `configs/fuzzy_rules.yaml` (`low`, `moderate`, `high`, `critical`) instead of three hard-coded fields, so the schema cannot drift from the configured rule base.
 3. **`topsis.percentile` is 0-100**, defined as `100 * (ranked_count - rank) / ranked_count`: 100 means the safest product in the ranked set, almost 0 the riskiest. It is the one non-risk statistic on a percentage scale.
 4. **`data_basis.date_range_start/end` are per-product** (that product's own oldest and newest review) while `reference_date` stays the dataset-wide latest review date, so recency is comparable across products.
-5. **`total_related` counts edges, `usable` counts distinct alternatives.** An ASIN linked by both `also_bought` and `also_viewed` counts twice in `total_related` but once in `usable`.
+5. **Both alternatives counts are per distinct product, never per edge.** `total_related` is the number of distinct related products of the product across `also_bought` and `also_viewed` - a target linked by both edge types counts once and the product never counts itself - while `usable` counts how many of those distinct products are in the processed subset, so `usable` cannot exceed `total_related`. For `B00009V3UF` that is 60 related products from 62 edges, 11 of them in the subset.
 6. **Review text is served raw** (`review_text` reads the stored raw body) while `summary` is the cleaned headline, exactly as the cache stores them.
 7. **`evidence.details` and `risk_indicators` are extension points, not fixed fields.** Evidence signals added later (rating-distribution entropy, helpfulness-weighted sentiment, ...) and the risk stage's five criteria (`product_quality`, `evidence_strength`, `rating_reliability`, `negative_feedback_concentration`, `price_position`) travel as lists of the same 0-1 indicator shape, so growing the contract never breaks existing clients. A `details` name must be unique in the list and may not reuse `verified_purchase`, `helpfulness_ratio` or `review_depth` - those already have dedicated fields, so a repeat would be ambiguous; both violations are rejected by the schema. `risk_indicators` defaults to an empty list until the risk stage computes it.
 8. **The criterion vocabulary is mirrored in the schema.** The six TOPSIS criteria (`product_quality`, `evidence_strength`, `rating_reliability`, `negative_feedback_concentration`, `price_position`, `fuzzy_risk`) are declared in `configs/criteria_weights.yaml` and mirrored by the `CriterionName` enum, so an unknown, duplicate or missing criterion name and weights that do not sum to 1.0 are rejected at the boundary; a test keeps config and schema in sync. `price_position` reads 0 = cheapest relative to peers, and a product without a usable price must be handled explicitly by the engine later - never imputed.

@@ -139,18 +139,23 @@ placeholder values at all.
 
 ## Alternatives counting
 
-Two different counts are reported and they are deliberately different:
+Both numbers count **distinct related products**, never edges:
 
-- `total_related` counts **every** related edge of the product. An ASIN linked
-  by both `also_bought` and `also_viewed` counts twice.
-- `usable` counts the **distinct** alternatives that are themselves processed
-  subset products.
+- `total_related` is the number of distinct related products of this product
+  across `also_bought` **and** `also_viewed`, merged. A target linked by both
+  edge types counts once, and the product never counts itself as its own
+  alternative.
+- `usable` is how many of those distinct related products are themselves in the
+  processed subset, so `usable` can never exceed `total_related`.
 
-For `B00009V3UF` the real cache gives `total_related = 62` (4 `also_bought` +
-58 `also_viewed`) and `usable = 11`, because one target appears in both edge
-types. About 18% of this category's products have no usable alternative; those
-return `items: []` with an `empty_reason`, which is a valid answer, not a
-failure.
+For `B00009V3UF` the real cache holds **62 edges** (4 `also_bought` + 58
+`also_viewed`) which collapse to **60 distinct related products** - two targets
+are linked by both edge types - of which 12 edges point back into the subset and
+cover **11 distinct alternatives** (one in-subset target is linked twice). So
+the endpoint answers `total_related = 60, usable = 11`, not `62` and `12`.
+
+About 18% of this category's products have no usable alternative; those return
+`items: []` with an `empty_reason`, which is a valid answer, not a failure.
 
 ## Choosing the analysis implementation
 
@@ -204,14 +209,18 @@ Where the brief left room, the simplest option was chosen:
    stay cheap, while `usable` still reports the true distinct count.
 7. **`relation` comes from verdict severity**, compared through the shared
    `VERDICT_LABELS` order, so no comparison threshold is invented.
-8. **The example in `docs/api.md` was corrected, not hand-edited.** The
-   documented `total_related: 12` for `B00009V3UF` was the in-subset edge count;
-   the real figure is 62. Both the analysis and alternatives examples were fixed
-   in the schema modules and the docs were regenerated with
-   `python scripts/export_schemas.py`.
+8. **The examples in `docs/api.md` were corrected, never hand-edited.** The
+   documented `total_related` for `B00009V3UF` was first the in-subset edge
+   count (`12`), then the edge count (`62`); counting distinct related products
+   gives the correct `60` (with `usable = 11`). Both the analysis and
+   alternatives examples live in the schema modules and the docs are
+   regenerated with `python scripts/export_schemas.py`.
 9. **`analysis.service` was added to `configs/config.yaml` and
    `Settings`**, so the switch is configured like every other threshold rather
    than read ad hoc inside the API layer.
+10. **`total_related` counts products, not edges** (see "Alternatives
+    counting"), so the number a client sees matches the alternatives it can
+    iterate over rather than a raw row count from `related_products`.
 
 ## Tests
 

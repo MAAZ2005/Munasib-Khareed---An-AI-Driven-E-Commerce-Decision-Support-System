@@ -348,7 +348,7 @@ def test_analysis_carries_real_evidence_and_stub_markers(client: TestClient) -> 
         "negative_feedback_concentration",
         "price_position",
     ]
-    assert body["alternatives"]["total_related"] == 4
+    assert body["alternatives"]["total_related"] == 3  # ALT_ONE, ALT_TWO, OUTSIDE999
     assert body["alternatives"]["usable"] == 2
     assert body["data_basis"]["reference_date"] == "2018-10-04T00:00:00Z"
     assert body["generated_at"].startswith("2026-10-11")
@@ -367,23 +367,26 @@ def test_alternatives_empty_with_reason(client: TestClient) -> None:
     assert body["items"] == []
     assert body["total_related"] == 0
     assert body["usable"] == 0
-    assert "0 also_bought / also_viewed links" in body["empty_reason"]
+    assert "0 distinct targets" in body["empty_reason"]
 
     edges_only = client.get(f"/products/{EDGES_ONLY_OUT}/alternatives").json()
     assert edges_only["items"] == []
     assert edges_only["total_related"] == 1
     assert edges_only["usable"] == 0
-    assert "none point to another processed subset product" in edges_only["empty_reason"]
+    assert "none of them are in the processed subset" in edges_only["empty_reason"]
 
 
 def test_alternative_relation_types_collapse_to_one_alternative(
     client: TestClient,
 ) -> None:
-    """An ASIN linked twice counts once in usable and lists both edge types."""
+    """An ASIN linked twice is counted once in both totals, listing both edges."""
     body = client.get(f"/products/{SUBJECT}/alternatives").json()
     twice = [item for item in body["items"] if item["summary"]["asin"] == ALT_TWO]
     assert len(twice) == 1
     assert sorted(twice[0]["relation_types"]) == ["also_bought", "also_viewed"]
+    # 4 edges over 3 distinct targets: the doubled target is counted once.
+    assert body["total_related"] == 3
+    assert body["usable"] <= body["total_related"]
 
 
 # ------------------------------------------------------------------------------
@@ -595,9 +598,32 @@ def test_real_analysis_matches_documented_example_numbers(
     assert details["helpfulness_weighted_sentiment"]["value"] == pytest.approx(0.5517, abs=1e-4)
     assert details["negative_severity_share"]["value"] == pytest.approx(0.8261, abs=1e-4)
     alternatives = body["alternatives"]
-    assert alternatives["total_related"] == 62
+    assert alternatives["total_related"] == 60
     assert alternatives["usable"] == 11
     assert body["pipeline_version"] == "stub-0"
+
+
+def test_real_b00009v3uf_counts_distinct_related_products(
+    real_client: TestClient | None,
+) -> None:
+    """B00009V3UF reports 60 distinct related products, 11 of them usable.
+
+    The cache holds 62 edges for this ASIN (4 also_bought + 58 also_viewed): two
+    targets are linked by both edge types, so the edge count must not leak into
+    ``total_related``. 12 of those edges are in-subset, covering 11 distinct
+    products. Skipped when the serving cache is absent.
+    """
+    if real_client is None:
+        pytest.skip("SQLite serving cache not built (python scripts/ingest_db.py)")
+    body = real_client.get("/products/B00009V3UF/alternatives").json()
+    assert body["total_related"] == 60
+    assert body["usable"] == 11
+    assert body["usable"] <= body["total_related"]
+    assert len(body["items"]) <= body["usable"]
+    # No target appears twice, and the subject never lists itself.
+    asins = [item["summary"]["asin"] for item in body["items"]]
+    assert len(asins) == len(set(asins))
+    assert "B00009V3UF" not in asins
 
 
 def test_real_analysis_is_deterministic(real_client: TestClient | None) -> None:
@@ -617,14 +643,31 @@ def test_real_unknown_asin_is_404(real_client: TestClient | None) -> None:
 
 
 def test_real_product_without_usable_alternatives(real_client: TestClient | None) -> None:
-    """A real zero-edge product returns the empty result with a reason."""
+    """A real zero-link product returns the empty result with a reason."""
     if real_client is None:
         pytest.skip("SQLite serving cache not built (python scripts/ingest_db.py)")
     body = real_client.get("/products/B00007E7RZ/alternatives").json()
     assert body["items"] == []
     assert body["total_related"] == 0
     assert body["usable"] == 0
-    assert "0 also_bought / also_viewed links" in body["empty_reason"]
+    assert "0 distinct targets" in body["empty_reason"]
+
+
+def test_real_product_with_related_products_but_none_usable(
+    real_client: TestClient | None,
+) -> None:
+    """A real product whose links all fall outside the subset explains itself."""
+    if real_client is None:
+        pytest.skip("SQLite serving cache not built (python scripts/ingest_db.py)")
+    body = real_client.get("/products/B0001YM48Q/alternatives").json()
+    assert body["items"] == []
+    assert body["usable"] == 0
+    assert body["total_related"] > 0
+    assert body["usable"] <= body["total_related"]
+    assert f"{body['total_related']} distinct related product(s) found" in body[
+        "empty_reason"
+    ]
+    assert "none of them are in the processed subset" in body["empty_reason"]
 
 
 def test_missing_database_fails_startup_with_clear_message(tmp_path: Path) -> None:

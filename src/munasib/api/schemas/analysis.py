@@ -39,7 +39,8 @@ PIPELINE_VERSION = "0.1.0"
 EXAMPLE_GENERATED_AT = "2026-10-10T11:31:52Z"
 
 #: Subject of every example in this module: a real product of the processed
-#: ``Appliances`` subset (52 reviews, 12 related-product edges).
+#: ``Appliances`` subset (52 reviews; 62 related edges over 60 distinct related
+#: products, 12 of them in-subset edges covering 11 distinct alternatives).
 EXAMPLE_ASIN = "B00009V3UF"
 
 ANALYSIS_EXAMPLE: dict[str, Any] = {
@@ -449,7 +450,7 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
             },
         ],
         "empty_reason": None,
-        "total_related": 62,
+        "total_related": 60,
         "usable": 11,
     },
     "verdict": {

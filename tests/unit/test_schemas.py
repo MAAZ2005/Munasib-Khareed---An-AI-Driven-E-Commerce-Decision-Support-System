@@ -52,7 +52,11 @@ from munasib.api.schemas import (
     TopsisResult,
     VerdictLabel,
 )
-from munasib.api.schemas.alternatives import ALTERNATIVES_EMPTY_EXAMPLE
+from munasib.api.schemas.alternatives import (
+    ALTERNATIVES_EMPTY_EXAMPLE,
+    ALTERNATIVES_EXAMPLE,
+    EXAMPLE_VERIFIED_COUNTS,
+)
 from munasib.api.schemas.decision import FUZZY_OUTPUT_TERMS
 from munasib.api.schemas.evidence import FIXED_INDICATOR_NAMES
 from munasib.api.schemas.reviews import SENTIMENT_LABEL_CODE_FOR_NAME
@@ -621,7 +625,7 @@ def test_empty_alternatives_validate_with_a_reason() -> None:
     """An empty alternatives list is valid when it explains itself."""
     result = AlternativesResult.model_validate(ALTERNATIVES_EMPTY_EXAMPLE)
     assert result.items == []
-    assert "no related-product edges" in (result.empty_reason or "")
+    assert "0 distinct targets" in (result.empty_reason or "")
 
 
 def test_empty_alternatives_require_a_reason() -> None:
@@ -641,7 +645,7 @@ def test_non_empty_alternatives_must_not_carry_a_reason() -> None:
 
 
 def test_usable_cannot_exceed_total_related() -> None:
-    """Sanity on the two edge counts."""
+    """Sanity on the two distinct-product counts."""
     with pytest.raises(ValidationError):
         AlternativesResult.model_validate(
             {
@@ -651,6 +655,20 @@ def test_usable_cannot_exceed_total_related() -> None:
                 "usable": 2,
             }
         )
+
+
+def test_total_related_example_counts_products_not_edges() -> None:
+    """The documented example uses distinct products (60), not the 62 edges."""
+    assert ALTERNATIVES_EXAMPLE["total_related"] == 60
+    assert ALTERNATIVES_EXAMPLE["usable"] == 11
+    assert EXAMPLE_VERIFIED_COUNTS["total_related"] == 60
+    assert EXAMPLE_VERIFIED_COUNTS["edges"] == 62
+    assert EXAMPLE_VERIFIED_COUNTS["in_subset_edges"] == 12
+    assert EXAMPLE_VERIFIED_COUNTS["usable"] == 11
+    assert (
+        EXAMPLE_VERIFIED_COUNTS["usable"] <= EXAMPLE_VERIFIED_COUNTS["total_related"]
+    )
+    assert ANALYSIS_EXAMPLE["alternatives"]["total_related"] == 60  # type: ignore[index]
 
 
 # ------------------------------------------------------------------------------

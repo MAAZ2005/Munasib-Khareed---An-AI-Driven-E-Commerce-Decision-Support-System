@@ -55,6 +55,7 @@ ALT_ONE = "B000000002"
 ALT_TWO = "B000000003"
 LONELY = "B000000004"
 EDGES_ONLY_OUT = "B000000005"
+SELFREF = "B000000007"
 
 
 def _product_row(asin: str, *, n_reviews: int, mean_rating: float | None) -> dict:
@@ -99,6 +100,7 @@ PRODUCTS = [
     _product_row(ALT_TWO, n_reviews=2, mean_rating=2.0),
     _product_row(LONELY, n_reviews=1, mean_rating=5.0),
     _product_row(EDGES_ONLY_OUT, n_reviews=1, mean_rating=3.0),
+    _product_row(SELFREF, n_reviews=1, mean_rating=4.0),
 ]
 
 
@@ -190,16 +192,25 @@ REVIEWS = [
         EDGES_ONLY_OUT, "00000000000000e1", datetime(2018, 3, 8), rating=3.0,
         label=SENTIMENT_LABEL_NEUTRAL, verified=True, helpful=0, text_length=200,
     ),
+    _review_row(
+        SELFREF, "00000000000000g1", datetime(2018, 3, 10), rating=4.0,
+        label=SENTIMENT_LABEL_POSITIVE, verified=True, helpful=0, text_length=200,
+    ),
 ]
 
 EDGES = [
-    # Subject: 4 edges total, 2 distinct usable alternatives.
+    # Subject: 4 edges over 3 distinct related products (ALT_TWO appears under
+    # both edge types), of which 2 are usable alternatives.
     {"asin": SUBJECT, "related_asin": ALT_ONE, "relation_type": "also_viewed", "in_subset": True},
     {"asin": SUBJECT, "related_asin": ALT_TWO, "relation_type": "also_bought", "in_subset": True},
     {"asin": SUBJECT, "related_asin": ALT_TWO, "relation_type": "also_viewed", "in_subset": True},
     {"asin": SUBJECT, "related_asin": "OUTSIDE999", "relation_type": "also_bought", "in_subset": False},
     # Edges exist but every target is outside the processed subset.
     {"asin": EDGES_ONLY_OUT, "related_asin": "OUTSIDE999", "relation_type": "also_viewed", "in_subset": False},
+    # A product linked to itself must never be its own alternative: 2 edges but
+    # only 1 distinct related product (ALT_ONE).
+    {"asin": SELFREF, "related_asin": SELFREF, "relation_type": "also_bought", "in_subset": True},
+    {"asin": SELFREF, "related_asin": ALT_ONE, "relation_type": "also_viewed", "in_subset": True},
 ]
 
 META = {
@@ -575,25 +586,54 @@ def test_risk_indicators_cover_the_five_unit_criteria(
 # ------------------------------------------------------------------------------
 
 
-def test_alternatives_count_edges_and_distinct_subset_targets(
+def test_alternatives_count_distinct_related_products_not_edges(
     service: StubAnalysisService,
 ) -> None:
-    """total_related counts edges; usable counts distinct in-subset targets."""
+    """total_related is distinct related products; usable a subset of them."""
     alternatives = service.analyze(SUBJECT).alternatives
-    assert alternatives.total_related == 4
+    # The fixture stores 4 edges for the subject, over 3 distinct targets.
+    edges = service._related.get_related(SUBJECT, only_in_subset=False)  # noqa: SLF001
+    assert len(edges) == 4
+    assert alternatives.total_related == 3
     assert alternatives.usable == 2
     assert len(alternatives.items) == 2
     assert alternatives.empty_reason is None
+    assert alternatives.usable <= alternatives.total_related
 
 
-def test_alternative_linked_twice_counts_once_in_usable(
+def test_target_under_both_relation_types_counts_once(
     service: StubAnalysisService,
 ) -> None:
-    """ALT_TWO is linked by both edge types but is one usable alternative."""
+    """ALT_TWO is linked by both edge types but counts once in both totals."""
     alternatives = service.analyze(SUBJECT).alternatives
     twice = [item for item in alternatives.items if item.summary.asin == ALT_TWO]
     assert len(twice) == 1
     assert sorted(twice[0].relation_types) == ["also_bought", "also_viewed"]
+    # 3 distinct targets minus the doubled one being counted twice.
+    assert alternatives.total_related == 3
+    assert [item.summary.asin for item in alternatives.items] == [ALT_ONE, ALT_TWO]
+
+
+def test_self_reference_is_excluded(service: StubAnalysisService) -> None:
+    """A product linking to itself is never its own alternative."""
+    edges = service._related.get_related(SELFREF, only_in_subset=False)  # noqa: SLF001
+    assert len(edges) == 2  # one self edge + one real target
+
+    alternatives = service.alternatives(SELFREF)
+    assert alternatives.total_related == 1
+    assert alternatives.usable == 1
+    assert alternatives.empty_reason is None
+    assert [item.summary.asin for item in alternatives.items] == [ALT_ONE]
+    assert SELFREF not in {item.summary.asin for item in alternatives.items}
+
+
+def test_usable_never_exceeds_total_related(service: StubAnalysisService) -> None:
+    """Whatever the edge shape, usable is a subset of the distinct products."""
+    for asin in (SUBJECT, ALT_ONE, ALT_TWO, LONELY, EDGES_ONLY_OUT, SELFREF):
+        alternatives = service.alternatives(asin)
+        assert alternatives.usable <= alternatives.total_related, asin
+        assert len(alternatives.items) <= alternatives.usable, asin
+        assert alternatives.total_related >= 0
 
 
 def test_alternative_deltas_are_alternative_minus_subject(
@@ -611,23 +651,53 @@ def test_alternative_deltas_are_alternative_minus_subject(
 def test_product_without_edges_returns_empty_with_reason(
     service: StubAnalysisService,
 ) -> None:
-    """A product with no edges at all gets the zero-edge reason."""
+    """A product with no links at all gets the zero-target reason."""
     alternatives = service.alternatives(LONELY)
     assert alternatives.items == []
     assert alternatives.total_related == 0
     assert alternatives.usable == 0
-    assert "0 also_bought / also_viewed links" in alternatives.empty_reason
+    assert "0 distinct targets" in alternatives.empty_reason
 
 
 def test_product_with_no_usable_edges_returns_empty_with_reason(
     service: StubAnalysisService,
 ) -> None:
-    """Edges pointing outside the subset still yield an explicit reason."""
+    """Distinct related products outside the subset still yield a clear reason."""
     alternatives = service.alternatives(EDGES_ONLY_OUT)
     assert alternatives.items == []
     assert alternatives.total_related == 1
     assert alternatives.usable == 0
-    assert "none point to another processed subset product" in alternatives.empty_reason
+    assert "1 distinct related product(s) found" in alternatives.empty_reason
+    assert "none of them are in the processed subset" in alternatives.empty_reason
+
+
+def test_real_b00009v3uf_counts_distinct_related_products() -> None:
+    """B00009V3UF reports 60 distinct related products, 11 of them usable.
+
+    The serving cache holds 62 edges for this ASIN and 12 in-subset edges; the
+    edge counts must not leak into either reported number. Skipped when the
+    SQLite cache has not been built.
+    """
+    from pathlib import Path
+
+    from munasib.db.session import create_engine_from_settings, create_session_factory
+
+    db_path = Path(get_settings().paths.db_path)
+    if not db_path.exists():
+        pytest.skip("SQLite serving cache not built (python scripts/ingest_db.py)")
+    engine = create_engine_from_settings(get_settings())
+    try:
+        with create_session_factory(engine)() as session:
+            alternatives = StubAnalysisService(session, get_settings()).alternatives(
+                "B00009V3UF"
+            )
+    finally:
+        engine.dispose()
+    assert alternatives.total_related == 60
+    assert alternatives.usable == 11
+    assert alternatives.usable <= alternatives.total_related
+    assert len(alternatives.items) <= alternatives.usable
+    assert "B00009V3UF" not in {item.summary.asin for item in alternatives.items}
 
 
 def test_alternatives_are_deterministic(service: StubAnalysisService) -> None:
