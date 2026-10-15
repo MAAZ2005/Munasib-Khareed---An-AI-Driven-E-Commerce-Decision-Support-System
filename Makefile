@@ -43,7 +43,7 @@ run-api:
 	$(UVICORN) munasib.api.main:app --host 127.0.0.1 --port 8000 --reload
 
 run-ui:
-	$(STREAMLIT) run app/main.py
+	$(STREAMLIT) run app/Home.py --server.port 8501
 
 train:
 	$(PYTHON) scripts/train_models.py
