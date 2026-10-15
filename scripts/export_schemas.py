@@ -66,7 +66,7 @@ ENDPOINTS: list[dict[str, Any]] = [
     {
         "method": "GET",
         "path": "/products",
-        "query": "query=&limit=&offset=",
+        "query": "query=&limit=&offset=&split=",
         "model": ProductPage,
         "summary": "Search products by title or brand (case-insensitive).",
         "notes": [
@@ -74,6 +74,8 @@ ENDPOINTS: list[dict[str, Any]] = [
             "An empty `query` lists every product.",
             "Rows are ordered by `asin`, so paging with `limit`/`offset` is stable.",
             "`total` counts all matches, not just the returned page.",
+            "`split` optionally filters on the product-level split (`train`, `val`, "
+            "`test`); anything else is rejected with `422`.",
         ],
     },
     {

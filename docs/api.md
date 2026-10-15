@@ -28,7 +28,8 @@ Example response `200` (schema `HealthResponse`):
   "status": "ok",
   "service": "Munasib Khareed",
   "version": "0.1.0",
-  "database": "reachable"
+  "database": "reachable",
+  "time": "2018-10-04T00:00:00Z"
 }
 ```
 
@@ -75,12 +76,13 @@ Example response `200` (schema `CategoryMetaResponse`):
 
 Search products by title or brand (case-insensitive).
 
-Query parameters: `query=&limit=&offset=`
+Query parameters: `query=&limit=&offset=&split=`
 
 - `query` matches title or brand literally; `%` and `_` are not wildcards.
 - An empty `query` lists every product.
 - Rows are ordered by `asin`, so paging with `limit`/`offset` is stable.
 - `total` counts all matches, not just the returned page.
+- `split` optionally filters on the product-level split (`train`, `val`, `test`); anything else is rejected with `422`.
 
 Example response `200` (schema `ProductPage`):
 
@@ -902,7 +904,7 @@ Example response `200` (schema `AnalysisResponse`):
       }
     ],
     "empty_reason": null,
-    "total_related": 12,
+    "total_related": 62,
     "usable": 11
   },
   "verdict": {
@@ -1013,7 +1015,7 @@ Example response `200` (schema `AlternativesResult`):
     }
   ],
   "empty_reason": null,
-  "total_related": 12,
+  "total_related": 62,
   "usable": 11
 }
 ```

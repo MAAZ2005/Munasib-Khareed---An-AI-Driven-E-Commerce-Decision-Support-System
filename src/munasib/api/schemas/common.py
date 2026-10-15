@@ -134,6 +134,7 @@ class HealthResponse(BaseModel):
                 "service": "Munasib Khareed",
                 "version": "0.1.0",
                 "database": "reachable",
+                "time": "2018-10-04T00:00:00Z",
             }
         }
     )
@@ -144,6 +145,10 @@ class HealthResponse(BaseModel):
     database: str = Field(
         description="'reachable' when the SQLite serving cache answers, "
         "'unavailable' when it does not.",
+    )
+    time: UtcDatetime = Field(
+        description="Current UTC time; useful for clock-skew checks between the "
+        "dashboard and the server. Data-derived fields never use it.",
     )
 
 

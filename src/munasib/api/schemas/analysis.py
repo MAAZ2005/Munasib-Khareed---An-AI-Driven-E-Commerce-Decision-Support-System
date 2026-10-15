@@ -449,7 +449,7 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
             },
         ],
         "empty_reason": None,
-        "total_related": 12,
+        "total_related": 62,
         "usable": 11,
     },
     "verdict": {

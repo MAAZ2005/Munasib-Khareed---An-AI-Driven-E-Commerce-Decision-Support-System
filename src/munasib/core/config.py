@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
@@ -200,6 +200,19 @@ class VerdictConfig(BaseModel):
     thresholds_file: Path = Path("configs/verdict_thresholds.yaml")
 
 
+class AnalysisConfig(BaseModel):
+    """Which analysis implementation the API layer should serve.
+
+    ``stub`` is the deterministic placeholder in
+    :mod:`munasib.pipeline.service` (real evidence numbers, clearly labelled
+    placeholder risk scores) and is the default. ``real`` is the fuzzy + TOPSIS
+    engine; selecting it before that engine exists raises a documented error from
+    the API dependency instead of silently falling back.
+    """
+
+    service: Literal["stub", "real"] = "stub"
+
+
 class APIConfig(BaseModel):
     """FastAPI REST service settings."""
 
@@ -231,6 +244,7 @@ class Settings(BaseModel):
     decision: DecisionConfig = Field(default_factory=DecisionConfig)
     xai: XAIConfig = Field(default_factory=XAIConfig)
     verdict: VerdictConfig = Field(default_factory=VerdictConfig)
+    analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     api: APIConfig = Field(default_factory=APIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
@@ -261,6 +275,7 @@ def _apply_env_overrides(raw_dict: dict[str, Any]) -> dict[str, Any]:
         "MUNASIB_API_PORT": ("api", "port", int),
         "MUNASIB_LOG_LEVEL": ("logging", "level"),
         "MUNASIB_DATASET_CATEGORY": ("dataset", "category"),
+        "MUNASIB_ANALYSIS_SERVICE": ("analysis", "service"),
     }
 
     for env_var, mapping in env_mappings.items():

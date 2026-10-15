@@ -111,7 +111,7 @@ ALTERNATIVES_EXAMPLE: dict[str, Any] = {
         },
     ],
     "empty_reason": None,
-    "total_related": 12,
+    "total_related": 62,
     "usable": 11,
 }
 
@@ -123,6 +123,19 @@ ALTERNATIVES_EMPTY_EXAMPLE: dict[str, Any] = {
     "(0 also_bought / also_viewed links)",
     "total_related": 0,
     "usable": 0,
+}
+
+#: What the example numbers above were verified against: the serving cache for
+#: B00009V3UF has 62 related-product edges in total (4 ``also_bought`` +
+#: 58 ``also_viewed``), of which 12 edges point back into the processed subset and
+#: cover 11 distinct usable alternatives. ``total_related`` therefore counts
+#: every edge while ``usable`` counts distinct in-subset alternatives, which is
+#: why one ASIN linked by both edge types is counted twice in the first number
+#: and once in the second.
+EXAMPLE_VERIFIED_COUNTS: dict[str, int] = {
+    "total_related": 62,
+    "in_subset_edges": 12,
+    "usable": 11,
 }
 
 
@@ -185,4 +198,5 @@ __all__ = [
     "AlternativeRelation",
     "AlternativesResult",
     "ComparisonDeltas",
+    "EXAMPLE_VERIFIED_COUNTS",
 ]
