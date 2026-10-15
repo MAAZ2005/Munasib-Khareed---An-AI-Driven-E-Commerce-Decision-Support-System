@@ -7,11 +7,19 @@ Real content visualizations arrive in Prompts 9-10.
 
 from __future__ import annotations
 
-import streamlit as st
+import sys
+from pathlib import Path
 
-from app.components.sidebar import render_sidebar
-from app.state import require_product
-from app.theme import apply_theme
+# Ensure repository root is on sys.path so 'app.*' imports resolve
+_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+import streamlit as st  # noqa: E402
+
+from app.components.sidebar import render_sidebar  # noqa: E402
+from app.state import require_product  # noqa: E402
+from app.theme import apply_theme  # noqa: E402
 
 
 def main() -> None:

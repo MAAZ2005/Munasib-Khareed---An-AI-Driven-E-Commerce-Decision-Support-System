@@ -46,6 +46,60 @@ VERDICT_CONFIGS: dict[str, dict[str, str]] = {
     },
 }
 
+#: System font stack used by every Plotly figure. Offline only: no web font is
+#: downloaded, the chart simply names fonts the OS already ships.
+FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+
+#: Colorblind-safe chart palette shared by every chart component.
+#:
+#: Components take their colors from this mapping and never from a literal hex
+#: code in a component module, so the dashboard stays readable under the common
+#: forms of color-vision deficiency. The hues are the Okabe-Ito palette; the
+#: keys are semantic (``positive``, ``cost``, ``caution``, ...) rather than hue
+#: names so a component can express meaning instead of picking a shade.
+#:
+#: Color is never the only channel: every series is also labeled in text
+#: (axis tick labels, legend entries, hover text or captions), which is what
+#: makes the palette safe rather than merely colorblind-friendly.
+CHART_PALETTE: dict[str, str] = {
+    # Okabe-Ito hues, available when a chart needs a distinct hue with no
+    # semantic weight.
+    "blue": "#0072B2",
+    "orange": "#E69F00",
+    "green": "#009E73",
+    "yellow": "#F0E442",
+    "sky": "#56B4E9",
+    "vermillion": "#D55E00",
+    "purple": "#CC79A7",
+    "grey": "#999999",
+    # Review sentiment (weak supervision from star ratings: 1-2 negative,
+    # 3 neutral, 4-5 positive).
+    "positive": "#009E73",
+    "negative": "#D55E00",
+    "neutral": "#56B4E9",
+    "unlabelled": "#999999",
+    # TOPSIS / criterion direction: blue = the more of this the better,
+    # orange = the more of this the worse.
+    "benefit": "#0072B2",
+    "cost": "#E69F00",
+    # Alternative relation, concern severity and fuzzy rules.
+    "better": "#009E73",
+    "comparable": "#56B4E9",
+    "worse": "#D55E00",
+    "severity_high": "#D55E00",
+    "severity_medium": "#E69F00",
+    "severity_low": "#56B4E9",
+    # The three verdict bands of configs/verdict_thresholds.yaml.
+    "band_consider": "#009E73",
+    "band_caution": "#E69F00",
+    "band_risk": "#D55E00",
+    # Documented tints of the band hues above, used as gauge step fills so the
+    # darker band boundary and needle stay legible on top of them.
+    "band_consider_fill": "#d8efe7",
+    "band_caution_fill": "#fdeecd",
+    "band_risk_fill": "#f7d6cb",
+}
+
 #: Minimal offline-safe CSS injected into every page.
 CUSTOM_CSS = """
 <style>

@@ -7,11 +7,19 @@ active ASIN for subsequent deep analysis across pages 2 through 7.
 
 from __future__ import annotations
 
-import streamlit as st
+import sys
+from pathlib import Path
 
-from app.cache import get_cached_search_products
-from app.components.sidebar import render_sidebar
-from app.state import (
+# Ensure repository root is on sys.path so 'app.*' imports resolve
+_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+import streamlit as st  # noqa: E402
+
+from app.cache import get_cached_search_products  # noqa: E402
+from app.components.sidebar import render_sidebar  # noqa: E402
+from app.state import (  # noqa: E402
     get_search_offset,
     get_search_query,
     get_selected_asin,
@@ -19,7 +27,7 @@ from app.state import (
     set_search_query,
     set_selected_asin,
 )
-from app.theme import apply_theme
+from app.theme import apply_theme  # noqa: E402
 
 PAGE_SIZE = 10
 
