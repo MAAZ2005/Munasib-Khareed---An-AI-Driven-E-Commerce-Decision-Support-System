@@ -17,6 +17,27 @@ from __future__ import annotations
 import streamlit as st
 
 from munasib.api.schemas import VerdictLabel
+from munasib.core.constants import IMAGE_ATTRIBUTION
+
+__all__ = [
+    "CHART_PALETTE",
+    "CUSTOM_CSS",
+    "FONT_FAMILY",
+    "IMAGE_ATTRIBUTION",
+    "VERDICT_CONFIGS",
+    "apply_theme",
+    "get_verdict_style",
+    "render_verdict_badge",
+    "render_verdict_card",
+]
+
+#: Attribution shown as a caption wherever a cached product image is displayed.
+#:
+#: Re-exported from :mod:`munasib.core.constants` (the single definition) so the
+#: dashboard never retypes the string and cannot drift from ``docs/images.md``.
+#: The images belong to Amazon and the individual sellers and are shown only for
+#: the academic demo, from the local cache, offline.
+IMAGE_ATTRIBUTION = IMAGE_ATTRIBUTION
 
 #: Colorblind-safe styling dictionary for each valid verdict label.
 VERDICT_CONFIGS: dict[str, dict[str, str]] = {

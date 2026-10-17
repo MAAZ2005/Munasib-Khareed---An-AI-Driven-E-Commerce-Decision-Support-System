@@ -5,6 +5,7 @@ accelerate page navigation. Implements cache TTLs according to project specifica
 - Metadata / Category: 10 minutes (600 seconds)
 - Product Search & Reviews: 60 seconds
 - Full Analysis & Alternatives: 5 minutes (300 seconds)
+- Product thumbnails: 1 hour (3600 seconds)
 - Health check: 15 seconds
 
 All cached functions accept ONLY hashable scalar arguments (strings, integers,
@@ -33,6 +34,7 @@ TTL_PRODUCT = 300  # 5 minutes
 TTL_REVIEWS = 60  # 60 seconds
 TTL_ALTERNATIVES = 300  # 5 minutes
 TTL_HEALTH = 15  # 15 seconds
+TTL_IMAGE = 3600  # 1 hour (cached thumbnails are immutable for an ASIN)
 
 
 @st.cache_data(ttl=TTL_HEALTH, show_spinner=False)
@@ -95,6 +97,19 @@ def get_cached_alternatives(asin: str) -> AlternativesResult:
     """Fetch evidence-based alternatives for a product."""
     client = get_api_client()
     return client.get_alternatives(asin=asin)
+
+
+@st.cache_data(ttl=TTL_IMAGE, show_spinner=False)
+def get_product_image(asin: str) -> bytes | None:
+    """Fetch a product's cached JPEG thumbnail, or None when none is cached.
+
+    One-hour TTL: a cached thumbnail is immutable for an ASIN, so it can be held
+    far longer than the JSON payloads. Only hashable scalar arguments are used
+    (``asin``), so caching never fails. Returning ``None`` (a 404 upstream) is a
+    normal, cacheable answer.
+    """
+    client = get_api_client()
+    return client.get_product_image(asin=asin)
 
 
 def clear_all_cached_data() -> None:

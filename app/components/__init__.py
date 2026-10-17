@@ -38,6 +38,15 @@ from app.components.fuzzy_membership_chart import (
     render_fuzzy_membership_chart,
 )
 from app.components.metric_card import metric_card
+from app.components.product_image import (
+    IMAGE_ATTRIBUTION as PRODUCT_IMAGE_ATTRIBUTION,
+)
+from app.components.product_image import (
+    NO_IMAGE_LABEL,
+    has_renderable_image,
+    placeholder_initial,
+    product_image,
+)
 from app.components.rating_distribution_chart import (
     NO_DATA_MESSAGE as RATING_NO_DATA_MESSAGE,
 )
@@ -73,6 +82,8 @@ from app.components.verdict_badge import verdict_badge
 __all__ = [
     "ASPECT_NO_DATA_MESSAGE",
     "EVIDENCE_COST_SUFFIX",
+    "NO_IMAGE_LABEL",
+    "PRODUCT_IMAGE_ATTRIBUTION",
     "RATING_NO_DATA_MESSAGE",
     "SUPERVISION_NOTE",
     "RiskBands",
@@ -88,8 +99,11 @@ __all__ = [
     "build_sentiment_over_time_figure",
     "build_topsis_ranking_figure",
     "concern_list",
+    "has_renderable_image",
     "load_risk_bands",
     "metric_card",
+    "placeholder_initial",
+    "product_image",
     "render_aspect_bar_chart",
     "render_evidence_indicator_radar",
     "render_fuzzy_membership_chart",

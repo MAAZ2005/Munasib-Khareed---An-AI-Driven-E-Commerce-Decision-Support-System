@@ -3,7 +3,8 @@
 Manages application state across pages in Streamlit's multipage framework:
 selected product ASIN, latest fetched analysis, active search query, and pagination
 offset. Provides ``require_product()`` as a guard to stop execution on product-dependent
-pages when no ASIN has been chosen.
+pages when no ASIN has been chosen, and ``get_or_load_analysis()`` so the composed
+analysis is fetched once per selected product and reused by every page.
 """
 
 from __future__ import annotations
@@ -77,6 +78,39 @@ def set_last_analysis(analysis: AnalysisResponse | None) -> None:
     """
     init_session_state()
     st.session_state[KEY_LAST_ANALYSIS] = analysis
+
+
+def get_or_load_analysis(asin: str) -> AnalysisResponse:
+    """Return the analysis of ``asin``, fetching it at most once per page load.
+
+    The composed analysis is fetched once per selected product and stored in
+    ``last_analysis``: a page that already has it for this ASIN never calls the
+    API again, so navigating pages 2-7 costs one request (see
+    ``app/state.KEY_LAST_ANALYSIS``). Selecting a different product clears it
+    (:func:`set_selected_asin`), so the next page fetches the new product's
+    analysis instead of showing a stale one.
+
+    Args:
+        asin: The selected product ASIN.
+
+    Returns:
+        The stored :class:`~munasib.api.schemas.AnalysisResponse` when it already
+        belongs to ``asin``, otherwise a freshly fetched one (also stored).
+
+    Raises:
+        app.api_client.ApiClientError: If the fetch fails; the page maps it to a
+            friendly message with :func:`app.errors.render_api_error`.
+    """
+    from app.cache import get_cached_analysis
+
+    stored = get_last_analysis()
+    if stored is not None and stored.asin == asin:
+        return stored
+
+    with st.spinner("Computing decision-support analysis..."):
+        analysis = get_cached_analysis(asin)
+    set_last_analysis(analysis)
+    return analysis
 
 
 def get_search_query() -> str:

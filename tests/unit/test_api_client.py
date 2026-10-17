@@ -336,3 +336,46 @@ def test_connection_error_retried_then_raises_api_unavailable() -> None:
 
     assert calls == 3
     assert "Unable to connect" in exc_info.value.message
+
+
+def test_get_product_image_returns_the_cached_bytes() -> None:
+    """A cached thumbnail is returned as raw bytes from the image endpoint."""
+    jpeg = b"\xff\xd8\xff\xe0thumbnail-bytes"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/products/B00009V3UF/image"
+        return httpx.Response(200, content=jpeg, headers={"content-type": "image/jpeg"})
+
+    client = ApiClient(base_url="http://test", transport=_mock_transport(handler))
+
+    assert client.get_product_image("B00009V3UF") == jpeg
+
+
+def test_get_product_image_maps_404_to_none() -> None:
+    """A product without a cached thumbnail is None, not an error."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            404,
+            json={"code": "PRODUCT_NOT_FOUND", "message": "unknown product"},
+        )
+
+    client = ApiClient(base_url="http://test", transport=_mock_transport(handler))
+
+    assert client.get_product_image("B000000000") is None
+
+
+def test_get_product_image_propagates_server_errors() -> None:
+    """Any failure other than a missing thumbnail still raises."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="upstream down")
+
+    client = ApiClient(
+        base_url="http://test",
+        max_retries=0,
+        transport=_mock_transport(handler),
+    )
+
+    with pytest.raises(ApiServerError):
+        client.get_product_image("B00009V3UF")

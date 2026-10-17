@@ -1,9 +1,9 @@
 """HTTP client for communicating with the Munasib Khareed FastAPI backend.
 
 Provides a robust, typed client wrapping ``httpx`` to interact with all API
-endpoints: health, metadata, product listings, reviews, full analysis, and
-alternatives. Implements automatic retries with exponential backoff on GET
-requests for transient connection errors and 5xx server responses.
+endpoints: health, metadata, product listings, cached thumbnails, reviews, full
+analysis, and alternatives. Implements automatic retries with exponential backoff
+on GET requests for transient connection errors and 5xx server responses.
 
 All response methods return typed Pydantic models imported from
 :mod:`munasib.api.schemas`. Failed HTTP requests and network issues are
@@ -394,6 +394,30 @@ class ApiClient:
         """
         resp = self._request_with_retry("GET", f"/products/{asin}/alternatives")
         return AlternativesResult.model_validate(resp.json())
+
+    def get_product_image(self, asin: str) -> bytes | None:
+        """Retrieve the locally cached JPEG thumbnail of a product.
+
+        Images are display-only and served from the API's local cache, so this
+        never fetches anything from Amazon. An ASIN without a cached thumbnail is
+        a normal case, not an error: the ``404`` is translated to ``None`` so the
+        caller can render a placeholder. Every other failure (an unreachable
+        backend, a 5xx, a timeout) maps to the usual typed exceptions.
+
+        Args:
+            asin: Product ASIN.
+
+        Returns:
+            The raw JPEG bytes, or None when no thumbnail is cached for this ASIN.
+
+        Raises:
+            ApiClientError: For any failure other than a missing thumbnail.
+        """
+        try:
+            resp = self._request_with_retry("GET", f"/products/{asin}/image")
+        except ApiNotFound:
+            return None
+        return resp.content
 
 
 def get_api_client(base_url: str | None = None) -> ApiClient:

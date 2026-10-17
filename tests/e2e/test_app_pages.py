@@ -11,8 +11,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from streamlit.runtime.memory_media_file_storage import _calculate_file_id
 from streamlit.testing.v1 import AppTest
 
+from app.api_client import ApiNotFound, ApiUnavailable
+from app.formatting import (
+    analysis_json,
+    analysis_json_filename,
+    build_summary_csv,
+    summary_csv_filename,
+)
+from app.theme import IMAGE_ATTRIBUTION
 from munasib.api.schemas import (
     AnalysisResponse,
     CategoryMetaResponse,
@@ -22,6 +31,7 @@ from munasib.api.schemas import (
     SplitSizes,
 )
 from munasib.api.schemas.analysis import ANALYSIS_EXAMPLE
+from tests.e2e import conftest as e2e
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 
@@ -226,3 +236,251 @@ def test_stub_banner_does_not_appear_for_non_stub_analysis() -> None:
 
     assert not at.exception, at.exception
     assert not any("Placeholder analysis from the stub engine" in w.value for w in at.warning)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard pages on the stub API (p10)
+# ---------------------------------------------------------------------------
+
+STUB_BANNER_TEXT = "Placeholder analysis from the stub engine"
+
+ANALYSIS_PAGES = [
+    "app/pages/3_Review_Analysis.py",
+    "app/pages/4_Risk_and_Evidence.py",
+    "app/pages/5_Explanation_SHAP.py",
+    "app/pages/6_Alternatives.py",
+    "app/pages/7_Consumer_Verdict.py",
+]
+
+IMAGE_PAGES = [
+    "app/pages/1_Product_Selection.py",
+    "app/pages/2_Product_Overview.py",
+    "app/pages/6_Alternatives.py",
+    "app/pages/7_Consumer_Verdict.py",
+]
+
+
+def _jpeg_bytes() -> bytes:
+    """Return a minimal valid JPEG so ``st.image`` renders real bytes."""
+    import io
+
+    from PIL import Image as PILImage
+
+    buffer = io.BytesIO()
+    PILImage.new("RGB", (8, 8), (200, 30, 30)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _run_page(
+    rel_path: str,
+    asin: str | None = None,
+    analysis: AnalysisResponse | None = None,
+) -> AppTest:
+    """Run one page under AppTest with an optional product and analysis.
+
+    Args:
+        rel_path: Page path relative to the repository root.
+        asin: Value to put in ``selected_asin`` (skipped when None).
+        analysis: Value to put in ``last_analysis`` (skipped when None).
+
+    Returns:
+        The run AppTest instance.
+    """
+    at = AppTest.from_file(_app_path(rel_path))
+    if asin is not None:
+        at.session_state["selected_asin"] = asin
+    if analysis is not None:
+        at.session_state["last_analysis"] = analysis
+    at.run()
+    return at
+
+
+@pytest.mark.parametrize("rel_path", ANALYSIS_PAGES)
+def test_analysis_pages_show_the_stub_banner(rel_path: str) -> None:
+    """Every page that shows analysis data warns that it is stub output."""
+    at = _run_page(rel_path, asin=e2e.DEFAULT_ASIN)
+
+    assert not at.exception, at.exception
+    assert any(STUB_BANNER_TEXT in w.value for w in at.warning)
+
+
+@pytest.mark.parametrize("rel_path", IMAGE_PAGES)
+def test_image_pages_show_the_attribution_caption(rel_path: str) -> None:
+    """Every page that can display an image carries the required attribution."""
+    at = _run_page(rel_path, asin=e2e.DEFAULT_ASIN)
+
+    assert not at.exception, at.exception
+    assert any(IMAGE_ATTRIBUTION in c.value for c in at.caption)
+
+
+def test_product_selection_renders_cards_and_price_absence() -> None:
+    """Page 1 renders one card per result, with the price absence shown."""
+    at = AppTest.from_file(_app_path("app/pages/1_Product_Selection.py"))
+    at.run()
+
+    assert not at.exception, at.exception
+    assert any("Price not listed" in m.value for m in at.markdown)
+    # The patched image call returns None, so both cards show the placeholder.
+    assert len(at.image) == 0
+    assert any("No image available" in m.value for m in at.markdown)
+
+
+def test_product_overview_renders_profile_features_and_data_basis() -> None:
+    """Page 2 renders the profile fields, an expander and the data-basis caption."""
+    at = _run_page("app/pages/2_Product_Overview.py", asin=e2e.DEFAULT_ASIN)
+
+    assert not at.exception, at.exception
+    assert any("Product Overview" in t.value for t in at.title)
+    assert len(at.metric) >= 4
+    assert len(at.expander) >= 1
+    assert any(c.value.startswith("Data basis") for c in at.caption)
+
+
+def test_product_overview_shows_the_image_when_cached() -> None:
+    """A product whose thumbnail is cached renders a real image element."""
+    with mock.patch("app.api_client.ApiClient.get_product_image", return_value=_jpeg_bytes()):
+        at = _run_page("app/pages/2_Product_Overview.py", asin=e2e.DEFAULT_ASIN)
+
+    assert not at.exception, at.exception
+    assert len(at.image) >= 1
+    assert any(IMAGE_ATTRIBUTION in c.value for c in at.caption)
+
+
+def test_product_overview_placeholder_makes_no_image_request() -> None:
+    """A product without an image shows the placeholder and never calls the route."""
+    spy = mock.Mock(return_value=None)
+    with (
+        mock.patch(
+            "app.api_client.ApiClient.get_product",
+            side_effect=lambda **kw: e2e.build_product_detail(kw["asin"], has_image=False),
+        ),
+        mock.patch("app.api_client.ApiClient.get_product_image", spy),
+    ):
+        at = _run_page("app/pages/2_Product_Overview.py", asin=e2e.DEFAULT_ASIN)
+
+    assert not at.exception, at.exception
+    assert len(at.image) == 0
+    assert any("No image available" in m.value for m in at.markdown)
+    spy.assert_not_called()
+
+
+def test_review_analysis_renders_charts_metrics_and_table() -> None:
+    """Page 3 renders the review charts, the evidence metrics and a review table."""
+    at = _run_page("app/pages/3_Review_Analysis.py", asin=e2e.DEFAULT_ASIN)
+
+    assert not at.exception, at.exception
+    assert len(at.get("plotly_chart")) >= 4
+    assert len(at.dataframe) >= 1
+    labels = [m.label for m in at.metric]
+    assert "Verified-purchase share" in labels
+    assert "Helpfulness ratio" in labels
+    assert any(s.label == "Sentiment label (weak, from stars)" for s in at.selectbox)
+
+
+def test_risk_and_evidence_renders_gauge_table_and_decision_charts() -> None:
+    """Page 4 renders the gauge, the indicator table and the decision charts."""
+    at = _run_page("app/pages/4_Risk_and_Evidence.py", asin=e2e.DEFAULT_ASIN)
+
+    assert not at.exception, at.exception
+    assert len(at.get("plotly_chart")) >= 4
+    assert len(at.dataframe) >= 1
+    assert any(m.label == "Composite evidence strength" for m in at.metric)
+
+
+def test_explanation_renders_waterfall_and_fidelity() -> None:
+    """Page 5 renders the waterfall and the surrogate-fidelity metrics."""
+    at = _run_page("app/pages/5_Explanation_SHAP.py", asin=e2e.DEFAULT_ASIN)
+
+    assert not at.exception, at.exception
+    assert len(at.get("plotly_chart")) >= 1
+    labels = [m.label for m in at.metric]
+    assert "Surrogate R²" in labels
+    assert "Surrogate MAE" in labels
+    assert "Meets configured minimum" in labels
+
+
+def test_alternatives_renders_cards_and_switch_updates_selection() -> None:
+    """Page 6 renders a card per alternative; switching re-points the selection."""
+    analysis = e2e.build_analysis(e2e.DEFAULT_ASIN)
+    at = _run_page("app/pages/6_Alternatives.py", asin=e2e.DEFAULT_ASIN, analysis=analysis)
+
+    assert not at.exception, at.exception
+    assert any(b.label == "Switch to this product" for b in at.button)
+
+    switch = [b for b in at.button if b.key == "switch_B0050O1N2U"]
+    assert len(switch) == 1
+    switch[0].click().run()
+
+    assert not at.exception, at.exception
+    assert at.session_state["selected_asin"] == "B0050O1N2U"
+    # The previous product's analysis was dropped; the new one was re-fetched.
+    assert at.session_state["last_analysis"].asin == "B0050O1N2U"
+
+
+def test_alternatives_empty_shows_reason_and_counts() -> None:
+    """Page 6 with no usable alternative shows why, and how many there were."""
+    analysis = e2e.build_analysis(
+        e2e.DEFAULT_ASIN, alternatives=e2e.build_alternatives(empty=True)
+    )
+    at = _run_page("app/pages/6_Alternatives.py", asin=e2e.DEFAULT_ASIN, analysis=analysis)
+
+    assert not at.exception, at.exception
+    assert any("no related products found" in info.value for info in at.info)
+    assert not any((b.key or "").startswith("switch_") for b in at.button)
+
+
+def test_consumer_verdict_renders_downloads_and_json_round_trips() -> None:
+    """Page 7 exposes both downloads and the JSON payload is the real analysis."""
+    analysis = e2e.build_analysis(e2e.DEFAULT_ASIN)
+    at = _run_page("app/pages/7_Consumer_Verdict.py", asin=e2e.DEFAULT_ASIN, analysis=analysis)
+
+    assert not at.exception, at.exception
+    labels = [b.label for b in at.download_button]
+    assert any("JSON" in label for label in labels)
+    assert any("CSV" in label for label in labels)
+
+    json_button = next(b for b in at.download_button if "JSON" in b.label)
+    expected_json_id = _calculate_file_id(
+        analysis_json(analysis).encode(),
+        "application/json",
+        analysis_json_filename(e2e.DEFAULT_ASIN),
+    )
+    assert json_button.proto.url.endswith(f"{expected_json_id}.json")
+
+    csv_button = next(b for b in at.download_button if "CSV" in b.label)
+    expected_csv_id = _calculate_file_id(
+        build_summary_csv(analysis).encode(),
+        "text/csv",
+        summary_csv_filename(e2e.DEFAULT_ASIN),
+    )
+    assert csv_button.proto.url.endswith(f"{expected_csv_id}.csv")
+
+    # The payload the button serves parses back into the contract.
+    restored = AnalysisResponse.model_validate_json(analysis_json(analysis))
+    assert restored.asin == e2e.DEFAULT_ASIN
+
+
+def test_api_not_found_shows_friendly_message_and_clears_selection() -> None:
+    """A 404 on the analysis maps to a friendly message and drops the selection."""
+    with mock.patch(
+        "app.api_client.ApiClient.get_analysis",
+        side_effect=ApiNotFound("Product B00009V3UF is not in the serving cache."),
+    ):
+        at = _run_page("app/pages/3_Review_Analysis.py", asin=e2e.DEFAULT_ASIN)
+
+    assert not at.exception, at.exception
+    assert any("Product not found in the serving cache" in e.value for e in at.error)
+    assert at.session_state["selected_asin"] is None
+
+
+def test_api_unavailable_shows_startup_instructions() -> None:
+    """An unreachable API maps to a friendly message naming the uvicorn command."""
+    with mock.patch(
+        "app.api_client.ApiClient.get_analysis",
+        side_effect=ApiUnavailable("connection refused"),
+    ):
+        at = _run_page("app/pages/4_Risk_and_Evidence.py", asin=e2e.DEFAULT_ASIN)
+
+    assert not at.exception, at.exception
+    assert any("not reachable" in e.value for e in at.error)
+    assert any("uvicorn munasib.api.main:app --port 8000" in info.value for info in at.info)

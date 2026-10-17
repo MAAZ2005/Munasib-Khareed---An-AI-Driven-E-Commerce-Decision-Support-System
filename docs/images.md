@@ -104,6 +104,35 @@ letter or a generic icon) with the text `No image available`. The UI must never:
 
 Images are decoration; every product remains fully analysable without one.
 
+## How the dashboard uses it
+
+The offline contract is implemented in the frontend:
+
+- `ApiClient.get_product_image(asin)` issues `GET /products/{asin}/image`. It maps
+  a `404` (no cached thumbnail) to `None` and lets every other failure propagate as
+  the usual typed API error. It is the only client call that returns raw bytes.
+- `app/cache.get_product_image(asin)` wraps it with `st.cache_data`, TTL **1 hour**
+  (`TTL_IMAGE = 3600`): a cached thumbnail is immutable for an ASIN, and the `None`
+  result for a missing one is cached too, so a product without an image never
+  re-requests it.
+- `app/components/product_image.py` is the single render point. Given
+  `asin`, `has_image` and a width it:
+  - requests the bytes **only** when `has_image` is true (a `has_image: false`
+    product makes no image request at all),
+  - draws the thumbnail with `st.image(bytes, ...)` when the bytes arrive,
+  - falls back to the neutral tile when `has_image` is false **or** the request
+    fails, and never raises,
+  - always appends the caption `munasib.core.constants.IMAGE_ATTRIBUTION`.
+
+`has_renderable_image(has_image, data)` and `placeholder_initial(title, asin)` are
+the pure helpers behind that choice (unit-tested in
+`tests/unit/test_product_image.py`). The placeholder tile is inline HTML with inline
+styles, so it needs no external font, stylesheet or image.
+
+The image appears on page 1 (each search card), page 2 (the profile), page 6 (each
+alternative card) and page 7 (the verdict header). Pages 3, 4 and 5 show no image,
+so they render no attribution caption.
+
 ## Rights and attribution
 
 The images are the product-listing photos that ship with the UCSD Amazon Review

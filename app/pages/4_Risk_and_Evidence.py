@@ -1,8 +1,11 @@
 """Page 4: Risk and Evidence.
 
-Evaluates empirical review evidence strength and details the fuzzy-logic + TOPSIS
-consumer risk calculation. Requires an active product selection.
-Real content visualizations arrive in Prompts 9-10.
+Shows the fuzzy-logic + TOPSIS consumer risk assessment of the selected product:
+the 0-100 risk gauge banded by the verdict thresholds, the composite evidence
+strength, a table of every evidence and risk indicator (value, raw value, direction
+and plain-language description), the evidence radar, the fuzzy membership chart and
+the TOPSIS criterion contributions. The stub banner is shown whenever the analysis
+still comes from the stub engine.
 """
 
 from __future__ import annotations
@@ -17,32 +20,67 @@ if _REPO_ROOT not in sys.path:
 
 import streamlit as st  # noqa: E402
 
+from app.components import (  # noqa: E402
+    metric_card,
+    render_evidence_indicator_radar,
+    render_fuzzy_membership_chart,
+    render_risk_gauge,
+    render_topsis_ranking_chart,
+)
 from app.components.sidebar import render_sidebar, show_stub_banner  # noqa: E402
-from app.state import get_last_analysis, require_product  # noqa: E402
+from app.errors import render_api_error  # noqa: E402
+from app.formatting import INDICATOR_COLUMNS, build_indicator_rows, format_unit  # noqa: E402
+from app.state import get_or_load_analysis, require_product  # noqa: E402
 from app.theme import apply_theme  # noqa: E402
 
 
 def main() -> None:
-    """Render the Risk and Evidence skeleton page."""
+    """Render the Risk and Evidence page."""
     apply_theme("Risk and Evidence")
     render_sidebar()
 
     asin = require_product()
 
     st.title("⚖️ 4. Risk and Evidence")
-    st.caption(f"Active Subject ASIN: `{asin}`")
+    st.caption(f"Active subject ASIN: `{asin}`")
 
-    analysis = get_last_analysis()
+    try:
+        analysis = get_or_load_analysis(asin)
+    except Exception as exc:
+        render_api_error(exc)
+        return
+
     show_stub_banner(analysis)
 
-    st.info(
-        "ℹ️ **Page Under Construction (Prompts 9–10)**  \n\n"
-        "This view will render the risk and evidence analysis:\n"
-        "- **Evidence Strength Indicators:** Verified purchase ratio, review depth, and helpfulness metrics.\n"
-        "- **Fuzzy Logic Assessment:** Qualitative linguistic risk mapping, membership curves, and fired fuzzy rules.\n"
-        "- **TOPSIS Ranking:** Multi-criteria decision ranking comparing this product against sampled category peers.\n"
-        "- **Composite Risk Index:** Defuzzified 0–100 consumer risk score."
+    col_gauge, col_strength = st.columns([1.2, 1])
+    with col_gauge:
+        render_risk_gauge(analysis.risk_score)
+    with col_strength:
+        metric_card(
+            "Composite evidence strength",
+            format_unit(analysis.evidence_strength),
+            help="Weighted mean of the configured evidence indicators, 0 to 1; a low "
+            "value means the evidence base is too thin to trust.",
+        )
+
+    st.subheader("Evidence and risk indicators")
+    st.caption(
+        "Every indicator carries its normalised 0-1 value, the raw value it came "
+        "from, its direction (benefit = higher is better) and a plain-language "
+        "description."
     )
+    st.dataframe(
+        build_indicator_rows(analysis.evidence, analysis.risk_indicators),
+        column_order=list(INDICATOR_COLUMNS),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    render_evidence_indicator_radar(analysis.evidence, analysis.risk_indicators)
+
+    decision = analysis.decision
+    render_fuzzy_membership_chart(decision.fuzzy if decision is not None else None)
+    render_topsis_ranking_chart(decision.topsis if decision is not None else None)
 
 
 if __name__ == "__main__":

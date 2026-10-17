@@ -13,12 +13,15 @@ app/
 ├── Home.py                    # Application entry point (Landing / System Status)
 ├── api_client.py              # Pure HTTP client (no Streamlit dependencies)
 ├── cache.py                   # Streamlit cache_data wrappers with TTLs
-├── state.py                   # st.session_state accessors and page guards
+├── state.py                   # st.session_state accessors, page guards, analysis loader
+├── formatting.py              # Pure display helpers (price/rank/date, CSV/JSON builders)
+├── errors.py                  # Friendly messages for failed API calls
 ├── theme.py                   # System styling & colorblind-safe verdict themes
 ├── components/
 │   ├── _common.py             # Private: figure scaffolding & number formatting
 │   ├── __init__.py            # Exports every reusable component
 │   ├── sidebar.py             # Health status, active product, navigation, stub banner
+│   ├── product_image.py       # Cached thumbnail or neutral local placeholder tile
 │   ├── metric_card.py         # 1. Labelled number with help text and delta
 │   ├── risk_gauge.py          # 2. 0-100 gauge banded by verdict_thresholds.yaml
 │   ├── verdict_badge.py       # 3. The three locked verdict labels
@@ -94,6 +97,7 @@ To ensure rapid page navigation and prevent redundant network overhead against t
 | `get_cached_reviews()` | 60 s (`60s`) | `asin, limit, offset, label, verified` | Balances memory usage with browsing responsiveness. |
 | `get_cached_analysis()` | 5 min (`300s`) | `asin` | Pipeline calculations are deterministic per product. |
 | `get_cached_alternatives()` | 5 min (`300s`) | `asin` | Product graph comparisons are deterministic per product. |
+| `get_product_image()` | 1 hour (`3600s`) | `asin` | A cached thumbnail is immutable for an ASIN; a `404` (no thumbnail) is cached as `None`. |
 | `get_cached_health()` | 15 s (`15s`) | None | Short interval for near-realtime backend liveness. |
 
 ### Cache Invalidation
@@ -181,6 +185,13 @@ The builders are the unit-tested half (`tests/unit/test_component_figures.py`); 
 
 The four non-chart components expose only a render function: `metric_card`, `verdict_badge`, `concern_list` and `alternatives_table`.
 
+`product_image(asin, has_image, width, title)` is the one component that talks to
+the API: it shows the cached thumbnail bytes as an image, or a neutral gray
+placeholder tile drawn with inline HTML (no external resource, no broken-image
+icon) when the product has no image or the fetch fails. It requests the image
+**only** when `has_image` is true, and it always renders the attribution caption.
+See `docs/images.md` for the data model and the download step.
+
 ### 8.2 Empty and partial data
 
 A component never crashes and never invents a value:
@@ -222,3 +233,106 @@ Rename-Item app\pages\_component_gallery.py _component_gallery.py.disabled
 ```
 
 The component library itself (`app/components/`) stays in place — only the review page is hidden.
+
+---
+
+## 10. Dashboard Pages on the Stub API (manual click-through checklist)
+
+The seven pages are wired to the stub API. Work through the list with both servers
+running (`make run-api` and `make run-ui`) and confirm every step.
+
+### Shared behaviour to confirm everywhere
+
+- **Analysis is fetched once per product.** The first of pages 3-7 you open fetches
+  `GET /products/{asin}/analysis` (a spinner is shown) and stores it in
+  `last_analysis`; the other pages reuse it. Selecting a different product clears
+  it so the next page fetches the new product's analysis.
+- **Failure mapping, never a traceback:**
+  - `ApiNotFound` (404) shows *"Product not found in the serving cache."*, clears
+    `selected_asin` and offers a link back to Product Selection.
+  - `ApiUnavailable` shows *"The analysis API is not reachable."* plus the exact
+    recovery command `uvicorn munasib.api.main:app --port 8000`.
+  - Any other API error shows the request id so it can be matched to a backend log.
+- **Nothing is fabricated.** A missing price reads *"Price not listed"*, a missing
+  rank *"Rank not listed"*, and any other missing scalar *"n/a"*.
+
+### 1. Product Selection (`1_Product_Selection.py`)
+
+- [ ] Type a brand keyword (e.g. `Range Kleen`) and confirm the results and the
+      "Displaying N-M of T" caption update; changing the query resets to page 1.
+- [ ] Each card shows an image **or** the neutral "No image available" tile, the
+      title, brand, price (or "Price not listed"), review count and mean rating.
+- [ ] Page with **Next ➡️** / **⬅️ Previous**; the borders and page counter follow.
+- [ ] Click **Select** on a product: a success banner naming the ASIN appears and
+      the button on that card becomes a disabled **Selected ✅**.
+
+### 2. Product Overview (`2_Product_Overview.py`)
+
+- [ ] The image (or placeholder) and the title, brand, price and sales rank show.
+- [ ] The four metric cards show reviews, mean rating and the first/last review dates.
+- [ ] The feature bullets list, and the **Full product description** expander opens.
+- [ ] The "Related products" counts and the "Data basis · category … pipeline …"
+      caption are present.
+
+### 3. Review Analysis (`3_Review_Analysis.py`)
+
+- [ ] The stub banner is visible (never a real result without it).
+- [ ] The star histogram, sentiment breakdown, sentiment-over-time lines and aspect
+      bars all render (or their `st.info` empty state, never an exception).
+- [ ] The verified-purchase and helpfulness metric cards show.
+- [ ] The review table pages with **⬅️ Newer / Older ➡️** buttons and both filters
+      (sentiment label, verified purchase) narrow the rows and its caption count.
+
+### 4. Risk and Evidence (`4_Risk_and_Evidence.py`)
+
+- [ ] The stub banner is visible.
+- [ ] The risk gauge is banded by `configs/verdict_thresholds.yaml`, with the band
+      legend caption underneath.
+- [ ] The composite-evidence metric card shows.
+- [ ] The indicator table lists every evidence and risk indicator with value, raw
+      value, direction and description.
+- [ ] The radar, the fuzzy membership chart and the TOPSIS chart render.
+
+### 5. Explanation (SHAP) (`5_Explanation_SHAP.py`)
+
+- [ ] The stub banner is visible.
+- [ ] R², MAE and "meets configured minimum" metric cards show, with the
+      plain-language note on how to read them.
+- [ ] The waterfall chart renders with the base value and the final prediction.
+- [ ] The reasons list quotes real numbers next to each feature.
+
+### 6. Alternatives (`6_Alternatives.py`)
+
+- [ ] The stub banner is visible.
+- [ ] The "usable of total related" caption shows.
+- [ ] Each alternative card shows an image or placeholder, its verdict badge, risk
+      score, the three deltas, and the relation as an icon **plus** a word.
+- [ ] The comparison table at the bottom matches the cards.
+- [ ] Click **Switch to this product**: the active ASIN changes, the analysis is
+      re-fetched for the new product, and the page re-renders for it.
+- [ ] On a product with no usable alternative, the empty reason and both counts
+      are shown instead of cards.
+
+### 7. Consumer Verdict (`7_Consumer_Verdict.py`)
+
+- [ ] The stub banner is visible.
+- [ ] The verdict badge, risk gauge, evidence strength and risk score show.
+- [ ] The major concerns list, the rationale and the data-basis block
+      (category, review count, date range, reference date, pipeline version) show.
+- [ ] **Download analysis (JSON)** saves a file that parses back into
+      `AnalysisResponse`; **Download summary (CSV)** saves the flat summary.
+- [ ] (PDF export arrives in a later prompt.)
+
+### Image behaviour (all pages)
+
+- [ ] With `has_image` false, the page shows the neutral tile and does **not** call
+      `GET /products/{asin}/image` at all.
+- [ ] With `has_image` true and a thumbnail cached, the real image renders.
+- [ ] With `has_image` true but the fetch returning 404 (or failing), the neutral
+      tile is shown instead — no broken image, no exception.
+- [ ] The caption
+      `Images: Amazon product listings, UCSD Amazon Review Data 2018` appears on
+      every page that can show an image (1, 2, 6, 7).
+- [ ] Nothing is hotlinked: the app works with no internet connection as long as
+      the downloader has populated `data/images/` (see `docs/images.md`).
+
