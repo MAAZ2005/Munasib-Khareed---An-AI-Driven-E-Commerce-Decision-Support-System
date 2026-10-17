@@ -1,6 +1,6 @@
 # Data Quality Report - Appliances
 
-- **Generated:** 2026-10-10T11:31:52+00:00
+- **Generated:** 2026-10-17T10:47:22+00:00
 - **Category:** `Appliances`
 - **Config:** `configs/config.yaml` (`dataset.audit.candidate_min_reviews` = 50, `dataset.split.seed` = 42)
 - **Reviews file:** `data\raw\Appliances.json.gz` (68,569,830 bytes)
@@ -88,6 +88,8 @@ Null counts (None/NaT/pd.NA); empty strings are not nulls.
 | mean_rating | 0 | 0.0% |
 | first_review_time | 0 | 0.0% |
 | last_review_time | 0 | 0.0% |
+| image_url | 993 | 48.1% |
+| image_missing | 0 | 0.0% |
 
 ### reviews.parquet (425,993 rows)
 

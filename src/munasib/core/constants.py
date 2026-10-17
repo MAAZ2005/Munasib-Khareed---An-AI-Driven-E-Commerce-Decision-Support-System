@@ -7,6 +7,8 @@ verdict labels) are defined **once** here and imported everywhere - no bare
 
 from __future__ import annotations
 
+import re
+
 # ------------------------------------------------------------------------------
 # Weak-supervision sentiment labels (locked FYP design decision #2).
 # `sentiment_label_weak` in reviews is derived from star ratings:
@@ -53,3 +55,16 @@ VERDICT_RISK = "CONSUMER RISK"
 
 #: All valid verdict labels, in increasing severity order.
 VERDICT_LABELS: tuple[str, ...] = (VERDICT_CONSIDER, VERDICT_CAUTION, VERDICT_RISK)
+
+# ------------------------------------------------------------------------------
+# Product identity and the local image cache (display-only; no image analysis).
+# ------------------------------------------------------------------------------
+#: An Amazon ASIN is exactly 10 alphanumeric characters. Both the image endpoint
+#: and the image downloader validate against this before any filesystem access,
+#: so a crafted ``asin`` can never escape the thumbnail-cache directory.
+ASIN_PATTERN = re.compile(r"^[A-Za-z0-9]{10}$")
+
+#: Attribution rendered wherever a cached product image is shown. Images are the
+#: Amazon listing photos carried by the UCSD Amazon Review Data (2018); they are
+#: served from the local cache, never hotlinked.
+IMAGE_ATTRIBUTION = "Images: Amazon product listings, UCSD Amazon Review Data 2018"

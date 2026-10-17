@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import insert
 
 from munasib.api.main import REQUEST_ID_HEADER, create_app
@@ -55,7 +56,16 @@ META = {
 }
 
 
-def _product_row(asin: str, *, title: str, brand: str | None, split: str, n_reviews: int) -> dict:
+def _product_row(
+    asin: str,
+    *,
+    title: str,
+    brand: str | None,
+    split: str,
+    n_reviews: int,
+    image_url: str | None = None,
+    image_cached: bool = False,
+) -> dict:
     """Build one products-table insert payload.
 
     Args:
@@ -64,6 +74,8 @@ def _product_row(asin: str, *, title: str, brand: str | None, split: str, n_revi
         brand: Brand or None.
         split: Product-level split name.
         n_reviews: Stored review count.
+        image_url: Source image URL or None (``image_missing`` mirrors it).
+        image_cached: True only when a local thumbnail exists for the ASIN.
 
     Returns:
         Insert payload with NULLs for the missing brand/price/rank.
@@ -90,12 +102,30 @@ def _product_row(asin: str, *, title: str, brand: str | None, split: str, n_revi
         "mean_rating": 3.0,
         "first_review_time": datetime(2018, 1, 1),
         "last_review_time": datetime(2018, 3, 1),
+        "image_url": image_url,
+        "image_missing": image_url is None,
+        "image_cached": image_cached,
     }
 
 
 PRODUCTS = [
-    _product_row(SUBJECT, title="FilterBuy Widget", brand="FilterBuy", split=SPLIT_TRAIN, n_reviews=4),
-    _product_row(ALT_ONE, title="Acme Filter", brand="Acme", split=SPLIT_TRAIN, n_reviews=2),
+    _product_row(
+        SUBJECT,
+        title="FilterBuy Widget",
+        brand="FilterBuy",
+        split=SPLIT_TRAIN,
+        n_reviews=4,
+        image_url=f"https://example.com/{SUBJECT}.jpg",
+        image_cached=True,
+    ),
+    _product_row(
+        ALT_ONE,
+        title="Acme Filter",
+        brand="Acme",
+        split=SPLIT_TRAIN,
+        n_reviews=2,
+        image_url=f"https://example.com/{ALT_ONE}.jpg",
+    ),
     _product_row(ALT_TWO, title="Filter Pro", brand="Acme", split=SPLIT_VAL, n_reviews=2),
     _product_row(LONELY, title="Orphan Widget", brand="Acme", split=SPLIT_TRAIN, n_reviews=1),
     _product_row(EDGES_ONLY_OUT, title="Outside Widget", brand="Acme", split=SPLIT_TRAIN, n_reviews=1),
@@ -173,15 +203,19 @@ EDGES = [
 
 @pytest.fixture()
 def workspace(tmp_path: Path) -> Path:
-    """Create the temp cache and its meta.json.
+    """Create the temp cache, its meta.json and one cached thumbnail.
 
     Args:
         tmp_path: Pytest temporary directory.
 
     Returns:
-        The directory holding the SQLite file and meta.json.
+        The directory holding the SQLite file, meta.json and ``images/``.
     """
     (tmp_path / "meta.json").write_text(json.dumps(META), encoding="utf-8")
+    # A real (tiny) JPEG so the image route streams genuine image bytes offline.
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    Image.new("RGB", (8, 8), (200, 30, 30)).save(images_dir / f"{SUBJECT}.jpg", format="JPEG")
     engine = create_engine_from_settings(db_url=f"sqlite:///{tmp_path / 'cache.sqlite'}")
     init_db(engine)
     factory = create_session_factory(engine)
@@ -195,7 +229,7 @@ def workspace(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def settings(workspace: Path) -> Settings:
-    """Settings pointing at the temp cache and temp meta.json.
+    """Settings pointing at the temp cache, temp meta.json and temp image cache.
 
     Args:
         workspace: Directory holding the fixture cache.
@@ -211,7 +245,8 @@ def settings(workspace: Path) -> Settings:
                     "db_path": workspace / "cache.sqlite",
                     "processed_data_dir": workspace,
                 }
-            )
+            ),
+            "images": base.images.model_copy(update={"directory": workspace / "images"}),
         }
     )
 
@@ -411,6 +446,87 @@ def test_unknown_asin_returns_404_envelope(client: TestClient, path: str) -> Non
     assert body["code"] == "PRODUCT_NOT_FOUND"
     assert body["detail"] == {"asin": "NOTANASIN"}
     assert body["message"] == "product 'NOTANASIN' not found in the serving cache"
+
+
+# ------------------------------------------------------------------------------
+# Product images (local cache, never hotlinked)
+# ------------------------------------------------------------------------------
+
+
+def test_product_detail_reports_has_image(client: TestClient) -> None:
+    """`has_image` is true only for a product with a locally cached thumbnail."""
+    subject = client.get(f"/products/{SUBJECT}").json()
+    assert subject["has_image"] is True
+    assert "image_url" not in subject  # the upstream URL is never exposed
+    other = client.get(f"/products/{ALT_ONE}").json()
+    # ALT_ONE has a source image URL but no downloaded thumbnail.
+    assert other["has_image"] is False
+
+
+def test_product_list_reports_has_image(client: TestClient) -> None:
+    """The search contract carries the same per-item flag."""
+    body = client.get("/products?limit=100").json()
+    flags = {item["asin"]: item["has_image"] for item in body["items"]}
+    assert flags[SUBJECT] is True
+    assert all(value is False for asin, value in flags.items() if asin != SUBJECT)
+    assert all(isinstance(value, bool) for value in flags.values())
+
+
+def test_image_route_serves_the_cached_thumbnail(
+    client: TestClient, settings: Settings
+) -> None:
+    """The route streams real JPEG bytes from the local cache with Cache-Control."""
+    response = client.get(f"/products/{SUBJECT}/image")
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.content.startswith(b"\xff\xd8")  # JPEG SOI marker
+    assert response.headers["cache-control"] == (
+        f"public, max-age={settings.images.cache_max_age_seconds}"
+    )
+
+
+def test_image_route_head_answers_headers_only(
+    client: TestClient, settings: Settings
+) -> None:
+    """HEAD is supported (FastAPI does not derive it from GET) and sends no body."""
+    response = client.head(f"/products/{SUBJECT}/image")
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.headers["cache-control"] == (
+        f"public, max-age={settings.images.cache_max_age_seconds}"
+    )
+    assert response.content == b""
+
+
+@pytest.mark.parametrize("asin", [ALT_ONE, ALT_TWO, LONELY, TEST_SPLIT])
+def test_image_route_404_when_nothing_is_cached(client: TestClient, asin: str) -> None:
+    """A product without a cached thumbnail answers 404 - never a redirect."""
+    response = client.get(f"/products/{asin}/image")
+    assert response.status_code == 404, response.text
+    body = response.json()
+    assert body["code"] == "PRODUCT_NOT_FOUND"
+    assert body["detail"] == {"asin": asin}
+
+
+def test_image_route_404_when_the_file_disappeared(
+    client: TestClient, settings: Settings
+) -> None:
+    """A cache flag with no file behind it is reported as missing, not served."""
+    Path(settings.images.directory, f"{SUBJECT}.jpg").unlink()
+    response = client.get(f"/products/{SUBJECT}/image")
+    assert response.status_code == 404
+    assert response.json()["code"] == "PRODUCT_NOT_FOUND"
+
+
+@pytest.mark.parametrize(
+    "asin",
+    ["NOTANASIN", "short", "B0000000010", "B00000000.", "%2e%2e%2eetc", "B00000000-"],
+)
+def test_image_route_rejects_malformed_asins(client: TestClient, asin: str) -> None:
+    """A malformed ASIN is a 404 before any filesystem access (never a 500)."""
+    response = client.get(f"/products/{asin}/image")
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "PRODUCT_NOT_FOUND"
 
 
 # ------------------------------------------------------------------------------
@@ -640,6 +756,21 @@ def test_real_unknown_asin_is_404(real_client: TestClient | None) -> None:
     if real_client is None:
         pytest.skip("SQLite serving cache not built (python scripts/ingest_db.py)")
     assert real_client.get("/products/NOTANASIN").status_code == 404
+
+
+def test_real_cache_image_flag_matches_the_route(real_client: TestClient | None) -> None:
+    """On the real cache, `has_image` and the image route can never disagree."""
+    if real_client is None:
+        pytest.skip("SQLite serving cache not built (python scripts/ingest_db.py)")
+    detail = real_client.get("/products/B00009V3UF").json()
+    assert isinstance(detail["has_image"], bool)
+    assert "image_url" not in detail
+    response = real_client.get("/products/B00009V3UF/image")
+    if detail["has_image"]:
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/jpeg"
+    else:
+        assert response.status_code == 404
 
 
 def test_real_product_without_usable_alternatives(real_client: TestClient | None) -> None:

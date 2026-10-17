@@ -83,6 +83,13 @@ def _products_frame() -> pd.DataFrame:
             "last_review_time": pd.to_datetime(
                 ["2018-01-02", "2018-01-03", "2018-01-04"], utc=True
             ),
+            # Row 2 has no usable image URL (the flag mirrors the null).
+            "image_url": [
+                "https://example.com/one.jpg",
+                None,
+                "https://example.com/three.jpg",
+            ],
+            "image_missing": [False, True, False],
         }
     )
 
@@ -307,6 +314,65 @@ def test_ingest_preserves_null_versus_false(workspace: dict[str, Path]) -> None:
     assert no_text.has_text is False and no_text.review_text_clean is None
     assert features == ["steel", "compact"]
     assert naive_time.tzinfo is None  # stored as naive UTC
+
+
+def test_ingest_sets_image_columns(workspace: dict[str, Path]) -> None:
+    """``image_url``/``image_missing`` mirror the parquet; ``image_cached`` starts False."""
+    module = _load_module()
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    engine = create_engine_from_settings(db_url=f"sqlite:///{workspace['db']}")
+    try:
+        with engine.connect() as connection:
+            rows = {
+                row.asin: (row.image_url, row.image_missing, row.image_cached)
+                for row in connection.execute(
+                    select(
+                        Product.asin, Product.image_url, Product.image_missing, Product.image_cached
+                    )
+                )
+            }
+    finally:
+        engine.dispose()
+    assert rows["B000000001"] == ("https://example.com/one.jpg", False, False)
+    assert rows["B000000002"] == (None, True, False)
+    assert rows["B000000003"] == ("https://example.com/three.jpg", False, False)
+    assert all(entry[2] is False for entry in rows.values())
+
+
+def test_verify_requires_the_image_columns(workspace: dict[str, Path]) -> None:
+    """A cache missing the image columns fails --verify (create_all never migrates)."""
+    module = _load_module()
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    engine = create_engine_from_settings(db_url=f"sqlite:///{workspace['db']}")
+    try:
+        with engine.begin() as connection:
+            try:
+                connection.exec_driver_sql("ALTER TABLE products DROP COLUMN image_cached")
+            except Exception as exc:  # pragma: no cover - old SQLite without DROP COLUMN
+                pytest.skip(f"SQLite cannot DROP COLUMN here: {exc}")
+    finally:
+        engine.dispose()
+    assert module.main(["--config", str(workspace["config"]), "--verify"]) == 1
+
+
+def test_missing_image_column_aborts_the_load(workspace: dict[str, Path]) -> None:
+    """A parquet without the image columns aborts instead of ingesting wrong data."""
+    module = _load_module()
+    without_images = _products_frame().drop(columns=["image_url", "image_missing"])
+    without_images.to_parquet(workspace["processed"] / "products.parquet", index=False)
+    assert module.main(["--config", str(workspace["config"])]) == 1
+
+
+def test_convert_record_adds_extras() -> None:
+    """The cache-only ``image_cached`` default is applied to every product row."""
+    module = _load_module()
+    row = module._convert_record({"asin": "B000000001"}, {}, {"image_cached": False})
+    assert row == {"asin": "B000000001", "image_cached": False}
+    # A parquet column with the same name would win (setdefault semantics).
+    row = module._convert_record(
+        {"asin": "B000000001", "image_cached": True}, {}, {"image_cached": False}
+    )
+    assert row["image_cached"] is True
 
 
 def test_ingest_is_idempotent(workspace: dict[str, Path]) -> None:

@@ -139,6 +139,39 @@ api:
     - "http://localhost:8501"  # Streamlit default port
     - "http://127.0.0.1:8501"
 
+# Local product-image cache (display only; the dashboard never hotlinks).
+# `scripts/download_images.py` fills `directory` with one resized, metadata-stripped
+# JPEG per ASIN; `GET /products/{asin}/image` serves them from disk so the UI works
+# offline. The cache directory is git-ignored (only `.gitkeep` is tracked).
+images:
+  directory: "data/images"
+  # Longest side of the stored thumbnail, in pixels (aspect ratio preserved).
+  thumbnail_max_side: 320
+  # Polite pause between two downloads, in seconds (never hammer the host).
+  download_delay_seconds: 0.5
+  timeout_seconds: 15.0
+  # Sent as the User-Agent on every request; identifies the project, never a browser.
+  user_agent: "MunasibKhareed/0.1 (academic FYP; local product-thumbnail cache; contact: munasib-khareed-fyp@example.invalid)"
+  # Cache-Control max-age advertised by the image endpoint (cached files are immutable).
+  cache_max_age_seconds: 86400
+
+# Thresholds for scripts/suggest_demo_products.py (candidate ASINs for a live demo).
+# A candidate must have an image candidate URL and at least min_usable_alternatives
+# usable in-subset alternatives, so every suggested product can be compared.
+demo_products:
+  per_group: 10
+  min_usable_alternatives: 3
+  well_reviewed:
+    mean_rating_min: 4.5
+    min_reviews: 100
+  polarized:
+    # Share of the product's reviews that are 5-star and 1-2 star respectively:
+    # both camps must be materially present for the polarization story to hold.
+    five_star_share_min: 0.25
+    low_star_share_min: 0.25
+  low_rated:
+    mean_rating_max: 3.0
+
 logging:
   level: "INFO"
   file_path: "logs/munasib.log"

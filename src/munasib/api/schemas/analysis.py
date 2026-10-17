@@ -54,6 +54,7 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
         "n_reviews": 52,
         "mean_rating": 2.634615,
         "split": "train",
+        "has_image": True,
         "brand_missing": False,
         "price_status": "single",
         "price_missing": False,

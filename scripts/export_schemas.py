@@ -86,6 +86,32 @@ ENDPOINTS: list[dict[str, Any]] = [
         "summary": "Full profile of one product.",
         "notes": [
             "Answer 404 with code `PRODUCT_NOT_FOUND` when the ASIN is not in the cache.",
+            "`has_image` is true only when a thumbnail has been cached locally, so "
+            "`GET /products/{asin}/image` can serve it; it is never a claim about the "
+            "upstream listing.",
+            "`has_image` depends on which thumbnails a machine has downloaded (the "
+            "examples assume the documented `--limit 5` smoke run, so only `B00009V3UF` "
+            "shows `true`); a product without a cached image is a normal case.",
+        ],
+    },
+    {
+        "method": "GET",
+        "path": "/products/{asin}/image",
+        "query": "",
+        "model": None,
+        "binary": {"media_type": "image/jpeg"},
+        "summary": "The locally cached product thumbnail (offline; never hotlinked).",
+        "notes": [
+            "Returns `image/jpeg` bytes with a long-lived `Cache-Control: public, "
+            "max-age=<images.cache_max_age_seconds>` header (cached thumbnails are "
+            "immutable for a given ASIN).",
+            "Available only when the product's `has_image` is true (a thumbnail exists in "
+            "the local cache); otherwise `404` with code `PRODUCT_NOT_FOUND` - the "
+            "endpoint never redirects to the upstream Amazon URL.",
+            "The ASIN must be exactly 10 alphanumeric characters; anything else is "
+            "rejected with `404` before any filesystem access.",
+            "`HEAD` is supported and answers with the same headers and no body, so a "
+            "client can check availability cheaply.",
         ],
     },
     {
@@ -280,6 +306,10 @@ def _json_block(payload: Any, schema_name: str) -> list[str]:
 def _endpoint_section(endpoint: dict[str, Any]) -> str:
     """Render one endpoint section (summary, notes, generated examples, markers).
 
+    A JSON response model renders a marked-up example block; an endpoint with
+    ``model=None`` and a ``binary`` descriptor (the image route) instead states its
+    media type, because the body is not JSON.
+
     Args:
         endpoint: Endpoint description from :data:`ENDPOINTS`.
 
@@ -297,6 +327,11 @@ def _endpoint_section(endpoint: dict[str, Any]) -> str:
     for note in endpoint["notes"]:
         lines.append(f"- {note}")
     lines.append("")
+    if model is None:
+        binary = endpoint.get("binary") or {}
+        media_type = binary.get("media_type", "application/octet-stream")
+        lines.append(f"Response `200`: `{media_type}` bytes (not a JSON body).")
+        return "\n".join(lines) + "\n"
     lines.append(f"Example response `200` (schema `{model.__name__}`):")
     lines.append("")
     lines.extend(_json_block(_example_of(model), model.__name__))
@@ -342,6 +377,12 @@ def render_api_doc() -> str:
         "source had no usable value, and `*_missing` flags say so; nothing is imputed. "
         "`verified` is `null` when the source did not say, which is not the same as "
         "`false`."
+    )
+    out.append(
+        "- **Images are display-only and served from a local cache.** `has_image` is true "
+        "only when a thumbnail has been downloaded for the ASIN; "
+        "`GET /products/{asin}/image` streams that file, so the dashboard works offline "
+        "and never hotlinks the upstream listing."
     )
     out.append(
         "- **Sentiment is weak supervision.** The API exposes the label names "

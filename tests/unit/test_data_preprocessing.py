@@ -566,3 +566,107 @@ class TestVerifiedNullVersusFalse:
         b1 = reviews.loc["B000000001", "verified"]
         assert {bool(v) for v in b1} == {True, False}
         assert str(reviews["verified"].dtype) == "boolean"  # nullable dtype survives
+
+
+class TestProductImages:
+    """``image_url``/``image_missing`` derived from the loader's image columns."""
+
+    def _products(self, raw_dir: Path, tmp_path: Path) -> pd.DataFrame:
+        out = tmp_path / "processed"
+        build_processed_dataset(
+            _settings(min_reviews=1),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=4,
+        )
+        return pd.read_parquet(out / "products.parquet").set_index("asin")
+
+    def test_highres_preferred_then_small(self, raw_dir: Path, tmp_path: Path) -> None:
+        """The first high-res URL wins; the small URL is only a fallback."""
+        products = self._products(raw_dir, tmp_path)
+        assert products.loc["B000000001", "image_url"] == "https://example.com/hi1.jpg"
+        assert bool(products.loc["B000000001", "image_missing"]) is False
+        # B000000003 has only a single-string imageURL -> used as-is.
+        assert products.loc["B000000003", "image_url"] == "https://example.com/c.jpg"
+        assert bool(products.loc["B000000003", "image_missing"]) is False
+    def test_missing_and_non_http_stay_missing(self, raw_dir: Path, tmp_path: Path) -> None:
+        """Empty lists, non-http URLs and absent fields all mean "no image"."""
+        products = self._products(raw_dir, tmp_path)
+        for asin in ("B000000002", "B000000004", "B000000005"):
+            assert pd.isna(products.loc[asin, "image_url"])
+            assert bool(products.loc[asin, "image_missing"]) is True
+
+    def test_flag_matches_null_url(self, raw_dir: Path, tmp_path: Path) -> None:
+        """``image_missing`` is exactly the nullness of ``image_url``."""
+        products = self._products(raw_dir, tmp_path)
+        assert len(products) == 5  # B000000006 has metadata but no review
+        assert (products["image_url"].isna() == products["image_missing"]).all()
+        assert int(products["image_missing"].sum()) == 3  # 2 of 5 have an image
+
+
+class TestDuplicateImageRecovery:
+    """An image carried only by a dropped duplicate row is recovered (nothing else changes)."""
+
+    def _raw_dir(self, tmp_path: Path, metadata: list[dict[str, Any]]) -> Path:
+        target = tmp_path / "raw"
+        target.mkdir()
+        reviews = [
+            {
+                "asin": record["asin"],
+                "rating": 5.0,
+                "reviewText": f"text {index}",
+                "unixReviewTime": 1_500_000_000 + index,
+            }
+            for index, record in enumerate(metadata)
+        ]
+        _write_gzip_jsonl(target / "Appliances.json.gz", reviews)
+        _write_gzip_jsonl(target / "meta_Appliances.json.gz", metadata)
+        return target
+
+    def test_dropped_duplicate_fills_a_missing_image(self, tmp_path: Path) -> None:
+        """Kept row wins; a duplicate row's image is used only when the kept row has none."""
+        raw_dir = self._raw_dir(
+            tmp_path,
+            [
+                # A1: first (kept) row has no image, the duplicate does -> recovered.
+                {"asin": "B0000000A1", "title": "A1 first", "imageURLHighRes": [], "imageURL": []},
+                {
+                    "asin": "B0000000A1",
+                    "title": "A1 duplicate",
+                    "imageURLHighRes": ["https://example.com/a1-dup.jpg"],
+                },
+                # A2: no duplicate, no image -> stays missing.
+                {"asin": "B0000000A2", "title": "A2"},
+                # A3: the kept row has an image and the duplicate a different one -> kept wins.
+                {
+                    "asin": "B0000000A3",
+                    "title": "A3 first",
+                    "imageURLHighRes": ["https://example.com/a3-first.jpg"],
+                },
+                {
+                    "asin": "B0000000A3",
+                    "title": "A3 duplicate",
+                    "imageURLHighRes": ["https://example.com/a3-dup.jpg"],
+                },
+            ],
+        )
+        out = tmp_path / "processed"
+        report = build_processed_dataset(
+            _settings(min_reviews=1),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=2,
+        )
+        products = pd.read_parquet(out / "products.parquet").set_index("asin")
+
+        assert report.products_duplicate_rows_dropped == 2
+        assert products.loc["B0000000A1", "image_url"] == "https://example.com/a1-dup.jpg"
+        assert bool(products.loc["B0000000A1", "image_missing"]) is False
+        # The keep rule itself is unchanged: the first row is still the kept one.
+        assert products.loc["B0000000A1", "title"] == "A1 first"
+        assert products.loc["B0000000A3", "image_url"] == "https://example.com/a3-first.jpg"
+        assert pd.isna(products.loc["B0000000A2", "image_url"])
+        assert bool(products.loc["B0000000A2", "image_missing"]) is True
+

@@ -7,13 +7,19 @@ companion ``*_missing`` flag - the API never invents a price, rank or brand
 value (locked project rule). Text is returned exactly as stored after
 preprocessing, including HTML entities such as ``&ndash;`` that appear in the
 UCSD Amazon source.
+
+Images are **display-only** and always served from the local cache: ``has_image``
+is true only when a downloaded thumbnail exists for the ASIN (the ``image_cached``
+cache flag), and ``GET /products/{asin}/image`` streams that file. The upstream
+image URL is deliberately never exposed, and a product without a cached image is
+a normal, fully supported case.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from .common import Page, UtcDatetime
 
@@ -26,6 +32,7 @@ PRODUCT_SUMMARY_EXAMPLE: dict[str, Any] = {
     "n_reviews": 52,
     "mean_rating": 2.634615,
     "split": "train",
+    "has_image": True,
 }
 
 
@@ -64,6 +71,13 @@ class ProductSummary(BaseModel):
         description="Product-level split (train/val/test) assigned by the build; "
         "reviews inherit it."
     )
+    has_image: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("has_image", "image_cached"),
+        description="True only when a local thumbnail is cached (the cache flag), so "
+        "GET /products/{asin}/image can serve it. The upstream image URL is never "
+        "exposed: images are display-only and always come from the local cache.",
+    )
 
 
 class ProductDetail(ProductSummary):
@@ -81,6 +95,7 @@ class ProductDetail(ProductSummary):
                 "n_reviews": 52,
                 "mean_rating": 2.634615,
                 "split": "train",
+                "has_image": True,
                 "brand_missing": False,
                 "price_status": "single",
                 "price_missing": False,
@@ -178,6 +193,7 @@ class ProductPage(Page[ProductSummary]):
                         "n_reviews": 152,
                         "mean_rating": 4.473684,
                         "split": "train",
+                        "has_image": False,
                     },
                     {
                         "asin": "B01FQR5RZE",
@@ -188,6 +204,7 @@ class ProductPage(Page[ProductSummary]):
                         "n_reviews": 114,
                         "mean_rating": 3.605263,
                         "split": "test",
+                        "has_image": False,
                     },
                 ],
             }

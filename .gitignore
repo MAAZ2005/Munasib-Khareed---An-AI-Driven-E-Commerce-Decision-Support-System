@@ -67,6 +67,9 @@ data/processed/*
 !data/processed/.gitkeep
 data/db/*
 !data/db/.gitkeep
+# Local product-thumbnail cache (filled by scripts/download_images.py; optional artifact)
+data/images/*
+!data/images/.gitkeep
 
 # Models directory contents (ignore model weights / checkpoints while retaining directory structure)
 models/*
@@ -79,6 +82,9 @@ models/*
 
 # Streamlit run cache / secrets
 .streamlit/secrets.toml
+
+# Image-download run report (counts depend on the network; regenerate locally)
+reports/image_download_report.json
 
 # Documentation and project proposal (must never be ignored)
 !docs/

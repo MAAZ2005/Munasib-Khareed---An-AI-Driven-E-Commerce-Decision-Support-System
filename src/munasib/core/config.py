@@ -233,6 +233,127 @@ class LoggingConfig(BaseModel):
     format: str = "%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d - %(message)s"
 
 
+class ImagesConfig(BaseModel):
+    """Local product-thumbnail cache (display only; the dashboard never hotlinks).
+
+    ``scripts/download_images.py`` downloads a small, EXIF-stripped JPEG per ASIN
+    into ``directory`` and the API serves it from disk, so the dashboard keeps
+    working offline. ``cache_max_age_seconds`` is the ``Cache-Control`` lifetime
+    the image endpoint advertises for an immutable cached thumbnail.
+    """
+
+    directory: Path = Path("data/images")
+    thumbnail_max_side: int = 320
+    download_delay_seconds: float = 0.5
+    timeout_seconds: float = 15.0
+    user_agent: str = (
+        "MunasibKhareed/0.1 (academic FYP; local product-thumbnail cache; "
+        "contact: munasib-khareed-fyp@example.invalid)"
+    )
+    cache_max_age_seconds: int = 86400
+
+    @model_validator(mode="after")
+    def _check_positive_values(self) -> "ImagesConfig":
+        """Validate the numeric thumbnail settings.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When a size/timeout is not positive, the delay is
+                negative, or the user agent is empty.
+        """
+        if self.thumbnail_max_side < 1:
+            raise ValueError(
+                f"images.thumbnail_max_side must be >= 1, got {self.thumbnail_max_side}"
+            )
+        if self.download_delay_seconds < 0.0:
+            raise ValueError(
+                f"images.download_delay_seconds must be >= 0, got {self.download_delay_seconds}"
+            )
+        if self.timeout_seconds <= 0.0:
+            raise ValueError(f"images.timeout_seconds must be > 0, got {self.timeout_seconds}")
+        if self.cache_max_age_seconds < 0:
+            raise ValueError(
+                f"images.cache_max_age_seconds must be >= 0, got {self.cache_max_age_seconds}"
+            )
+        if not self.user_agent.strip():
+            raise ValueError("images.user_agent must not be empty (polite downloads)")
+        return self
+
+
+class WellReviewedConfig(BaseModel):
+    """Thresholds for "well-reviewed" demo products."""
+
+    mean_rating_min: float = 4.5
+    min_reviews: int = 100
+
+
+class PolarizedConfig(BaseModel):
+    """Thresholds for "polarized" demo products (both camps materially present)."""
+
+    five_star_share_min: float = 0.25
+    low_star_share_min: float = 0.25
+
+
+class LowRatedConfig(BaseModel):
+    """Thresholds for "low-rated" demo products."""
+
+    mean_rating_max: float = 3.0
+
+
+class DemoProductsConfig(BaseModel):
+    """Selection thresholds for ``scripts/suggest_demo_products.py``.
+
+    The suggester prints candidate ASINs for a live demo: well-reviewed,
+    polarized and low-rated products that also have a cached image candidate and
+    enough usable in-subset alternatives to compare against.
+    """
+
+    per_group: int = 10
+    min_usable_alternatives: int = 3
+    well_reviewed: WellReviewedConfig = Field(default_factory=WellReviewedConfig)
+    polarized: PolarizedConfig = Field(default_factory=PolarizedConfig)
+    low_rated: LowRatedConfig = Field(default_factory=LowRatedConfig)
+
+    @model_validator(mode="after")
+    def _check_selection_values(self) -> "DemoProductsConfig":
+        """Validate the demo-suggestion thresholds.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When a count is not positive or a rating/share bound is
+                outside its 0-5 / (0, 1] range.
+        """
+        if self.per_group < 1:
+            raise ValueError(f"demo_products.per_group must be >= 1, got {self.per_group}")
+        if self.min_usable_alternatives < 1:
+            raise ValueError(
+                "demo_products.min_usable_alternatives must be >= 1, got "
+                f"{self.min_usable_alternatives}"
+            )
+        if self.well_reviewed.min_reviews < 1:
+            raise ValueError(
+                "demo_products.well_reviewed.min_reviews must be >= 1, got "
+                f"{self.well_reviewed.min_reviews}"
+            )
+        for name, value in (
+            ("well_reviewed.mean_rating_min", self.well_reviewed.mean_rating_min),
+            ("low_rated.mean_rating_max", self.low_rated.mean_rating_max),
+        ):
+            if not 0.0 <= value <= 5.0:
+                raise ValueError(f"demo_products.{name} must be in [0, 5], got {value}")
+        for name, value in (
+            ("polarized.five_star_share_min", self.polarized.five_star_share_min),
+            ("polarized.low_star_share_min", self.polarized.low_star_share_min),
+        ):
+            if not 0.0 < value <= 1.0:
+                raise ValueError(f"demo_products.{name} must be in (0, 1], got {value}")
+        return self
+
+
 class Settings(BaseModel):
     """Master application settings model."""
 
@@ -245,6 +366,8 @@ class Settings(BaseModel):
     xai: XAIConfig = Field(default_factory=XAIConfig)
     verdict: VerdictConfig = Field(default_factory=VerdictConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
+    images: ImagesConfig = Field(default_factory=ImagesConfig)
+    demo_products: DemoProductsConfig = Field(default_factory=DemoProductsConfig)
     api: APIConfig = Field(default_factory=APIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 

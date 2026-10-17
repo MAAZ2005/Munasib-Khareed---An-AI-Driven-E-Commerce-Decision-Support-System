@@ -47,6 +47,7 @@ Interactive docs: <http://127.0.0.1:8000/docs> (Swagger UI) and
 | GET | `/meta/category` | `CategoryMetaResponse` |
 | GET | `/products` | `ProductPage` |
 | GET | `/products/{asin}` | `ProductDetail` |
+| GET | `/products/{asin}/image` | `image/jpeg` (cached thumbnail) |
 | GET | `/products/{asin}/reviews` | `ReviewPage` |
 | GET | `/products/{asin}/analysis` | `AnalysisResponse` |
 | GET | `/products/{asin}/alternatives` | `AlternativesResult` |
@@ -83,6 +84,9 @@ curl.exe "http://127.0.0.1:8000/products?limit=100&split=train"
 
 # 4. One product's full profile
 curl.exe http://127.0.0.1:8000/products/B00009V3UF
+
+# 4b. Its cached thumbnail (see "Product images" below; 404 until it is downloaded)
+curl.exe -I http://127.0.0.1:8000/products/B00009V3UF/image
 
 # 5. One product's reviews, newest first, with filters
 curl.exe "http://127.0.0.1:8000/products/B00009V3UF/reviews?limit=2"
@@ -136,6 +140,34 @@ behind the same `AnalysisService` contract without any router change.
 
 `/products/{asin}/reviews` and `/products/{asin}/alternatives` carry no
 placeholder values at all.
+
+## Product images
+
+Images are **display-only** (no image analysis) and the dashboard must work
+offline, so the API never hotlinks Amazon. Instead:
+
+1. `python scripts/download_images.py --limit 5` (or `--all`) downloads a small
+   JPEG thumbnail per ASIN into `data/images/` (git-ignored) and sets
+   `products.image_cached` to true for each success.
+2. `GET /products/{asin}/image` streams that local file as `image/jpeg` with a
+   `Cache-Control: public, max-age=<images.cache_max_age_seconds>` header.
+
+`has_image` on `/products` and `/products/{asin}` is true **only** when a
+thumbnail is cached, so the dashboard can decide between an image and a
+placeholder without probing. A product with no usable source image (993 of the
+2,066 here) is a normal case: the endpoint answers `404` with the standard
+envelope and the UI shows a placeholder.
+
+```powershell
+# Fill a few thumbnails, then check one (expect: 200, content-type: image/jpeg)
+python scripts/download_images.py --limit 5
+curl.exe -I http://127.0.0.1:8000/products/<cached-asin>/image
+```
+
+The route validates the ASIN against `ASIN_PATTERN` (exactly 10 alphanumeric
+characters) and confirms the resolved file sits inside the cache directory, so a
+crafted `asin` can never reach the filesystem. Full details, including image
+rights/attribution, live in [`docs/images.md`](images.md).
 
 ## Alternatives counting
 
@@ -221,6 +253,11 @@ Where the brief left room, the simplest option was chosen:
 10. **`total_related` counts products, not edges** (see "Alternatives
     counting"), so the number a client sees matches the alternatives it can
     iterate over rather than a raw row count from `related_products`.
+11. **Images are cached and served locally, never hotlinked.** The image route is
+    a binary endpoint (`response_class=FileResponse`) rather than a JSON model, so
+    `scripts/export_schemas.py` documents it with its media type instead of a JSON
+    block. `has_image` mirrors the serving-cache flag `image_cached`, and a
+    malformed ASIN is rejected before any filesystem access.
 
 ## Tests
 
@@ -235,5 +272,9 @@ python -m pytest tests/unit tests/integration -q
   and config-driven criteria/rules.
 - `tests/integration/test_api.py` - every route over a temporary SQLite cache
   (200s, 404s, 422s, paging, request-id, determinism, the stub markers, empty
-  alternatives, the `real` service error), plus tests against the real
+  alternatives, the `real` service error, the cached-image route and the
+  rejection of a malicious ASIN), plus tests against the real
   `data/db/munasib.sqlite` that skip automatically when it is absent.
+- `tests/unit/test_download_images.py` - the image downloader against an
+  `httpx.MockTransport` (resize, metadata stripping, resume/`--force`, every
+  failure reason, the JSON report counts) with no network.

@@ -8,7 +8,10 @@ and the pipeline fills ``review_features``/``product_features``/
 documented renames: ``description_clean`` -> ``description`` (the cleaned text
 *is* the description of the cache), ``features_clean`` -> ``features`` (stored
 as a JSON array), and the review date columns ``review_datetime``/
-``review_year``/``review_month`` -> ``review_time``/``year``/``month``.
+``review_year``/``review_month`` -> ``review_time``/``year``/``month``. One
+column has no parquet counterpart: ``products.image_cached`` is a serving-cache
+flag that ``scripts/download_images.py`` flips once a local thumbnail exists, so
+freshly ingested rows start ``False``.
 
 Data-integrity rules encoded in the schema (verified from the parquet files,
 never assumed):
@@ -88,6 +91,15 @@ class Product(Base):
     mean_rating: Mapped[float | None] = mapped_column(Float)
     first_review_time: Mapped[datetime | None] = mapped_column(DateTime)
     last_review_time: Mapped[datetime | None] = mapped_column(DateTime)
+    #: Display-only source image URL (parquet ``image_url``); never sent to
+    #: clients - the API exposes only the ``has_image`` boolean.
+    image_url: Mapped[str | None] = mapped_column(Text)
+    #: True when the source published no usable image URL (parquet ``image_missing``).
+    image_missing: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: Serving-cache-only flag: True once a local thumbnail exists under
+    #: ``images.directory`` (set by ``scripts/download_images.py``). Not a parquet
+    #: column, so freshly ingested rows start ``False``.
+    image_cached: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     __table_args__ = (
         Index("ix_products_brand", "brand"),

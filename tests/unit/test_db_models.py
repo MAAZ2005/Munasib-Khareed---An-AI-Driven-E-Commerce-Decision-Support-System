@@ -66,6 +66,8 @@ PRODUCT_ROW = {
     "mean_rating": 4.0,
     "first_review_time": datetime(2018, 1, 1),
     "last_review_time": datetime(2018, 1, 1),
+    "image_url": None,
+    "image_missing": True,
 }
 
 #: Minimal valid review payload (``verified`` intentionally NULL = unknown).
@@ -137,6 +139,30 @@ def test_pipeline_owned_tables_start_empty(engine) -> None:
         for name in ("review_features", "product_features", "analysis_results"):
             total = connection.scalar(text(f"SELECT COUNT(*) FROM {name}"))
             assert total == 0
+
+
+def test_products_table_has_the_image_columns(engine) -> None:
+    """The products table carries the parquet mirrors plus the cache-only flag."""
+    with engine.connect() as connection:
+        columns = {
+            str(row[1]): bool(row[3])  # name -> notnull
+            for row in connection.exec_driver_sql("PRAGMA table_info(products)").fetchall()
+        }
+    assert "image_url" in columns and columns["image_url"] is False  # nullable
+    assert columns["image_missing"] is True
+    assert columns["image_cached"] is True
+
+
+def test_image_cached_defaults_to_false(engine) -> None:
+    """A freshly inserted product has no local thumbnail, so the flag starts False."""
+    with session_scope(create_session_factory(engine)) as session:
+        session.execute(insert(Product), [{k: v for k, v in PRODUCT_ROW.items()
+                                           if not k.startswith("image_")}])
+    with engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT image_url, image_missing, image_cached FROM products")
+        ).one()
+    assert row[0] is None and row[1] == 0 and row[2] == 0
 
 
 def test_init_db_is_idempotent(engine) -> None:

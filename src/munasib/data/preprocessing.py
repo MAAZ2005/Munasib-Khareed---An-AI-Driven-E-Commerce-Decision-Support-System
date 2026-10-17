@@ -26,6 +26,10 @@ Design contract (project rules: *never fabricate*, *faithful load*):
 
 * Nothing is imputed. Missing/unparseable price, rank or brand stay null and get a
   ``*_missing`` boolean flag; review text empties to null with ``has_text=False``.
+* The display-only product image (``image_url`` + ``image_missing``) is the first
+  high-resolution URL, else the first small URL, else null. It is resolved over
+  every duplicate row of an ASIN *before* rows are dropped, so an image carried
+  only by a dropped duplicate is kept (the kept row's own image always wins).
 * The only zero-fill in the build is ``helpful_votes`` (missing vote = 0 recorded
   helpful votes) - documented in :func:`munasib.data.features.normalize_helpful_votes`.
 * Weak sentiment labels come from star ratings (1-2 negative / 3 neutral / 4-5
@@ -133,6 +137,10 @@ PRODUCT_SCHEMA = pa.schema(
         ("mean_rating", pa.float64()),
         ("first_review_time", pa.timestamp("us", tz="UTC")),
         ("last_review_time", pa.timestamp("us", tz="UTC")),
+        # Image columns are appended last so dropping them restores the previous
+        # products.parquet column order exactly (see the P9b parity proof).
+        ("image_url", pa.string()),
+        ("image_missing", pa.bool_()),
     ]
 )
 
@@ -394,16 +402,73 @@ def _clean_review_chunk(chunk: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _clean_product_frame(products: pd.DataFrame) -> pd.DataFrame:
+def _first_image_url(highres: Any, small: Any) -> str | None:
+    """Return the first usable image URL for a row, high-resolution preferred.
+
+    The loader normalises ``imageURLHighRes``/``imageURL`` into list columns
+    (``image_urls_highres``/``image_urls``), so a row carries the full preference
+    order already: take the first high-res URL, else the first small URL, else
+    nothing. Nothing is invented when both are absent/empty.
+
+    Args:
+        highres: ``image_urls_highres`` cell (list of URLs or missing).
+        small: ``image_urls`` cell (list of URLs or missing).
+
+    Returns:
+        The chosen absolute URL, or None when the row has no usable image URL.
+    """
+    for value in (highres, small):
+        if isinstance(value, (list, tuple)) and len(value) > 0:
+            return str(value[0])
+    return None
+
+
+def _first_image_by_asin(products_all: pd.DataFrame) -> dict[str, str]:
+    """Map ASIN -> first usable image URL across *every* duplicate metadata row.
+
+    The build keeps the first row per ASIN (file order) for every product field.
+    A duplicate row of the same ASIN can still be the only one that carries an
+    image URL, so the product's image is resolved over all rows of that ASIN
+    *before* the duplicate rows are dropped. Because rows are scanned in file
+    order and the kept row is the first one, the kept row's own image always wins
+    when it has one; a dropped duplicate only ever fills a gap.
+
+    Args:
+        products_all: Candidate metadata rows *before* de-duplication.
+
+    Returns:
+        ``{asin: first usable image URL}`` for ASINs that have one anywhere.
+    """
+    asin_series = _get_or_na(products_all, "asin", "str")
+    highres_series = _get_or_na(products_all, "image_urls_highres", "object")
+    small_series = _get_or_na(products_all, "image_urls", "object")
+    found: dict[str, str] = {}
+    for asin, highres, small in zip(asin_series, highres_series, small_series, strict=True):
+        if not isinstance(asin, str) or asin in found:
+            continue
+        image = _first_image_url(highres, small)
+        if image is not None:
+            found[asin] = image
+    return found
+
+
+def _clean_product_frame(
+    products: pd.DataFrame, image_lookup: dict[str, str] | None = None
+) -> pd.DataFrame:
     """Clean product fields for the candidate subset.
 
     Strips HTML from title/description/features, normalises brand into a
-    comparison key, parses rank into ``(rank_value, rank_category)`` and flags
-    missing/unparseable price, rank and brand with booleans. Raw ``title``,
-    ``brand`` and ``rank`` are preserved for display; nothing is imputed.
+    comparison key, parses rank into ``(rank_value, rank_category)``, flags
+    missing/unparseable price, rank and brand with booleans, and resolves the
+    display-only product image (``image_url`` plus its ``image_missing`` flag).
+    Raw ``title``, ``brand`` and ``rank`` are preserved for display; nothing is
+    imputed.
 
     Args:
         products: Raw metadata rows for candidates (``asin`` unique).
+        image_lookup: Optional ``{asin: image URL}`` resolved across duplicate
+            rows *before* de-duplication, used only to fill a kept row whose own
+            image fields are empty (see :func:`_first_image_by_asin`).
 
     Returns:
         Cleaned product frame (without review aggregates, which the orchestrator
@@ -450,6 +515,23 @@ def _clean_product_frame(products: pd.DataFrame) -> pd.DataFrame:
     # `__setitem__` union (None is neither a scalar nor a Sequence).
     features_clean: list[Any] = [clean_features(v) for v in feature_raw]
     out["features_clean"] = features_clean
+
+    # Display-only image URL (high-res preferred, then the small thumbnail). The
+    # kept row's own image wins; a duplicate row of the same ASIN only fills a
+    # gap (``image_lookup`` was built before de-duplication).
+    highres_series = _get_or_na(products, "image_urls_highres", "object")
+    small_series = _get_or_na(products, "image_urls", "object")
+    row_images = [
+        _first_image_url(highres, small)
+        for highres, small in zip(highres_series, small_series, strict=True)
+    ]
+    if image_lookup:
+        row_images = [
+            image if image is not None else image_lookup.get(str(asin))
+            for image, asin in zip(row_images, products["asin"], strict=True)
+        ]
+    out["image_url"] = pd.Series(row_images, index=products.index, dtype="object")
+    out["image_missing"] = out["image_url"].isna()
     return out
 
 
@@ -643,9 +725,12 @@ def build_processed_dataset(
         mask = _get_or_na(chunk, "asin", "str").isin(candidate_asins)
         if mask.any():
             product_frames.append(chunk.loc[mask])
-    products_raw = pd.concat(product_frames, ignore_index=True)
-    before = len(products_raw)
-    products_raw = products_raw.drop_duplicates(subset=["asin"], keep="first")
+    products_all = pd.concat(product_frames, ignore_index=True)
+    before = len(products_all)
+    # Resolve each product's image over ALL rows of its ASIN before duplicate rows
+    # are dropped, so an image that only a dropped duplicate carries is not lost.
+    image_by_asin = _first_image_by_asin(products_all)
+    products_raw = products_all.drop_duplicates(subset=["asin"], keep="first")
     report.products_duplicate_rows_dropped = before - len(products_raw)
 
     # Related-products edges must be built from the raw rows (also_buy/also_view
@@ -654,7 +739,7 @@ def build_processed_dataset(
     report.related_edges = len(related)
     report.related_in_subset = int(related["in_subset"].sum()) if len(related) else 0
 
-    products = _clean_product_frame(products_raw)
+    products = _clean_product_frame(products_raw, image_lookup=image_by_asin)
     logger.info(
         "pass M2: %d product rows collected (%d duplicate rows dropped)",
         len(products),
@@ -753,6 +838,7 @@ def build_processed_dataset(
     final_products["brand_missing"] = final_products["brand_missing"].astype(bool)
     final_products["rank_value"] = final_products["rank_value"].astype("Int64")
     final_products["rank_missing"] = final_products["rank_missing"].astype(bool)
+    final_products["image_missing"] = final_products["image_missing"].astype(bool)
     final_products["n_reviews"] = final_products["n_reviews"].astype("Int32")
     final_products["mean_rating"] = final_products["mean_rating"].astype("float64")
     final_products["first_review_time"] = final_products["first_review_time"].astype(

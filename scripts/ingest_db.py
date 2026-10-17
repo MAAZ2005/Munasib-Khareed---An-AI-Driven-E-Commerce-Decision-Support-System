@@ -89,6 +89,7 @@ EXPECTED_PRODUCT_COLUMNS = (
     "price", "price_max", "price_status", "price_missing", "rank", "rank_value",
     "rank_category", "rank_missing", "description_clean", "features_clean",
     "n_reviews", "mean_rating", "first_review_time", "last_review_time",
+    "image_url", "image_missing",
 )
 EXPECTED_REVIEW_COLUMNS = (
     "review_id", "asin", "split", "reviewer_id", "rating", "review_text_raw",
@@ -97,6 +98,16 @@ EXPECTED_REVIEW_COLUMNS = (
     "sentiment_label_weak",
 )
 EXPECTED_RELATED_COLUMNS = ("asin", "related_asin", "relation_type", "in_subset")
+
+#: Table columns that have no parquet counterpart, with their ingest default.
+#: ``image_cached`` is a serving-cache flag (see munasib.db.models.Product): a
+#: freshly ingested row has no local thumbnail yet, so it starts False.
+EXTRAS = {
+    "products": {"image_cached": False},
+}
+
+#: Columns ``--verify`` requires on the products table (schema-drift check).
+VERIFIED_PRODUCT_COLUMNS = ("image_url", "image_missing", "image_cached")
 
 #: Tables loaded from parquet, children before parents for clearing.
 CACHE_TABLES = ("reviews", "related_products", "products")
@@ -220,12 +231,14 @@ def _to_features_json(value: object) -> list | None:
     raise DataError(f"features_clean cell is not a list: {value!r}")
 
 
-def _convert_record(record: dict, rename: dict[str, str]) -> dict:
+def _convert_record(record: dict, rename: dict[str, str], extras: dict | None = None) -> dict:
     """Convert one parquet record into an insert payload for a table.
 
     Args:
         record: One row as a ``{parquet_column: value}`` dict.
         rename: Parquet-to-table column renames.
+        extras: Table columns with no parquet counterpart (e.g. the cache-only
+            ``image_cached``), added with their default value.
 
     Returns:
         ``{table_column: converted_value}`` with proper NULLs.
@@ -237,6 +250,9 @@ def _convert_record(record: dict, rename: dict[str, str]) -> dict:
             row[target] = _to_features_json(value)
         else:
             row[target] = _to_scalar(value)
+    if extras:
+        for column, value in extras.items():
+            row.setdefault(column, value)
     return row
 
 
@@ -286,6 +302,7 @@ def _load_table(
     frame: pd.DataFrame,
     rename: dict[str, str],
     batch_size: int,
+    extras: dict | None = None,
 ) -> int:
     """Bulk-insert one parquet frame in a single transaction per table.
 
@@ -295,6 +312,7 @@ def _load_table(
         frame: Source rows (columns already verified).
         rename: Parquet-to-table column renames.
         batch_size: Rows per bulk-insert batch.
+        extras: Table columns with no parquet counterpart, with ingest defaults.
 
     Returns:
         Number of rows inserted.
@@ -305,7 +323,10 @@ def _load_table(
     inserted = 0
     with session_scope(factory) as session:
         for batch in _batches(frame, batch_size):
-            rows = [_convert_record(record, rename) for record in batch.to_dict("records")]
+            rows = [
+                _convert_record(record, rename, extras)
+                for record in batch.to_dict("records")
+            ]
             session.execute(insert(model), rows)
             inserted += len(rows)
     return inserted
@@ -358,7 +379,7 @@ def ingest_parquet(
         _check_columns(frame, expected, table)
         # Products first: reviews/related reference them (foreign keys are ON).
         counts[table] = _load_table(
-            engine, _TABLE_MODELS[table], frame, rename, batch_size
+            engine, _TABLE_MODELS[table], frame, rename, batch_size, EXTRAS.get(table)
         )
         logger.info("loaded table=%s rows=%d", table, counts[table])
         del frame
@@ -473,9 +494,12 @@ def verify(engine: Engine, processed_dir: Path) -> bool:
 
     1. Row counts per cache table versus the parquet row counts.
     2. Row counts of the pipeline-owned tables (informational).
-    3. ``PRAGMA foreign_key_check`` - must return no rows.
-    4. ``PRAGMA integrity_check`` - must return exactly ``ok``.
-    5. Database file size on disk.
+    3. The ``products`` table carries the image columns (parquet mirror plus the
+       cache-only ``image_cached`` flag) - catches a stale database built before
+       the columns were added, which ``create_all`` never migrates.
+    4. ``PRAGMA foreign_key_check`` - must return no rows.
+    5. ``PRAGMA integrity_check`` - must return exactly ``ok``.
+    6. Database file size on disk.
 
     Args:
         engine: Target engine.
@@ -506,14 +530,24 @@ def verify(engine: Engine, processed_dir: Path) -> bool:
         print(f"{table:<22}{'-':>12}{stored[table]:>12,}   filled by later pipeline stages")
 
     with engine.connect() as connection:
+        product_columns = {
+            str(row[1])
+            for row in connection.exec_driver_sql("PRAGMA table_info(products)").fetchall()
+        }
         fk_rows = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
         integrity = [
             row[0] for row in connection.exec_driver_sql("PRAGMA integrity_check").fetchall()
         ]
+    missing_columns = [c for c in VERIFIED_PRODUCT_COLUMNS if c not in product_columns]
+    columns_ok = not missing_columns
     fk_ok = not fk_rows
     integrity_ok = integrity == ["ok"]
-    ok = ok and fk_ok and integrity_ok
+    ok = ok and columns_ok and fk_ok and integrity_ok
     print()
+    print(
+        "products columns         : "
+        + ("ok" if columns_ok else f"MISSING {', '.join(missing_columns)}")
+    )
     print(f"PRAGMA foreign_key_check : {'empty (ok)' if fk_ok else f'{len(fk_rows)} violation(s)'}")
     print(f"PRAGMA integrity_check    : {', '.join(map(str, integrity))}")
 

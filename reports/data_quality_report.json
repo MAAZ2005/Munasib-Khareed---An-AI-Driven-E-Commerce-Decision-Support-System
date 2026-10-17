@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-10T11:31:52+00:00",
+  "generated_at": "2026-10-17T10:47:22+00:00",
   "category": "Appliances",
   "config_path": "configs/config.yaml",
   "settings": {
@@ -213,6 +213,14 @@
             "share": 0.0
           },
           "last_review_time": {
+            "null": 0,
+            "share": 0.0
+          },
+          "image_url": {
+            "null": 993,
+            "share": 0.48063891577928364
+          },
+          "image_missing": {
             "null": 0,
             "share": 0.0
           }

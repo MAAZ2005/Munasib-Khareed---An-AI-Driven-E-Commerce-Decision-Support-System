@@ -72,6 +72,7 @@
             "summary": {
               "asin": "B0050O1N2U",
               "brand": "Whirlpool",
+              "has_image": false,
               "mean_rating": 4.787037,
               "n_reviews": 108,
               "price": 13.99,
@@ -94,6 +95,7 @@
             "summary": {
               "asin": "B004W7UWIM",
               "brand": "Aqua Plumb",
+              "has_image": false,
               "mean_rating": 2.216981,
               "n_reviews": 318,
               "price": 10.43,
@@ -612,6 +614,7 @@
           "EASY-TURN BURNER KNOB: Gas range knob replacements reset your stoves look; these brand-new burner gas stove accessories restore your stove to that factory setting feel."
         ],
         "first_review_time": "2009-07-20T00:00:00Z",
+        "has_image": true,
         "last_review_time": "2018-02-03T00:00:00Z",
         "mean_rating": 2.634615,
         "n_reviews": 52,
@@ -696,6 +699,12 @@
           "description": "Product-level split (train/val/test) assigned by the build; reviews inherit it.",
           "title": "Split",
           "type": "string"
+        },
+        "has_image": {
+          "default": false,
+          "description": "True only when a local thumbnail is cached (the cache flag), so GET /products/{asin}/image can serve it. The upstream image URL is never exposed: images are display-only and always come from the local cache.",
+          "title": "Has Image",
+          "type": "boolean"
         },
         "brand_missing": {
           "description": "True when the source had no parsable brand (brand is None).",
@@ -854,6 +863,7 @@
       "example": {
         "asin": "B00009V3UF",
         "brand": "Range Kleen",
+        "has_image": true,
         "mean_rating": 2.634615,
         "n_reviews": 52,
         "price": 12.66,
@@ -930,6 +940,12 @@
           "description": "Product-level split (train/val/test) assigned by the build; reviews inherit it.",
           "title": "Split",
           "type": "string"
+        },
+        "has_image": {
+          "default": false,
+          "description": "True only when a local thumbnail is cached (the cache flag), so GET /products/{asin}/image can serve it. The upstream image URL is never exposed: images are display-only and always come from the local cache.",
+          "title": "Has Image",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1804,6 +1820,7 @@
         "EASY-TURN BURNER KNOB: Gas range knob replacements reset your stoves look; these brand-new burner gas stove accessories restore your stove to that factory setting feel."
       ],
       "first_review_time": "2009-07-20T00:00:00Z",
+      "has_image": true,
       "last_review_time": "2018-02-03T00:00:00Z",
       "mean_rating": 2.634615,
       "n_reviews": 52,

@@ -27,6 +27,9 @@ Design contract (project rule: *load faithfully*):
     ``also_buy``      ``related.also_buy``, top-level ``also_buy`` (metadata)
     ``also_view``     ``related.also_view``, ``related.also_viewed``,
                       top-level ``also_viewed``/``also_view`` (metadata)
+    ``image_urls_highres``  ``imageURLHighRes`` (metadata; list, single string or
+                      missing - only absolute http(s) URLs are kept)
+    ``image_urls``    ``imageURL`` (metadata; same normalisation as above)
     ================  =====================================================
 
   * Missing data stays missing (``None``/``<NA>``) - it is never replaced with a
@@ -76,6 +79,8 @@ METADATA_CANONICAL_COLUMNS = (
     "feature",
     "also_buy",
     "also_view",
+    "image_urls_highres",
+    "image_urls",
 )
 
 _LITERAL_TRUE = {"true", "t", "yes", "y", "1"}
@@ -331,6 +336,36 @@ def to_str_list(value: Any) -> list[str] | None:
     return None
 
 
+def parse_image_urls(value: Any) -> list[str] | None:
+    """Normalise an image-URL field to the list of usable absolute URLs.
+
+    The UCSD metadata ``imageURL``/``imageURLHighRes`` fields are lists of image
+    URLs, occasionally a single string and sometimes missing altogether. Only
+    absolute ``http(s)`` URLs are kept, so a relative path, a ``data:`` URI or a
+    placeholder is dropped rather than handed to a downloader.
+
+    Args:
+        value: Raw list, single string, or missing value.
+
+    Returns:
+        The trimmed absolute http(s) URLs in source order (empty list when the
+        field is present but carries none), or None when the field is absent or
+        of an unsupported shape - keeping "absent" distinguishable from "present
+        but empty" for auditing.
+    """
+    candidates: list[str]
+    if value is None or value is pd.NA:
+        return None
+    if isinstance(value, (list, tuple)):
+        candidates = [str(v).strip() for v in value if v is not None and str(v).strip()]
+    elif isinstance(value, str):
+        text = value.strip()
+        candidates = [text] if text else []
+    else:
+        return None
+    return [url for url in candidates if url.startswith(("http://", "https://"))]
+
+
 def is_present(value: Any) -> bool:
     """Return True when a value carries information (non-null and non-empty).
 
@@ -443,8 +478,9 @@ def canonicalize_metadata_chunk(
     """Resolve metadata-file field aliases and normalise mixed-type columns.
 
     Adds canonical columns: ``asin``, ``price``/``price_max``/``price_status``/
-    ``price_raw``, ``rank``, ``brand``, ``feature``, ``also_buy``, ``also_view``.
-    The raw ``related`` dict stays on the row untouched.
+    ``price_raw``, ``rank``, ``brand``, ``feature``, ``also_buy``, ``also_view``,
+    ``image_urls_highres`` (from ``imageURLHighRes``) and ``image_urls`` (from
+    ``imageURL``). The raw ``related`` dict stays on the row untouched.
 
     Args:
         df: Raw chunk of metadata records (all original fields preserved).
@@ -511,6 +547,18 @@ def canonicalize_metadata_chunk(
     also_view_cells: list[Any] = [to_str_list(v) for v in df["also_view"]]
     df["also_buy"] = also_buy_cells
     df["also_view"] = also_view_cells
+
+    # image URLs: normalise the raw camelCase fields into canonical list columns
+    # (list, single string or missing) keeping only absolute http(s) URLs.
+    image_fields = (
+        ("image_urls_highres", "imageURLHighRes"),
+        ("image_urls", "imageURL"),
+    )
+    for canonical, source in image_fields:
+        raw_images: list[Any] = list(df[source]) if source in df.columns else [None] * len(df)
+        # Annotated as list[Any] for the same pandas-stubs reason as above.
+        image_cells: list[Any] = [parse_image_urls(v) for v in raw_images]
+        df[canonical] = image_cells
 
     # price (price_raw is the canonical raw source once canonicalisation has run)
     if "price_raw" in df.columns:

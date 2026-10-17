@@ -7,6 +7,7 @@ Contract version `0.1.0`. This document is **generated** by `python scripts/expo
 - **All timestamps are UTC.** A naive value is interpreted as UTC; responses always carry an explicit offset.
 - **Risk score is 0-100** (higher is riskier). Every indicator, evidence strength and sub-score is 0-1. These bounds are enforced by the schemas, so an out-of-range value is rejected at the boundary, not silently clamped. `percentile` is reported on 0-100 because it is a percentage.
 - **Missing data stays missing.** Price, rank and brand are `null` when the source had no usable value, and `*_missing` flags say so; nothing is imputed. `verified` is `null` when the source did not say, which is not the same as `false`.
+- **Images are display-only and served from a local cache.** `has_image` is true only when a thumbnail has been downloaded for the ASIN; `GET /products/{asin}/image` streams that file, so the dashboard works offline and never hotlinks the upstream listing.
 - **Sentiment is weak supervision.** The API exposes the label names `negative`, `neutral`, `positive` (never the stored integer codes 0/1/2). They are derived from star ratings (1-2 negative, 3 neutral, 4-5 positive) and are a weak signal, not true sentiment.
 - **No fabricated scores.** When a stage cannot run, its block is `null` and the reason appears in `warnings`.
 - **Pagination**: `GET /products` and `GET /products/{asin}/reviews` return `{total, limit, offset, items}` where `total` is the count matching the query across all pages.
@@ -101,7 +102,8 @@ Example response `200` (schema `ProductPage`):
       "price": 10.99,
       "n_reviews": 152,
       "mean_rating": 4.473684,
-      "split": "train"
+      "split": "train",
+      "has_image": false
     },
     {
       "asin": "B01FQR5RZE",
@@ -110,7 +112,8 @@ Example response `200` (schema `ProductPage`):
       "price": 18.29,
       "n_reviews": 114,
       "mean_rating": 3.605263,
-      "split": "test"
+      "split": "test",
+      "has_image": false
     }
   ]
 }
@@ -122,6 +125,8 @@ Example response `200` (schema `ProductPage`):
 Full profile of one product.
 
 - Answer 404 with code `PRODUCT_NOT_FOUND` when the ASIN is not in the cache.
+- `has_image` is true only when a thumbnail has been cached locally, so `GET /products/{asin}/image` can serve it; it is never a claim about the upstream listing.
+- `has_image` depends on which thumbnails a machine has downloaded (the examples assume the documented `--limit 5` smoke run, so only `B00009V3UF` shows `true`); a product without a cached image is a normal case.
 
 Example response `200` (schema `ProductDetail`):
 
@@ -136,6 +141,7 @@ Example response `200` (schema `ProductDetail`):
   "n_reviews": 52,
   "mean_rating": 2.634615,
   "split": "train",
+  "has_image": true,
   "brand_missing": false,
   "price_status": "single",
   "price_missing": false,
@@ -157,6 +163,17 @@ Example response `200` (schema `ProductDetail`):
 }
 ```
 
+
+### `GET /products/{asin}/image`
+
+The locally cached product thumbnail (offline; never hotlinked).
+
+- Returns `image/jpeg` bytes with a long-lived `Cache-Control: public, max-age=<images.cache_max_age_seconds>` header (cached thumbnails are immutable for a given ASIN).
+- Available only when the product's `has_image` is true (a thumbnail exists in the local cache); otherwise `404` with code `PRODUCT_NOT_FOUND` - the endpoint never redirects to the upstream Amazon URL.
+- The ASIN must be exactly 10 alphanumeric characters; anything else is rejected with `404` before any filesystem access.
+- `HEAD` is supported and answers with the same headers and no body, so a client can check availability cheaply.
+
+Response `200`: `image/jpeg` bytes (not a JSON body).
 
 ### `GET /products/{asin}/reviews`
 
@@ -237,6 +254,7 @@ Example response `200` (schema `AnalysisResponse`):
     "n_reviews": 52,
     "mean_rating": 2.634615,
     "split": "train",
+    "has_image": true,
     "brand_missing": false,
     "price_status": "single",
     "price_missing": false,
@@ -977,7 +995,8 @@ Example response `200` (schema `AlternativesResult`):
         "price": 13.99,
         "n_reviews": 108,
         "mean_rating": 4.787037,
-        "split": "train"
+        "split": "train",
+        "has_image": false
       },
       "risk_score": 27.9,
       "verdict": "CONSIDER",
@@ -999,7 +1018,8 @@ Example response `200` (schema `AlternativesResult`):
         "price": 10.43,
         "n_reviews": 318,
         "mean_rating": 2.216981,
-        "split": "train"
+        "split": "train",
+        "has_image": false
       },
       "risk_score": 71.9,
       "verdict": "CONSUMER RISK",

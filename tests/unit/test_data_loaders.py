@@ -27,6 +27,7 @@ from munasib.data.loaders import (
     iter_metadata_chunks,
     iter_review_chunks,
     parse_bool,
+    parse_image_urls,
     parse_price,
     parse_rank,
     parse_vote,
@@ -169,6 +170,29 @@ def test_parse_rank(
 def test_to_str_list(raw: object, expected: list[str] | None) -> None:
     """Related-product link fields normalise to lists; absent stays distinguishable."""
     assert to_str_list(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (["https://a/1.jpg", "http://b/2.jpg"], ["https://a/1.jpg", "http://b/2.jpg"]),
+        ("https://a/1.jpg", ["https://a/1.jpg"]),
+        ("  https://a/1.jpg  ", ["https://a/1.jpg"]),
+        ([], []),
+        ("", []),
+        (None, None),
+        (float("nan"), None),
+        (["not-a-url", "/relative/x.jpg"], []),
+        (["data:image/png;base64,AAAA"], []),
+        (["https://a/1.jpg", None, "", "ftp://x/y.jpg"], ["https://a/1.jpg"]),
+        (123, None),
+    ],
+    ids=["list", "scalar-string", "padded-string", "empty-list", "blank", "missing",
+         "nan", "no-absolute-url", "data-uri", "mixed", "scalar-number"],
+)
+def test_parse_image_urls(raw: object, expected: list[str] | None) -> None:
+    """Image URL fields keep only absolute http(s) URLs; absent stays distinguishable."""
+    assert parse_image_urls(raw) == expected
 
 
 @pytest.mark.parametrize(
@@ -351,6 +375,29 @@ def test_metadata_asin_fallback() -> None:
     """parent_asin is used as the product key when asin is absent."""
     df = _load_metadata_frame()
     assert df["asin"].iloc[5] == "B000000006"
+
+
+def test_metadata_image_forms() -> None:
+    """Image fields: high-res list, empty lists, a single string, non-http dropped."""
+    df = _load_metadata_frame()
+    assert df["image_urls_highres"].iloc[0] == [
+        "https://example.com/hi1.jpg",
+        "https://example.com/hi2.jpg",
+    ]
+    assert df["image_urls"].iloc[0] == ["https://example.com/lo1.jpg"]
+    assert df["image_urls_highres"].iloc[1] == []  # present but empty
+    assert df["image_urls"].iloc[1] == []
+    assert df["image_urls_highres"].iloc[2] is None  # absent key
+    assert df["image_urls"].iloc[2] == ["https://example.com/c.jpg"]  # scalar string
+    assert df["image_urls_highres"].iloc[3] == []  # only non-http URLs
+    assert df["image_urls"].iloc[3] == []  # only a data: URI
+
+
+def test_metadata_image_raw_columns_preserved() -> None:
+    """The raw camelCase image columns are kept untouched beside the canonical ones."""
+    df = _load_metadata_frame()
+    assert "imageURLHighRes" in df.columns and "imageURL" in df.columns
+    assert df["imageURL"].iloc[2] == "https://example.com/c.jpg"
 
 
 def test_canonicalize_metadata_chunk_idempotent() -> None:

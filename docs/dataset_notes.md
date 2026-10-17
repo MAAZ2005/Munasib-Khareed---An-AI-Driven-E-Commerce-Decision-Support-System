@@ -106,7 +106,7 @@ subset only. Built on 2026-10-10 from the raw files above:
 
 | Output | Rows | Contents |
 |---|---:|---|
-| `products.parquet` | 2,066 | `split`, cleaned title/description/features, normalised brand, parsed price/rank + `*_missing` flags, per-product review aggregates (`n_reviews`, `mean_rating`, first/last review time) |
+| `products.parquet` | 2,066 | `split`, cleaned title/description/features, normalised brand, parsed price/rank + `*_missing` flags, display-only `image_url` + `image_missing`, per-product review aggregates (`n_reviews`, `mean_rating`, first/last review time) |
 | `reviews.parquet` | 425,993 | `split`, raw + cleaned text, `has_text`/`text_length`, `helpful_votes`, nullable `verified`, UTC dates, weak labels |
 | `related_products.parquet` | 84,885 | `also_bought`/`also_viewed` edges + `in_subset` flag (22,349 in-subset) |
 | `meta.json` | - | category, config values (incl. split seed/fractions), row/drop counts, split sizes, review date range, build timestamp |
@@ -124,6 +124,11 @@ subset only. Built on 2026-10-10 from the raw files above:
   rank, 8 no brand - each flagged by a boolean (`price_missing`, `rank_missing`,
   `brand_missing`), never imputed. 240 reviews carry no text and are kept with
   `has_text=false`.
+- **Display-only images:** 1,073 of the 2,066 products carry an `image_url` (first
+  `imageURLHighRes` URL, else the first `imageURL` URL) and the other 993 are flagged
+  `image_missing=true`. A duplicate ASIN's image is recovered from the row that has
+  one before duplicate rows are dropped (the kept row's own image always wins). Nothing
+  in the analysis pipeline reads an image; see `docs/images.md`.
 - **Review dates (candidate subset):** 2001-11-08 to 2018-10-04. Downstream "recent"
   features must anchor on `meta.json -> review_date_range.max`, never on today's date.
 

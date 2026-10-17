@@ -11,6 +11,7 @@ simply too large for the repository.
 | `interim/` | Intermediate normalised extracts | future pipeline stages |
 | `processed/` | Clean parquet tables (`products`, `reviews`, `related_products`) + `meta.json` | `python scripts/build_dataset.py` |
 | `db/` | SQLite serving cache (`munasib.sqlite`) | `python scripts/ingest_db.py` |
+| `images/` | Git-ignored product-thumbnail cache (`<asin>.jpg`, display only) | `python scripts/download_images.py` |
 
 ## Getting the raw data
 
@@ -44,3 +45,13 @@ the build is safe to re-run (outputs are rewritten from scratch each time).
 
 Dataset citation, access date, audit summary and processed-dataset facts live in
 `docs/dataset_notes.md`.
+
+## Product images (optional, offline)
+
+```bash
+python scripts/download_images.py --limit 5   # smoke test; --all for the whole subset
+```
+
+Thumbnails land in the git-ignored `data/images/` cache and are served by
+`GET /products/{asin}/image`. Images are display-only and never hotlinked; details
+(including rights/attribution) live in `docs/images.md`.
