@@ -168,13 +168,14 @@ def _write_parquet_fixture(processed: Path) -> None:
     _related_frame().to_parquet(processed / "related_products.parquet", index=False)
 
 
-def _write_config(path: Path, processed: Path, db_path: Path) -> Path:
+def _write_config(path: Path, processed: Path, db_path: Path, images_dir: Path) -> Path:
     """Write a minimal config pointing at the temporary processed dir and DB.
 
     Args:
         path: Destination YAML path.
         processed: Directory holding the fixture parquet tables.
         db_path: SQLite file to create/use.
+        images_dir: Thumbnail cache directory to scan for ``image_cached``.
 
     Returns:
         The config path.
@@ -184,6 +185,8 @@ def _write_config(path: Path, processed: Path, db_path: Path) -> Path:
 paths:
   processed_data_dir: "{processed.as_posix()}"
   db_path: "{db_path.as_posix()}"
+images:
+  directory: "{images_dir.as_posix()}"
 """,
         encoding="utf-8",
     )
@@ -192,16 +195,17 @@ paths:
 
 @pytest.fixture()
 def workspace(tmp_path: Path) -> Iterator[dict[str, Path]]:
-    """Temp workspace with fixture parquet, config and DB path.
+    """Temp workspace with fixture parquet, config, DB path and image cache.
 
     Yields:
-        Dict with ``processed``, ``config`` and ``db`` paths.
+        Dict with ``processed``, ``config``, ``db`` and ``images`` paths.
     """
     processed = tmp_path / "processed"
     _write_parquet_fixture(processed)
     db_path = tmp_path / "db" / "cache.sqlite"
-    config = _write_config(tmp_path / "config.yaml", processed, db_path)
-    yield {"processed": processed, "config": config, "db": db_path}
+    images_dir = tmp_path / "images"
+    config = _write_config(tmp_path / "config.yaml", processed, db_path, images_dir)
+    yield {"processed": processed, "config": config, "db": db_path, "images": images_dir}
 
 
 def _counts(db_path: Path) -> dict[str, int]:
@@ -235,6 +239,26 @@ def _counts(db_path: Path) -> dict[str, int]:
 # ------------------------------------------------------------------------------
 # CLI flows
 # ------------------------------------------------------------------------------
+
+
+def _flags(db_path: Path) -> dict[str, bool]:
+    """``{asin: image_cached}`` for every product in the fixture database.
+
+    Args:
+        db_path: SQLite file.
+
+    Returns:
+        ASIN -> cached flag.
+    """
+    engine = create_engine_from_settings(db_url=f"sqlite:///{db_path}")
+    try:
+        with engine.connect() as connection:
+            return {
+                str(asin): bool(flag)
+                for asin, flag in connection.execute(select(Product.asin, Product.image_cached))
+            }
+    finally:
+        engine.dispose()
 
 
 def test_parse_args_defaults() -> None:
@@ -375,6 +399,80 @@ def test_convert_record_adds_extras() -> None:
     assert row["image_cached"] is True
 
 
+def test_ingest_syncs_the_cached_flag_from_the_image_files(workspace: dict[str, Path]) -> None:
+    """``image_cached`` comes from the thumbnails that exist, never from parquet."""
+    module = _load_module()
+    images = workspace["images"]
+    images.mkdir(parents=True)
+    # A real thumbnail, plus two files that must never flip a flag.
+    (images / "B000000001.jpg").write_bytes(b"\xff\xd8\xff\xe0 thumbnail")
+    (images / "not-an-asin.txt").write_bytes(b"x")
+    (images / "B000000002.png").write_bytes(b"x")
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    assert _flags(workspace["db"]) == {
+        "B000000001": True,
+        "B000000002": False,
+        "B000000003": False,
+    }
+
+
+def test_force_rebuild_keeps_the_cached_flags(workspace: dict[str, Path]) -> None:
+    """A full rebuild re-derives the flags instead of resetting them to False."""
+    module = _load_module()
+    workspace["images"].mkdir(parents=True)
+    (workspace["images"] / "B000000003.jpg").write_bytes(b"\xff\xd8\xff\xe0 thumbnail")
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    assert _flags(workspace["db"])["B000000003"] is True
+    assert module.main(["--config", str(workspace["config"]), "--force"]) == 0
+    assert _flags(workspace["db"])["B000000003"] is True
+    # And the reload path (counts no longer fresh) keeps it too.
+    drifted = _products_frame()
+    drifted.loc[0, "title"] = "Renamed Widget"
+    drifted.to_parquet(workspace["processed"] / "products.parquet", index=False)
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    assert _flags(workspace["db"])["B000000003"] is True
+
+
+def test_verify_fails_when_a_flagged_file_disappeared(workspace: dict[str, Path]) -> None:
+    """A flag with no file behind it fails --verify (the API would 404)."""
+    module = _load_module()
+    workspace["images"].mkdir(parents=True)
+    thumbnail = workspace["images"] / "B000000001.jpg"
+    thumbnail.write_bytes(b"\xff\xd8\xff\xe0 thumbnail")
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    assert module.main(["--config", str(workspace["config"]), "--verify"]) == 0
+    thumbnail.unlink()
+    assert module.main(["--config", str(workspace["config"]), "--verify"]) == 1
+
+
+def test_verify_fails_when_a_cached_file_is_unflagged(workspace: dict[str, Path]) -> None:
+    """A thumbnail on disk that the flag does not know about fails --verify."""
+    module = _load_module()
+    workspace["images"].mkdir(parents=True)
+    (workspace["images"] / "B000000002.jpg").write_bytes(b"\xff\xd8\xff\xe0 thumbnail")
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    engine = create_engine_from_settings(db_url=f"sqlite:///{workspace['db']}")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "UPDATE products SET image_cached = 0 WHERE asin = 'B000000002'"
+            )
+    finally:
+        engine.dispose()
+    assert module.main(["--config", str(workspace["config"]), "--verify"]) == 1
+
+
+def test_cached_image_asins_ignores_non_asin_files(tmp_path: Path) -> None:
+    """Only ``<10 alphanumeric chars>.jpg`` files count as thumbnails."""
+    module = _load_module()
+    empty = tmp_path / "absent"
+    assert module.cached_image_asins(empty) == set()
+    empty.mkdir()
+    for name in ("B000000001.jpg", "short.jpg", "B00000000-.jpg", "B000000001.JPG", ".gitkeep"):
+        (empty / name).write_bytes(b"x")
+    assert module.cached_image_asins(empty) == {"B000000001"}
+
+
 def test_ingest_is_idempotent(workspace: dict[str, Path]) -> None:
     """A second run without --force skips loading and keeps identical counts."""
     module = _load_module()
@@ -418,7 +516,9 @@ def test_missing_parquet_exits_nonzero(tmp_path: Path) -> None:
     module = _load_module()
     processed = tmp_path / "empty_processed"
     processed.mkdir()
-    config = _write_config(tmp_path / "config.yaml", processed, tmp_path / "db.sqlite")
+    config = _write_config(
+        tmp_path / "config.yaml", processed, tmp_path / "db.sqlite", tmp_path / "images"
+    )
     assert module.main(["--config", str(config)]) == 1
     assert module.main(["--config", str(config), "--verify"]) == 1
 

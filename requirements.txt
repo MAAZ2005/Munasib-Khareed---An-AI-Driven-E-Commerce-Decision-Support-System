@@ -34,6 +34,9 @@ pydantic-settings>=2.7.0
 streamlit>=1.41.0
 plotly>=5.24.0
 matplotlib>=3.10.0
+# Thumbnail decode/resize for the product-image cache (scripts/download_images.py).
+# Already installed as a Streamlit dependency; declared here because we import it directly.
+pillow>=10.0.0
 
 # Networking & Utilities
 httpx>=0.28.0

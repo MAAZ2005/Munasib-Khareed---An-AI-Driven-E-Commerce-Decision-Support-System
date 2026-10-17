@@ -26,6 +26,13 @@ skipped; otherwise the cache tables are cleared (children before parents) and
 reloaded. Either way the final row counts are identical to the parquet counts
 and no duplicates can exist (primary keys/unique constraints enforce it).
 
+The one cache value with no parquet counterpart is ``products.image_cached``
+(whether the thumbnail exists locally). It is never copied from parquet: after
+every run the flag is re-derived from the ``<asin>.jpg`` files that actually
+exist in ``images.directory``, so a rebuild keeps the images that were already
+downloaded and drops flags for files that are gone. ``--verify`` fails when the
+two disagree.
+
 Exit codes:
   0 - loaded or skipped, and every verification check passed.
   1 - failed (missing parquet, load error, or a verification failure).
@@ -44,10 +51,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from sqlalchemy import delete, func, insert, select, text
+from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.engine import Engine
 
 from munasib.core.config import load_settings
+from munasib.core.constants import ASIN_PATTERN, IMAGE_FILENAME_SUFFIX
 from munasib.core.exceptions import ConfigError, DataError
 from munasib.db.models import (
     AnalysisResult,
@@ -101,7 +109,9 @@ EXPECTED_RELATED_COLUMNS = ("asin", "related_asin", "relation_type", "in_subset"
 
 #: Table columns that have no parquet counterpart, with their ingest default.
 #: ``image_cached`` is a serving-cache flag (see munasib.db.models.Product): a
-#: freshly ingested row has no local thumbnail yet, so it starts False.
+#: freshly ingested row has no local thumbnail yet, so it starts False. The real
+#: value is then derived from the thumbnail files on disk by
+#: :func:`sync_image_flags`, so a rebuild never loses what was already downloaded.
 EXTRAS = {
     "products": {"image_cached": False},
 }
@@ -345,6 +355,63 @@ def clear_cache_tables(engine: Engine) -> None:
     logger.info("cache_cleared tables=%s", ",".join(CLEAR_ORDER))
 
 
+def cached_image_asins(images_dir: Path) -> set[str]:
+    """ASINs with a thumbnail file in the local image cache.
+
+    Only ``<10 alphanumeric chars>.jpg`` files count, so a stray file (or the
+    ``.gitkeep`` placeholder) can never flip a product's flag.
+
+    Args:
+        images_dir: Thumbnail cache directory (``images.directory``).
+
+    Returns:
+        The ASINs whose thumbnail is present; empty when the directory is absent.
+    """
+    if not images_dir.is_dir():
+        return set()
+    return {
+        path.stem
+        for path in images_dir.glob(f"*{IMAGE_FILENAME_SUFFIX}")
+        if ASIN_PATTERN.match(path.stem)
+    }
+
+
+def sync_image_flags(engine: Engine, images_dir: Path) -> int:
+    """Point ``products.image_cached`` at the thumbnails that exist on disk.
+
+    ``image_cached`` is the only serving-cache value that is not in the parquet
+    files, so it is derived here: a product is flagged exactly when
+    ``<images_dir>/<asin>.jpg`` exists. Running this after every load (and on a
+    plain ``ingest_db.py`` run) means a rebuild or a re-ingest can never lose the
+    flags the downloader set, and never keep a flag for a file that was removed.
+
+    Args:
+        engine: Target engine (the ``products`` table must already exist).
+        images_dir: Thumbnail cache directory (``images.directory``).
+
+    Returns:
+        Number of products flagged ``image_cached=true`` afterwards.
+    """
+    asins = cached_image_asins(images_dir)
+    factory = create_session_factory(engine)
+    with session_scope(factory) as session:
+        session.execute(update(Product).values(image_cached=False))
+        if asins:
+            session.execute(
+                update(Product).where(Product.asin.in_(asins)).values(image_cached=True)
+            )
+        flagged = session.scalar(
+            select(func.count()).select_from(Product).where(Product.image_cached.is_(True))
+        )
+    logger.info(
+        "image_flags_synced cache=%s files=%d flagged=%d",
+        images_dir,
+        len(asins),
+        int(flagged or 0),
+    )
+    return int(flagged or 0)
+
+
 def ingest_parquet(
     engine: Engine,
     processed_dir: Path,
@@ -487,7 +554,7 @@ def cache_is_fresh(engine: Engine, processed_dir: Path) -> bool:
     return db_split_distribution(engine) == products_split_distribution(processed_dir)
 
 
-def verify(engine: Engine, processed_dir: Path) -> bool:
+def verify(engine: Engine, processed_dir: Path, images_dir: Path) -> bool:
     """Verify the serving cache against the parquet files and SQLite itself.
 
     Prints, for every check, only values the code computes:
@@ -497,13 +564,17 @@ def verify(engine: Engine, processed_dir: Path) -> bool:
     3. The ``products`` table carries the image columns (parquet mirror plus the
        cache-only ``image_cached`` flag) - catches a stale database built before
        the columns were added, which ``create_all`` never migrates.
-    4. ``PRAGMA foreign_key_check`` - must return no rows.
-    5. ``PRAGMA integrity_check`` - must return exactly ``ok``.
-    6. Database file size on disk.
+    4. ``image_cached`` agrees with the thumbnail files on disk: no flagged
+       product may lack its file (the API would answer 404 for a product that
+       claims ``has_image=true``) and no cached file may be unflagged.
+    5. ``PRAGMA foreign_key_check`` - must return no rows.
+    6. ``PRAGMA integrity_check`` - must return exactly ``ok``.
+    7. Database file size on disk.
 
     Args:
         engine: Target engine.
         processed_dir: Directory holding the parquet files.
+        images_dir: Thumbnail cache directory (``images.directory``).
 
     Returns:
         True when every check passes (a raised ``DataError`` on missing
@@ -538,16 +609,41 @@ def verify(engine: Engine, processed_dir: Path) -> bool:
         integrity = [
             row[0] for row in connection.exec_driver_sql("PRAGMA integrity_check").fetchall()
         ]
+        # Only usable once the flag column is known to exist (previous check).
+        flag_rows = (
+            connection.execute(select(Product.asin, Product.image_cached)).all()
+            if VERIFIED_PRODUCT_COLUMNS[-1] in product_columns
+            else []
+        )
     missing_columns = [c for c in VERIFIED_PRODUCT_COLUMNS if c not in product_columns]
     columns_ok = not missing_columns
     fk_ok = not fk_rows
     integrity_ok = integrity == ["ok"]
-    ok = ok and columns_ok and fk_ok and integrity_ok
+
+    flagged = {str(asin) for asin, cached in flag_rows if cached}
+    product_asins = {str(asin) for asin, _ in flag_rows}
+    files = cached_image_asins(images_dir)
+    dangling = sorted(flagged - files)  # claims an image the API cannot serve
+    unmarked = sorted((files & product_asins) - flagged)  # downloaded but unflagged
+    stale_files = sorted(files - product_asins)  # not a product in this subset
+    images_ok = columns_ok and not dangling and not unmarked
+    ok = ok and columns_ok and images_ok and fk_ok and integrity_ok
+
     print()
     print(
         "products columns         : "
         + ("ok" if columns_ok else f"MISSING {', '.join(missing_columns)}")
     )
+    print(f"images cached on disk    : {len(files & product_asins):,} (in this subset)")
+    if columns_ok:
+        print(
+            f"image_cached flag        : {len(flagged):,} flagged, "
+            f"{len(dangling):,} without a file, {len(unmarked):,} file(s) unflagged"
+        )
+    else:
+        print("image_cached flag        : not checked (column missing)")
+    if stale_files:
+        print(f"  files with no product  : {len(stale_files):,} (ignored)")
     print(f"PRAGMA foreign_key_check : {'empty (ok)' if fk_ok else f'{len(fk_rows)} violation(s)'}")
     print(f"PRAGMA integrity_check    : {', '.join(map(str, integrity))}")
 
@@ -587,6 +683,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     processed_dir = Path(settings.paths.processed_data_dir)
+    images_dir = Path(settings.images.directory)
     # SQLite creates the file but not its parent directory.
     db_file = Path(settings.paths.db_path)
     db_file.parent.mkdir(parents=True, exist_ok=True)
@@ -595,7 +692,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.verify:
             logger.info("verify_only db=%s", engine.url)
             try:
-                return 0 if verify(engine, processed_dir) else 1
+                return 0 if verify(engine, processed_dir, images_dir) else 1
             except DataError as exc:
                 logger.error("verify_failed detail=%s", exc)
                 return 1
@@ -638,7 +735,13 @@ def main(argv: list[str] | None = None) -> int:
                     loaded["related_products"],
                 )
 
-        ok = verify(engine, processed_dir)
+        # ``image_cached`` lives only in the cache, so it is re-derived from the
+        # thumbnail files after every load (and on a no-op run) rather than copied
+        # from parquet: a rebuild can then never lose the flags of the images that
+        # were already downloaded.
+        sync_image_flags(engine, images_dir)
+
+        ok = verify(engine, processed_dir, images_dir)
         return 0 if ok else 1
     except DataError as exc:
         logger.error("ingest_failed detail=%s", exc)

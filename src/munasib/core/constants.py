@@ -68,3 +68,9 @@ ASIN_PATTERN = re.compile(r"^[A-Za-z0-9]{10}$")
 #: Amazon listing photos carried by the UCSD Amazon Review Data (2018); they are
 #: served from the local cache, never hotlinked.
 IMAGE_ATTRIBUTION = "Images: Amazon product listings, UCSD Amazon Review Data 2018"
+
+#: Suffix of the locally cached thumbnails (``<asin>.jpg``). Written once by
+#: ``scripts/download_images.py``, served by ``GET /products/{asin}/image`` and
+#: re-scanned by ``scripts/ingest_db.py`` so ``products.image_cached`` always
+#: reflects the files that actually exist in the git-ignored cache directory.
+IMAGE_FILENAME_SUFFIX = ".jpg"

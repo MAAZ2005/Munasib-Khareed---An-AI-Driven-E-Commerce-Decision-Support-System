@@ -16,7 +16,7 @@ Attribution: `Images: Amazon product listings, UCSD Amazon Review Data 2018`
 | `data/processed/products.parquet` | `image_url` | First `imageURLHighRes` URL, else the first `imageURL` URL, else `null`. Never exposed by the API. |
 | `data/processed/products.parquet` | `image_missing` | `True` when the source published no usable image URL. |
 | SQLite `products` | `image_url`, `image_missing` | Mirrors of the parquet columns (the cache is a faithful copy of the processed subset). |
-| SQLite `products` | `image_cached` | **Cache-only** flag: `True` once a local thumbnail exists. Freshly ingested rows start `False`. |
+| SQLite `products` | `image_cached` | **Cache-only** flag: `True` once a local thumbnail exists. Not a parquet column - `scripts/ingest_db.py` re-derives it from the files on disk after every run, so a rebuild never loses it. |
 
 The raw metadata fields are `imageURL` and `imageURLHighRes`; both are lists of
 URLs (a single string and a missing key are also tolerated) and only absolute
@@ -55,12 +55,20 @@ What it does per product:
    onto white and re-encodes as JPEG with no EXIF/ICC metadata.
 4. Writes `data/images/<asin>.jpg` atomically, then sets that product's
    `image_cached` to true. An existing file is skipped unless `--force` is given,
-   so an interrupted run resumes where it stopped.
+   so an interrupted run resumes where it stopped - and a skipped file still
+   (re)asserts `image_cached`, so re-ingesting the cache then re-running the
+   downloader repairs the flags without re-downloading anything.
 
 Each run writes `reports/image_download_report.json` with the computed counts
 only (`attempted` / `ok` / `skipped` / `failed` by reason). A bad URL, a timeout
 or an unwritable file is recorded with its reason and the run continues; exit
 code `0` means the run finished, not that every image succeeded.
+
+The flag survives a database rebuild: `scripts/ingest_db.py` never copies
+`image_cached` from parquet, it re-derives it from the `<asin>.jpg` files present
+in `images.directory` after every run (and `--verify` fails if a flagged product
+has no file, or a cached file is not flagged). So `--force` re-ingest, a reload
+or a plain re-run all keep the thumbnails you already downloaded.
 
 Flags are all overridable per run (`--delay`, `--size`, `--force`); the defaults
 come from the `images` block of `configs/config.yaml` - nothing is hardcoded.
@@ -98,11 +106,18 @@ Images are decoration; every product remains fully analysable without one.
 
 ## Rights and attribution
 
-The images are the listing photos carried by the UCSD Amazon Review Data (2018)
-dataset used for this academic project. They are downloaded once into a local,
-git-ignored cache for offline display, are never modified beyond resizing, and
-are never redistributed. Display the `IMAGE_ATTRIBUTION` string wherever the
-images appear.
+The images are the product-listing photos that ship with the UCSD Amazon Review
+Data (2018) dataset; they belong to Amazon and the individual sellers, not to this
+project. They are downloaded once into a **local, git-ignored cache for
+display-only use in the academic demo**, are never modified beyond resizing,
+never analysed, never committed to the repository and never redistributed. The
+project claims no licence over them and the cache can be deleted at any time
+without affecting any result.
+
+Render `munasib.core.constants.IMAGE_ATTRIBUTION` -
+`Images: Amazon product listings, UCSD Amazon Review Data 2018` - wherever a
+cached image is shown (the dashboard footer or next to the product photo), so the
+source is always visible to the user.
 
 ## Why this shape
 

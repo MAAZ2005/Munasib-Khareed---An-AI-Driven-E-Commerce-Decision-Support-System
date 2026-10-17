@@ -20,7 +20,7 @@ from pathlib import Path
 import httpx
 import pytest
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from munasib.db.models import Product
 from munasib.db.session import create_engine_from_settings, create_session_factory, init_db
@@ -535,6 +535,36 @@ def test_main_resumes_without_force(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert module.main(["--config", str(config), "--all"]) == 0
     report = json.loads((tmp_path / "reports" / module.REPORT_FILENAME).read_text(encoding="utf-8"))
     assert report["ok"] == 0 and report["skipped"] == 1
+
+
+def test_skip_reasserts_the_cached_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A skip still marks the product cached, repairing a flag reset by re-ingest."""
+    module = _load_module()
+    db_path = _cache(tmp_path, [_product_row(ASIN_CACHED, "https://example.com/a.jpg")])
+    images_dir = tmp_path / "images"
+    monkeypatch.setattr(
+        module, "build_client", lambda settings: _client(lambda request: httpx.Response(200, content=_jpeg_bytes()))
+    )
+    config = _config(tmp_path, db_path, images_dir)
+    assert module.main(["--config", str(config), "--all"]) == 0
+
+    # Simulate scripts/ingest_db.py --force: the file stays, the flag is cleared.
+    engine = create_engine_from_settings(db_url=f"sqlite:///{db_path}")
+    try:
+        with engine.begin() as connection:
+            connection.execute(update(Product).values(image_cached=False))
+    finally:
+        engine.dispose()
+
+    assert module.main(["--config", str(config), "--all"]) == 0
+    report = json.loads((tmp_path / "reports" / module.REPORT_FILENAME).read_text(encoding="utf-8"))
+    assert report["skipped"] == 1 and report["ok"] == 0  # nothing re-downloaded
+    engine = create_engine_from_settings(db_url=f"sqlite:///{db_path}")
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(select(Product.image_cached)) is True
+    finally:
+        engine.dispose()
 
 
 def test_main_reports_not_in_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

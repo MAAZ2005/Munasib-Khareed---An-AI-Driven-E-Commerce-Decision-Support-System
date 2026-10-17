@@ -55,7 +55,7 @@ from PIL import Image, UnidentifiedImageError
 from sqlalchemy import Engine, select, update
 
 from munasib.core.config import Settings, load_settings
-from munasib.core.constants import ASIN_PATTERN
+from munasib.core.constants import ASIN_PATTERN, IMAGE_FILENAME_SUFFIX
 from munasib.core.exceptions import ConfigError, DataError
 from munasib.db.models import Product
 from munasib.db.session import create_engine_from_settings, create_session_factory
@@ -381,7 +381,8 @@ def download_one(
 
     Returns:
         :data:`OK` when a new file was written, :data:`SKIPPED` when the file
-        already existed and ``force`` was not given.
+        already existed and ``force`` was not given. Either way the thumbnail is
+        present on disk, so the caller records ``image_cached=true``.
 
     Raises:
         ImageDownloadError: With the failure reason (``no_image_url``,
@@ -541,7 +542,7 @@ def main(argv: list[str] | None = None) -> int:
     outcomes: dict[str, str] = dict.fromkeys(unknown, NOT_IN_CACHE)
     with build_client(settings) as client:
         for index, (asin, image_url) in enumerate(targets):
-            destination = cache_dir / f"{asin}.jpg"
+            destination = cache_dir / f"{asin}{IMAGE_FILENAME_SUFFIX}"
             try:
                 outcome = download_one(
                     client,
@@ -555,9 +556,15 @@ def main(argv: list[str] | None = None) -> int:
                 outcome = exc.reason
                 logger.warning("image_failed asin=%s reason=%s", asin, outcome)
             else:
-                if outcome == OK:
+                if outcome in (OK, SKIPPED):
+                    # A skipped file is a thumbnail that already exists locally, so the
+                    # cache flag is (re)asserted. This also repairs a flag reset by a
+                    # re-run of scripts/ingest_db.py without re-downloading anything.
                     _mark_cached(engine, asin)
+                if outcome == OK:
                     logger.info("image_ok asin=%s file=%s", asin, destination.name)
+                else:
+                    logger.info("image_skipped asin=%s file=%s", asin, destination.name)
             outcomes[asin] = outcome
             if delay and index < len(targets) - 1:
                 time.sleep(delay)

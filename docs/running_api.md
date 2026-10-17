@@ -148,7 +148,9 @@ offline, so the API never hotlinks Amazon. Instead:
 
 1. `python scripts/download_images.py --limit 5` (or `--all`) downloads a small
    JPEG thumbnail per ASIN into `data/images/` (git-ignored) and sets
-   `products.image_cached` to true for each success.
+   `products.image_cached` to true for each success. `scripts/ingest_db.py`
+   re-derives that flag from the same files after every run, so re-ingesting the
+   cache never un-downloads anything.
 2. `GET /products/{asin}/image` streams that local file as `image/jpeg` with a
    `Cache-Control: public, max-age=<images.cache_max_age_seconds>` header.
 
@@ -277,4 +279,7 @@ python -m pytest tests/unit tests/integration -q
   `data/db/munasib.sqlite` that skip automatically when it is absent.
 - `tests/unit/test_download_images.py` - the image downloader against an
   `httpx.MockTransport` (resize, metadata stripping, resume/`--force`, every
-  failure reason, the JSON report counts) with no network.
+  failure reason, the JSON report counts, the cache flag) with no network.
+- `tests/unit/test_suggest_demo_products.py` - the demo-product suggester over a
+  temporary cache (group thresholds, an overlapping candidate, a candidate with
+  too few alternatives, the computed polarization shares, the CLI output).

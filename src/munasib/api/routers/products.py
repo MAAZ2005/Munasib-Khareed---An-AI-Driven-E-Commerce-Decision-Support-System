@@ -23,13 +23,10 @@ from pydantic import AfterValidator
 from munasib.api.deps import ProductRepoDep, SettingsDep
 from munasib.api.schemas.common import ErrorResponse
 from munasib.api.schemas.products import ProductDetail, ProductPage, ProductSummary
-from munasib.core.constants import ASIN_PATTERN, SPLIT_ORDER
+from munasib.core.constants import ASIN_PATTERN, IMAGE_FILENAME_SUFFIX, SPLIT_ORDER
 from munasib.core.exceptions import ProductNotFoundError
 
 router = APIRouter(tags=["products"])
-
-#: Filename suffix of the cached thumbnails written by ``scripts/download_images.py``.
-IMAGE_FILENAME_SUFFIX = ".jpg"
 
 #: Default page size, shared with the repositories so the two cannot drift.
 DEFAULT_LIMIT = 20
