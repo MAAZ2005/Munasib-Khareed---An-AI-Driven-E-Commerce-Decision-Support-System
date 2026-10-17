@@ -23,12 +23,14 @@ from app.formatting import (
     build_review_rows,
     build_summary_csv,
     build_summary_rows,
+    clamp_text,
     format_count,
     format_date,
     format_price,
     format_rank,
     format_rating,
     format_signed,
+    format_stars,
     format_unit,
     summary_csv_filename,
 )
@@ -188,3 +190,29 @@ def test_download_filenames() -> None:
     """Download filenames carry the ASIN."""
     assert analysis_json_filename("B00009V3UF") == "B00009V3UF_analysis.json"
     assert summary_csv_filename("B00009V3UF") == "B00009V3UF_summary.csv"
+
+
+def test_format_stars_rounds_and_shows_absence() -> None:
+    """The star row rounds to whole glyphs and uses "n/a" for a missing rating."""
+    assert format_stars(None) == NOT_AVAILABLE
+    assert format_stars(0) == "☆☆☆☆☆"
+    assert format_stars(5) == "★★★★★"
+    assert format_stars(2.63) == "★★★☆☆"
+    assert format_stars(4.4) == "★★★★☆"
+
+
+def test_format_stars_clamps_out_of_range_values() -> None:
+    """A rating outside the scale is clamped instead of over/under-flowing."""
+    assert format_stars(9.9) == "★★★★★"
+    assert format_stars(-3) == "☆☆☆☆☆"
+
+
+def test_clamp_text_truncates_and_shows_absence() -> None:
+    """Long labels are clipped; an empty label is the explicit absence."""
+    assert clamp_text(None) == NOT_AVAILABLE
+    assert clamp_text("   ") == NOT_AVAILABLE
+    assert clamp_text("short title", 20) == "short title"
+
+    clipped = clamp_text("x" * 50, 10)
+    assert len(clipped) == 10
+    assert clipped.endswith("…")

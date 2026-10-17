@@ -25,6 +25,8 @@ from app.components import (  # noqa: E402
     concern_list,
     metric_card,
     product_image,
+    render_footer,
+    render_header,
     render_risk_gauge,
     verdict_badge,
 )
@@ -99,14 +101,11 @@ def _render_downloads(asin: str) -> None:
     )
 
 
-def main() -> None:
-    """Render the Consumer Verdict page."""
-    apply_theme("Consumer Verdict")
-    render_sidebar()
-
+def _render_body() -> None:
+    """Render the verdict, gauge, concerns, data basis and the downloads."""
     asin = require_product()
 
-    st.title("🏷️ 7. Consumer Verdict")
+    st.title("🏷️ Consumer Verdict")
     st.caption(f"Active subject ASIN: `{asin}`")
 
     try:
@@ -161,6 +160,16 @@ def main() -> None:
 
     st.divider()
     _render_downloads(asin)
+
+
+def main() -> None:
+    """Render the Consumer Verdict page."""
+    apply_theme("Consumer Verdict")
+    render_header()
+    render_sidebar()
+
+    _render_body()
+    render_footer()
 
 
 if __name__ == "__main__":

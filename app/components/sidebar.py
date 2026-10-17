@@ -73,6 +73,26 @@ def render_sidebar() -> None:
             st.rerun()
 
 
+def is_stub_analysis(analysis: AnalysisResponse | None) -> bool:
+    """Report whether an analysis still comes from the stub engine.
+
+    Pure, so the rule lives in one place and can be unit-tested: an analysis is a
+    stub when its ``pipeline_version`` starts with ``stub`` or any warning starts
+    with ``STUB:``.
+
+    Args:
+        analysis: AnalysisResponse instance or None.
+
+    Returns:
+        True when the analysis is stub output, False otherwise (including None).
+    """
+    if analysis is None:
+        return False
+    if analysis.pipeline_version and analysis.pipeline_version.lower().startswith("stub"):
+        return True
+    return any(warning.startswith("STUB:") for warning in (analysis.warnings or []))
+
+
 def show_stub_banner(analysis: AnalysisResponse | None) -> None:
     """Display a warning banner whenever analysis originates from the stub engine.
 
@@ -82,19 +102,7 @@ def show_stub_banner(analysis: AnalysisResponse | None) -> None:
     Args:
         analysis: AnalysisResponse instance or None.
     """
-    if analysis is None:
-        return
-
-    is_stub = False
-    if analysis.pipeline_version and analysis.pipeline_version.lower().startswith("stub"):
-        is_stub = True
-    elif analysis.warnings:
-        for warning in analysis.warnings:
-            if warning.startswith("STUB:"):
-                is_stub = True
-                break
-
-    if is_stub:
+    if is_stub_analysis(analysis):
         st.warning(
             "⚠️ **Placeholder analysis from the stub engine. Risk scores, verdicts and explanations are NOT real results.**"
         )

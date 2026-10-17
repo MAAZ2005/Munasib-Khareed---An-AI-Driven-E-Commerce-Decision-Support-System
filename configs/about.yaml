@@ -1,0 +1,64 @@
+# About page content for the Munasib Khareed dashboard.
+#
+# This file is loaded and validated by app.about.AboutConfig, so the About page can
+# be edited here without touching any code. Keep it free of contact details: the
+# project deliberately publishes no email address or phone number.
+#
+# Every field below is required and validated (a blank name, an empty member list
+# or a missing technology is rejected at load time rather than rendered as blank).
+
+title: "Munasib Khareed: An AI Driven E-Commerce Decision Support System"
+
+supervisor: "Mr. Ubaid Aftab Chawla"
+
+members:
+  - name: "Muhammad Maaz Nizami"
+    registration: "23K-2052"
+    role: "Leader"
+  - name: "Muhammad Shehryar Choudhary"
+    registration: "23K-0503"
+  - name: "Abuzar Ali"
+    registration: "23K-0819"
+
+department: >-
+  Department of Computer Science, FAST School of Computing,
+  FAST National University, Karachi Campus
+
+programme: "BS Computer Science, Final Year Project, Session Fall 2026"
+
+description: >-
+  Munasib Khareed ("Appropriate / Fair Purchase") is a virtual consumer advocate.
+  Instead of optimising for a sale, it weighs the evidence behind a product's
+  reviews, quantifies how risky a purchase looks on a 0-100 scale, and explains
+  that assessment in plain language before recommending a decision.
+
+# The pipeline, one stage per line (rendered joined by " -> ").
+pipeline:
+  - "Data"
+  - "Intelligence"
+  - "Evidence"
+  - "Risk"
+  - "Decision"
+  - "Explanation"
+  - "Alternatives"
+  - "Consumer Verdict"
+
+technologies:
+  - "Python"
+  - "PyTorch"
+  - "spaCy"
+  - "scikit-learn"
+  - "scikit-fuzzy"
+  - "TOPSIS"
+  - "SHAP"
+  - "FastAPI"
+  - "Streamlit"
+
+dataset_citation: >-
+  Ni, Li & McAuley, "Justifying recommendations using distantly-labeled reviews
+  and fine-grained aspects", EMNLP 2019 (UCSD Amazon Review Data 2018).
+
+notice: >-
+  This is an academic prototype built for a university Final Year Project. While
+  the stub engine is active, every risk score, verdict and explanation shown in
+  the dashboard is a placeholder and not a real result.

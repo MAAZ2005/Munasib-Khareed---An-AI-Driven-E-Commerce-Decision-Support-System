@@ -6,22 +6,28 @@ This document describes the Streamlit frontend architecture for Munasib Khareed,
 
 ## 1. Page Routing in Streamlit Multipage Apps
 
-Streamlit natively discovers multipage applications through the directory structure:
+The application registers its pages explicitly with `st.navigation` / `st.Page` (see `app/Home.py`). Streamlit therefore does **not** treat `app/pages/` as an auto-discovered directory: every page is declared once, with a clean title, an explicit icon and an explicit order, and the numeric filename prefixes are only there to keep the files sorted on disk.
 
 ```text
 app/
-├── Home.py                    # Application entry point (Landing / System Status)
+├── Home.py                    # Entry point: st.navigation + the Landing page
 ├── api_client.py              # Pure HTTP client (no Streamlit dependencies)
 ├── cache.py                   # Streamlit cache_data wrappers with TTLs
 ├── state.py                   # st.session_state accessors, page guards, analysis loader
-├── formatting.py              # Pure display helpers (price/rank/date, CSV/JSON builders)
+├── formatting.py              # Pure display helpers (price/rank/date, stars, CSV/JSON builders)
 ├── errors.py                  # Friendly messages for failed API calls
-├── theme.py                   # System styling & colorblind-safe verdict themes
+├── theme.py                   # System styling, header/accent tokens & verdict colors
+├── branding.py                # Offline logo loader (app/assets/logo.png), text fallback
+├── about.py                   # Pydantic model + loader for configs/about.yaml
+├── assets/
+│   └── logo.png               # Committed copy of docs/logo.png (the only image asset)
 ├── components/
 │   ├── _common.py             # Private: figure scaffolding & number formatting
 │   ├── __init__.py            # Exports every reusable component
+│   ├── header.py              # Shared header band (brand, search, links) + footer
 │   ├── sidebar.py             # Health status, active product, navigation, stub banner
 │   ├── product_image.py       # Cached thumbnail or neutral local placeholder tile
+│   ├── product_card.py        # Marketplace card builders (escaped, absence-aware)
 │   ├── metric_card.py         # 1. Labelled number with help text and delta
 │   ├── risk_gauge.py          # 2. 0-100 gauge banded by verdict_thresholds.yaml
 │   ├── verdict_badge.py       # 3. The three locked verdict labels
@@ -43,14 +49,16 @@ app/
     ├── 5_Explanation_SHAP.py  # Surrogate model explanation & feature attribution
     ├── 6_Alternatives.py      # Graph-linked alternatives & delta metrics
     ├── 7_Consumer_Verdict.py  # Three-tier verdict card, concerns & rationale
+    ├── About.py               # Team, pipeline, technologies & dataset (configs/about.yaml)
     └── _component_gallery.py  # Every component on one page (review aid, see §9)
 ```
 
 ### Routing Rules
-- The application root is launched using `app/Home.py`.
-- Sub-pages live inside `app/pages/` and are automatically ordered alphabetically/numerically by Streamlit based on their filename prefixes (`1_...`, `2_...`, etc.).
-- The number prefix dictates the consumer advocacy workflow order.
-- Direct navigation between pages can be performed via the sidebar or programmatically using `st.page_link()`.
+- The application root is launched using `app/Home.py`, which is both the entry point and the landing page.
+- `Home.py` calls `st.set_page_config(...)` and then `st.navigation(pages, position="sidebar").run()`. Because `st.navigation` is used, auto-discovery of `app/pages/` is switched off and only the declared pages appear.
+- The page order, titles (no numeric prefixes) and icons are declared once in `Home._pages()`; the workflow order is Data → Intelligence → Evidence → Risk → Decision → Explanation → Alternatives → Verdict.
+- Every page (and the landing page) renders the same shared chrome: `render_header()` at the top and `render_footer()` at the bottom, from `app/components/header.py`.
+- Navigation between pages uses native `st.page_link()` (header links and in-page links) and `st.switch_page()` (the header search box, the "View full analysis" button).
 
 ---
 
@@ -183,7 +191,7 @@ Every chart component has two halves:
 
 The builders are the unit-tested half (`tests/unit/test_component_figures.py`); the renderers are exercised end to end by the gallery (`tests/e2e/test_component_gallery.py`).
 
-The four non-chart components expose only a render function: `metric_card`, `verdict_badge`, `concern_list` and `alternatives_table`.
+The non-chart components expose a small, focused API: `metric_card`, `verdict_badge`, `concern_list` and `alternatives_table` (render only); `header.render_header` / `header.render_footer` (the shared application chrome); and `product_card` (pure, escaped card builders plus the card layout used by the selection and alternatives grids).
 
 `product_image(asin, has_image, width, title)` is the one component that talks to
 the API: it shows the cached thumbnail bytes as an image, or a neutral gray
@@ -218,21 +226,20 @@ All chart colors come from `CHART_PALETTE` in `app/theme.py` — the Okabe-Ito c
 
 ### How to open it
 
-1. `streamlit run app/Home.py --server.port 8501`, then pick **`_component_gallery`** from the sidebar navigation.
+1. `streamlit run app/Home.py --server.port 8501`, then pick **Component Gallery** from the sidebar navigation.
 2. Or run it directly: `streamlit run app/pages/_component_gallery.py --server.port 8501`.
 
 The page always shows a visible banner — *"Sample data: component gallery (illustrative values, not results)"* — and a single checkbox, **"Switch every component to empty data"**, which re-renders every component with missing payloads (`None`, empty lists, zero-count schemas) so the empty states can be checked without breaking anything.
 
 ### How to hide it before submission
 
-Streamlit lists every `*.py` in `app/pages/` whose name does not start with `.`, so an underscore prefix is **not** enough to hide it. Move the file out of the pages directory (or give it a non-`.py` suffix):
+The page is declared in `Home._pages()` with `visibility="visible"` so it stays reachable exactly as before. To remove it from the sidebar, change its declaration to `visibility="hidden"` (it stays reachable by URL), or delete the `st.Page("pages/_component_gallery.py", ...)` entry:
 
-```powershell
-# reversible: rename back to _component_gallery.py to restore it
-Rename-Item app\pages\_component_gallery.py _component_gallery.py.disabled
+```python
+st.Page("pages/_component_gallery.py", title="Component Gallery", ..., visibility="hidden")
 ```
 
-The component library itself (`app/components/`) stays in place — only the review page is hidden.
+The component library itself (`app/components/`) stays in place — only the review page disappears from the navigation.
 
 ---
 
@@ -243,6 +250,13 @@ running (`make run-api` and `make run-ui`) and confirm every step.
 
 ### Shared behaviour to confirm everywhere
 
+- **The header band is on every page.** Top-left shows the committed logo
+  (`app/assets/logo.png`, with "Munasib Khareed" as the text fallback if the file
+  is missing), the middle is the catalogue search box, and the right has
+  **Search** and **About** links. Submitting the search stores the query, resets
+  the page offset and jumps to Product Selection.
+- **The footer is on every page.** It repeats the image attribution, the dataset
+  citation (Ni, Li, McAuley, EMNLP 2019) and *Final Year Project, FAST NU Karachi*.
 - **Analysis is fetched once per product.** The first of pages 3-7 you open fetches
   `GET /products/{asin}/analysis` (a spinner is shown) and stores it in
   `last_analysis`; the other pages reuse it. Selecting a different product clears
@@ -258,19 +272,31 @@ running (`make run-api` and `make run-ui`) and confirm every step.
 
 ### 1. Product Selection (`1_Product_Selection.py`)
 
-- [ ] Type a brand keyword (e.g. `Range Kleen`) and confirm the results and the
-      "Displaying N-M of T" caption update; changing the query resets to page 1.
-- [ ] Each card shows an image **or** the neutral "No image available" tile, the
-      title, brand, price (or "Price not listed"), review count and mean rating.
-- [ ] Page with **Next ➡️** / **⬅️ Previous**; the borders and page counter follow.
+- [ ] Type a brand keyword (e.g. `Range Kleen`) in the **header** search and press
+      Enter; the page shows the matches and the "Displaying N–M of T" caption.
+- [ ] The grid lays out four cards per row on a wide window and wraps to fewer on a
+      narrow one; changing the query resets to page 1.
+- [ ] Each card shows a fixed-height image box (the image **or** the neutral
+      "No image available" tile), a two-line title, the brand, the star row with the
+      numeric rating and review count, and the price in large type (or
+      "Price not listed").
+- [ ] Page with **Next ➡️** / **⬅️ Previous**; the centred "Page x of y" counter and
+      the enabled/disabled buttons follow.
 - [ ] Click **Select** on a product: a success banner naming the ASIN appears and
-      the button on that card becomes a disabled **Selected ✅**.
+      the button on that card becomes a disabled **Selected ✅**. **Clear search**
+      empties the query.
 
 ### 2. Product Overview (`2_Product_Overview.py`)
 
-- [ ] The image (or placeholder) and the title, brand, price and sales rank show.
+- [ ] The page is split into three zones: image on the left, details in the centre,
+      the **Consumer Advocate** panel on the right.
+- [ ] The centre shows the title, brand, star row, price, sales rank and the
+      **About this item** bullets from the published features.
 - [ ] The four metric cards show reviews, mean rating and the first/last review dates.
-- [ ] The feature bullets list, and the **Full product description** expander opens.
+- [ ] The **Full product description** expander opens.
+- [ ] The Consumer Advocate panel shows the stub banner, a **Placeholder** caption,
+      the verdict badge, a compact risk gauge, the evidence strength and a
+      **View full analysis** button that opens page 7.
 - [ ] The "Related products" counts and the "Data basis · category … pipeline …"
       caption are present.
 
@@ -304,9 +330,11 @@ running (`make run-api` and `make run-ui`) and confirm every step.
 ### 6. Alternatives (`6_Alternatives.py`)
 
 - [ ] The stub banner is visible.
-- [ ] The "usable of total related" caption shows.
-- [ ] Each alternative card shows an image or placeholder, its verdict badge, risk
-      score, the three deltas, and the relation as an icon **plus** a word.
+- [ ] The **Customers also considered** heading and the "usable of total related"
+      caption show.
+- [ ] Each alternative card shows an image or placeholder, a two-line title, its
+      verdict badge, its risk score (with the Δ risk delta) and the relation as an
+      icon **plus** a word.
 - [ ] The comparison table at the bottom matches the cards.
 - [ ] Click **Switch to this product**: the active ASIN changes, the analysis is
       re-fetched for the new product, and the page re-renders for it.
@@ -335,4 +363,72 @@ running (`make run-api` and `make run-ui`) and confirm every step.
       every page that can show an image (1, 2, 6, 7).
 - [ ] Nothing is hotlinked: the app works with no internet connection as long as
       the downloader has populated `data/images/` (see `docs/images.md`).
+
+### About (`About.py`)
+
+- [ ] The header **About** link opens it (no product needs to be selected).
+- [ ] It shows the exact title, the supervisor, the three members with their
+      registration numbers and the **Leader** role, the department and the programme
+      line.
+- [ ] It shows the pipeline one-liner
+      (`Data -> Intelligence -> Evidence -> Risk -> Decision -> Explanation -> Alternatives -> Consumer Verdict`),
+      the technology list, the dataset citation and the academic-prototype notice.
+- [ ] It contains **no** email address or phone number (search the page text for `@`).
+
+---
+
+## 11. Design notes (marketplace layout)
+
+### Marketplace layout, our own brand only
+
+The dashboard borrows the *layout conventions* of a large online shop — a slim top
+bar with the brand at the left, a search box in the middle and links at the right; a
+responsive results grid of cards; a buy-box style panel beside the product; a fixed
+footer — but every name, logo and asset is the project's own. There is **no**
+third-party marketplace name, logo or asset anywhere, and nothing is hotlinked.
+
+### Offline-first chrome
+
+- The header, footer and cards are built from native Streamlit elements
+  (`st.container`, `st.columns`, `st.form`, `st.image`, `st.button`, `st.page_link`);
+  the only custom HTML/CSS lives in `app/theme.py` (`CUSTOM_CSS`) and is HTML-escaped
+  at every point where product data is interpolated (`app/components/product_card.py`).
+- No external fonts or CDNs: the type is the system font stack
+  (`FONT_FAMILY`), the "icons" are emoji/text characters, and the logo is the one
+  committed local PNG (`app/assets/logo.png`).
+- The header band is styled with a **key-based CSS class**
+  (`st.container(key="mk_header")` → `.st-key-mk_header`), so no fragile DOM
+  selectors are needed. The navy band (`HEADER_BACKGROUND`) carries light text
+  (`HEADER_TEXT`), and the logo reads as a light chip on it because the PNG is
+  dark-on-white.
+
+### The single accent color rule
+
+There is exactly one accent color, `ACCENT_COLOR = "#4338ca"` (indigo) in
+`app/theme.py`, mirrored by `primaryColor` in `.streamlit/config.toml` so native
+buttons match. It is used only for primary actions (the header **Search** submit,
+**Select**, **Switch to this product**, **View full analysis**).
+
+**Rule:** the accent must stay visibly distinct from every verdict and risk color.
+Verdict colors are green/amber/red (`VERDICT_CONFIGS`) and the risk bands plus chart
+hues are the Okabe-Ito palette (`CHART_PALETTE`); indigo collides with none of them,
+so an action can never be mistaken for a verdict. Verdict colors and their icons
+(`✅` / `⚠️` / `🛑`) are unchanged.
+
+### How to edit the About content
+
+Edit `configs/about.yaml` — the page reads it at render time. It is validated by
+`app.about.AboutConfig`, so a blank member name, an empty member list or a missing
+field fails at load time (the page then shows a friendly message) instead of
+rendering blanks. Do not add contact details: the project publishes no email address
+or phone number.
+
+### How to replace the logo
+
+Replace `app/assets/logo.png` (a committed copy of `docs/logo.png`). The header
+shows it top-left on every page and uses it as the browser page icon. If the file is
+missing or unreadable the header falls back to the app name as text — the helper in
+`app/branding.py` returns `None` rather than raising, so a bad asset can never crash
+a page. A dark-on-light logo (like the current one) is displayed on a light chip on
+the navy band; a light-on-transparent logo can be dropped on the band directly.
 

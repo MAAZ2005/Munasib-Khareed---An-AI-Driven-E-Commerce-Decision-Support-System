@@ -21,7 +21,12 @@ if _REPO_ROOT not in sys.path:
 
 import streamlit as st  # noqa: E402
 
-from app.components import metric_card, render_shap_waterfall_chart  # noqa: E402
+from app.components import (  # noqa: E402
+    metric_card,
+    render_footer,
+    render_header,
+    render_shap_waterfall_chart,
+)
 from app.components.sidebar import render_sidebar, show_stub_banner  # noqa: E402
 from app.errors import render_api_error  # noqa: E402
 from app.state import get_or_load_analysis, require_product  # noqa: E402
@@ -37,14 +42,11 @@ FIDELITY_NOTE = (
 )
 
 
-def main() -> None:
-    """Render the SHAP Explanation page."""
-    apply_theme("Explanation (SHAP)")
-    render_sidebar()
-
+def _render_body() -> None:
+    """Render the surrogate-fidelity metrics and the SHAP waterfall."""
     asin = require_product()
 
-    st.title("🔬 5. Explanation (SHAP)")
+    st.title("🔬 Explanation (SHAP)")
     st.caption(f"Active subject ASIN: `{asin}`")
 
     try:
@@ -80,6 +82,16 @@ def main() -> None:
         st.caption(FIDELITY_NOTE)
 
     render_shap_waterfall_chart(explanation)
+
+
+def main() -> None:
+    """Render the SHAP Explanation page."""
+    apply_theme("Explanation (SHAP)")
+    render_header()
+    render_sidebar()
+
+    _render_body()
+    render_footer()
 
 
 if __name__ == "__main__":

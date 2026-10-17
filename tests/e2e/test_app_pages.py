@@ -6,6 +6,7 @@ and stub alert banners without requiring a running API or live network connectio
 
 from __future__ import annotations
 
+import re
 import unittest.mock as mock
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,6 +35,9 @@ from munasib.api.schemas.analysis import ANALYSIS_EXAMPLE
 from tests.e2e import conftest as e2e
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
+
+#: The committed logo, asserted to be a loadable local asset (no network).
+LOGO_PATH = ROOT_DIR / "app" / "assets" / "logo.png"
 
 
 def _app_path(rel: str) -> str:
@@ -315,8 +319,10 @@ def test_image_pages_show_the_attribution_caption(rel_path: str) -> None:
 
 def test_product_selection_renders_cards_and_price_absence() -> None:
     """Page 1 renders one card per result, with the price absence shown."""
-    at = AppTest.from_file(_app_path("app/pages/1_Product_Selection.py"))
-    at.run()
+    # The header logo is disabled so the only images left would be product images.
+    with mock.patch("app.components.header.load_logo_bytes", return_value=None):
+        at = AppTest.from_file(_app_path("app/pages/1_Product_Selection.py"))
+        at.run()
 
     assert not at.exception, at.exception
     assert any("Price not listed" in m.value for m in at.markdown)
@@ -355,6 +361,7 @@ def test_product_overview_placeholder_makes_no_image_request() -> None:
             side_effect=lambda **kw: e2e.build_product_detail(kw["asin"], has_image=False),
         ),
         mock.patch("app.api_client.ApiClient.get_product_image", spy),
+        mock.patch("app.components.header.load_logo_bytes", return_value=None),
     ):
         at = _run_page("app/pages/2_Product_Overview.py", asin=e2e.DEFAULT_ASIN)
 
@@ -484,3 +491,177 @@ def test_api_unavailable_shows_startup_instructions() -> None:
     assert not at.exception, at.exception
     assert any("not reachable" in e.value for e in at.error)
     assert any("uvicorn munasib.api.main:app --port 8000" in info.value for info in at.info)
+
+
+# ---------------------------------------------------------------------------
+# Marketplace chrome and the About page (p10c)
+# ---------------------------------------------------------------------------
+
+#: Every page, with the ASIN it needs (None when it does not require a product).
+ALL_PAGE_RUNS: list[tuple[str, str | None]] = [
+    ("app/Home.py", None),
+    ("app/pages/1_Product_Selection.py", None),
+    ("app/pages/2_Product_Overview.py", e2e.DEFAULT_ASIN),
+    ("app/pages/3_Review_Analysis.py", e2e.DEFAULT_ASIN),
+    ("app/pages/4_Risk_and_Evidence.py", e2e.DEFAULT_ASIN),
+    ("app/pages/5_Explanation_SHAP.py", e2e.DEFAULT_ASIN),
+    ("app/pages/6_Alternatives.py", e2e.DEFAULT_ASIN),
+    ("app/pages/7_Consumer_Verdict.py", e2e.DEFAULT_ASIN),
+    ("app/pages/About.py", None),
+]
+
+_PAGE_IDS = [rel for rel, _ in ALL_PAGE_RUNS]
+
+
+def _page_text(at: AppTest) -> str:
+    """Collect the visible text of every widget so a page can be searched as text.
+
+    Args:
+        at: The run AppTest context.
+
+    Returns:
+        Newline-joined ``value``/``label`` strings of every element kind that
+        carries text, including the header, the sidebar and the footer.
+    """
+    chunks: list[str] = []
+    for kind in (
+        "title",
+        "header",
+        "subheader",
+        "markdown",
+        "caption",
+        "text",
+        "warning",
+        "info",
+        "error",
+        "success",
+        "metric",
+        "code",
+        "checkbox",
+        "selectbox",
+        "button",
+    ):
+        try:
+            elements = getattr(at, kind)
+        except Exception:  # pragma: no cover - kind not exposed by AppTest
+            continue
+        for element in elements:
+            for attribute in ("value", "label"):
+                value = getattr(element, attribute, None)
+                if value:
+                    chunks.append(str(value))
+    return "\n".join(chunks)
+
+
+def test_logo_asset_exists_and_loads_with_pillow() -> None:
+    """The committed logo is a real local PNG (no network, no CDN)."""
+    from PIL import Image as PILImage
+
+    assert LOGO_PATH.is_file(), f"missing committed logo at {LOGO_PATH}"
+    with PILImage.open(LOGO_PATH) as image:
+        assert image.format == "PNG"
+        assert image.size[0] > 100 and image.size[1] > 40
+
+
+@pytest.mark.parametrize(("rel_path", "asin"), ALL_PAGE_RUNS, ids=_PAGE_IDS)
+def test_header_renders_the_logo_on_every_page(rel_path: str, asin: str | None) -> None:
+    """The header (with the logo) appears at the top of every page."""
+    at = _run_page(rel_path, asin=asin)
+
+    assert not at.exception, at.exception
+    assert len(at.image) >= 1, "the header should render the logo on every page"
+
+
+@pytest.mark.parametrize(("rel_path", "asin"), ALL_PAGE_RUNS, ids=_PAGE_IDS)
+def test_header_falls_back_to_app_name_when_logo_is_missing(
+    rel_path: str, asin: str | None
+) -> None:
+    """A missing logo degrades to the app name as text and never crashes."""
+    with mock.patch("app.components.header.load_logo_bytes", return_value=None):
+        at = _run_page(rel_path, asin=asin)
+
+    assert not at.exception, at.exception
+    assert any("Munasib Khareed" in m.value for m in at.markdown)
+
+
+def test_header_search_stores_query_resets_offset_and_routes_to_selection() -> None:
+    """Submitting the header search stores the query, resets paging and routes."""
+    at = AppTest.from_file(_app_path("app/pages/1_Product_Selection.py"))
+    at.session_state["search_offset"] = 20
+    at.run()
+    assert not at.exception, at.exception
+
+    at.text_input[0].input("gas range knobs")
+    with mock.patch("streamlit.switch_page") as switch:
+        submit = next(b for b in at.button if b.label == "Search")
+        submit.click().run()
+
+    assert not at.exception, at.exception
+    assert at.session_state["search_query"] == "gas range knobs"
+    assert at.session_state["search_offset"] == 0
+    switch.assert_called_once()
+    assert switch.call_args.args[0] == "pages/1_Product_Selection.py"
+
+
+def test_product_grid_renders_cards_escapes_titles_and_shows_price_absence() -> None:
+    """The selection grid shows one card per item, escapes HTML and hides no price."""
+    malicious = e2e.build_product_summary("B000AAA003", has_image=False, price=None).model_copy(
+        update={"title": '<script>alert(1)</script> & "quoted"', "brand": "Brand <b>X</b>"}
+    )
+    page = ProductPage(
+        total=3,
+        limit=8,
+        offset=0,
+        items=[
+            e2e.build_product_summary("B000AAA001", has_image=True, price=12.66),
+            e2e.build_product_summary("B000AAA002", has_image=False, price=None),
+            malicious,
+        ],
+    )
+
+    with mock.patch("app.api_client.ApiClient.search_products", return_value=page):
+        at = AppTest.from_file(_app_path("app/pages/1_Product_Selection.py"))
+        at.run()
+
+    assert not at.exception, at.exception
+    select_buttons = [b for b in at.button if (b.key or "").startswith("select_")]
+    assert len(select_buttons) == 3
+
+    joined = "\n".join(m.value for m in at.markdown)
+    assert "Price not listed" in joined
+    assert "&lt;script&gt;" in joined
+    assert "<script>" not in joined
+    assert "&lt;b&gt;X&lt;/b&gt;" in joined
+
+
+def test_overview_advocate_panel_is_labelled_placeholder_under_stub() -> None:
+    """Page 2's Consumer Advocate panel shows the stub banner and a placeholder note."""
+    analysis = e2e.build_analysis(e2e.DEFAULT_ASIN)
+    at = _run_page("app/pages/2_Product_Overview.py", asin=e2e.DEFAULT_ASIN, analysis=analysis)
+
+    assert not at.exception, at.exception
+    assert any(STUB_BANNER_TEXT in w.value for w in at.warning)
+    assert any("Consumer Advocate" in m.value for m in at.markdown)
+    assert any("Placeholder" in c.value for c in at.caption)
+    assert any(b.label == "View full analysis" for b in at.button)
+
+
+def test_about_page_renders_the_team_and_publishes_no_contact_details() -> None:
+    """The About page shows the team and contains no email or long digit run."""
+    at = AppTest.from_file(_app_path("app/pages/About.py")).run()
+
+    assert not at.exception, at.exception
+    text = _page_text(at)
+
+    assert "Mr. Ubaid Aftab Chawla" in text
+    assert "Muhammad Maaz Nizami" in text
+    assert "23K-2052" in text
+    assert "Muhammad Shehryar Choudhary" in text
+    assert "23K-0503" in text
+    assert "Abuzar Ali" in text
+    assert "23K-0819" in text
+    assert "Leader" in text
+    assert "FAST National University" in text
+
+    assert "@" not in text, "the About page must publish no email address"
+    assert re.search(r"\d{8,}", text) is None, "the About page must contain no long digit run"

@@ -23,7 +23,9 @@ import streamlit as st  # noqa: E402
 from app.components import (  # noqa: E402
     metric_card,
     render_evidence_indicator_radar,
+    render_footer,
     render_fuzzy_membership_chart,
+    render_header,
     render_risk_gauge,
     render_topsis_ranking_chart,
 )
@@ -34,14 +36,11 @@ from app.state import get_or_load_analysis, require_product  # noqa: E402
 from app.theme import apply_theme  # noqa: E402
 
 
-def main() -> None:
-    """Render the Risk and Evidence page."""
-    apply_theme("Risk and Evidence")
-    render_sidebar()
-
+def _render_body() -> None:
+    """Render the risk gauge, evidence table and decision charts."""
     asin = require_product()
 
-    st.title("⚖️ 4. Risk and Evidence")
+    st.title("⚖️ Risk and Evidence")
     st.caption(f"Active subject ASIN: `{asin}`")
 
     try:
@@ -81,6 +80,16 @@ def main() -> None:
     decision = analysis.decision
     render_fuzzy_membership_chart(decision.fuzzy if decision is not None else None)
     render_topsis_ranking_chart(decision.topsis if decision is not None else None)
+
+
+def main() -> None:
+    """Render the Risk and Evidence page."""
+    apply_theme("Risk and Evidence")
+    render_header()
+    render_sidebar()
+
+    _render_body()
+    render_footer()
 
 
 if __name__ == "__main__":

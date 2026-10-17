@@ -171,6 +171,63 @@ def format_signed(value: float | None, digits: int = 2) -> str:
     return NOT_AVAILABLE if value is None else f"{value:+.{digits}f}"
 
 
+#: Filled and empty star glyphs. They are ordinary text characters rendered by the
+#: operating system's fonts, so no icon font or CDN is needed (works offline).
+STAR_FULL = "★"
+STAR_EMPTY = "☆"
+
+
+def format_stars(value: float | None, maximum: float = 5.0, stars: int = 5) -> str:
+    """Render a rating as a row of filled/empty stars.
+
+    The glyph row is an at-a-glance summary only: pages always print the exact
+    numeric rating next to it, so a rating is never conveyed by the stars alone.
+
+    Args:
+        value: The mean rating, or None when the product has no rated review.
+        maximum: The top of the rating scale (``5.0`` for Amazon-style ratings).
+        stars: How many glyphs to draw.
+
+    Returns:
+        ``stars`` glyphs (filled then empty), or :data:`NOT_AVAILABLE` when the
+        rating is missing.
+    """
+    if value is None or maximum <= 0:
+        return NOT_AVAILABLE
+    clamped = max(0.0, min(float(maximum), float(value)))
+    filled = max(0, min(stars, int(round(clamped / maximum * stars))))
+    return STAR_FULL * filled + STAR_EMPTY * (stars - filled)
+
+
+def clamp_text(text: str | None, max_chars: int = 120, ellipsis: str = "…") -> str:
+    """Trim a long label to ``max_chars`` for a compact card.
+
+    Used for product titles, which are clamped to two lines in the card CSS and
+    also hard-capped here so an unusually long title cannot balloon the layout. A
+    missing title renders as the explicit :data:`NOT_AVAILABLE`.
+
+    Args:
+        text: The text to clamp, or None when it is missing.
+        max_chars: Maximum length of the returned string.
+        ellipsis: Marker appended when the text is clipped.
+
+    Returns:
+        The text unchanged when short, a clipped ``...`` version when long, or
+        :data:`NOT_AVAILABLE` when there is nothing to show.
+    """
+    if text is None:
+        return NOT_AVAILABLE
+    stripped = text.strip()
+    if not stripped:
+        return NOT_AVAILABLE
+    if max_chars <= 0:
+        return ellipsis
+    if len(stripped) <= max_chars:
+        return stripped
+    keep = max(1, max_chars - len(ellipsis))
+    return stripped[:keep].rstrip() + ellipsis
+
+
 def _indicator_row(indicator: EvidenceIndicator, group: str) -> dict[str, str]:
     """Build one display row for one evidence or risk indicator.
 

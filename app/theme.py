@@ -16,13 +16,19 @@ from __future__ import annotations
 
 import streamlit as st
 
+from app.branding import logo_path
 from munasib.api.schemas import VerdictLabel
 from munasib.core.constants import IMAGE_ATTRIBUTION
 
 __all__ = [
+    "ACCENT_COLOR",
     "CHART_PALETTE",
     "CUSTOM_CSS",
+    "DATASET_CITATION",
     "FONT_FAMILY",
+    "FOOTER_CREDIT",
+    "HEADER_BACKGROUND",
+    "HEADER_TEXT",
     "IMAGE_ATTRIBUTION",
     "VERDICT_CONFIGS",
     "apply_theme",
@@ -38,6 +44,31 @@ __all__ = [
 #: The images belong to Amazon and the individual sellers and are shown only for
 #: the academic demo, from the local cache, offline.
 IMAGE_ATTRIBUTION = IMAGE_ATTRIBUTION
+
+#: Marketplace header band: a dark navy background with light text. Kept here (not
+#: in a page) so every page shares one definition of the app chrome.
+HEADER_BACKGROUND = "#0f172a"
+HEADER_TEXT = "#f8fafc"
+
+#: The single accent color used for primary actions (the header search submit and
+#: any primary button). Documented rule: the accent is deliberately *outside* every
+#: verdict and risk color, so an action can never be mistaken for a verdict.
+#:
+#: The verdict palette is green/amber/red (:data:`VERDICT_CONFIGS`) and the risk
+#: bands plus chart hues are the Okabe-Ito palette (:data:`CHART_PALETTE`); the
+#: accent is indigo (``#4338ca``), which collides with none of them. It is mirrored
+#: by ``primaryColor`` in ``.streamlit/config.toml`` so native buttons match.
+ACCENT_COLOR = "#4338ca"
+
+#: Dataset citation shown in the footer (repeated on the About page from config).
+DATASET_CITATION = (
+    'Dataset: Ni, Li & McAuley, "Justifying recommendations using '
+    'distantly-labeled reviews and fine-grained aspects", EMNLP 2019 '
+    "(UCSD Amazon Review Data 2018)."
+)
+
+#: Footer credit line shown on every page.
+FOOTER_CREDIT = "Final Year Project, FAST NU Karachi"
 
 #: Colorblind-safe styling dictionary for each valid verdict label.
 VERDICT_CONFIGS: dict[str, dict[str, str]] = {
@@ -160,6 +191,97 @@ html, body, [class*="css"] {
     padding: 12px 16px;
     margin-bottom: 8px;
 }
+
+/* Marketplace header band. `st.container(key="mk_header")` adds the
+   `.st-key-mk_header` class, which this rule styles. The logo PNG has a white
+   background, so it reads as a light chip on the navy band. */
+.st-key-mk_header {
+    background-color: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    padding: 10px 18px;
+    margin-bottom: 20px;
+}
+.st-key-mk_header [data-testid="stImage"] img {
+    background-color: #ffffff;
+    border-radius: 10px;
+    padding: 6px 10px;
+    display: block;
+}
+.mk-wordmark {
+    color: #f8fafc;
+    font-weight: 800;
+    font-size: 1.2rem;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+}
+.mk-tagline {
+    color: #94a3b8;
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.st-key-mk_header a {
+    color: #c7d2fe;
+    font-weight: 600;
+    text-decoration: none;
+}
+.st-key-mk_header a:hover {
+    color: #ffffff;
+    text-decoration: underline;
+}
+.st-key-mk_header label,
+.st-key-mk_header p {
+    color: #e2e8f0;
+}
+
+/* Product card typography (grids on pages 1 and 6). */
+.mk-card-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    line-height: 1.3;
+    color: #0f172a;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.6em;
+}
+.mk-price {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+.mk-price-missing {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #64748b;
+}
+.mk-stars {
+    color: #b45309;
+    letter-spacing: 2px;
+    font-size: 1rem;
+}
+.mk-brand {
+    color: #475569;
+    font-size: 0.82rem;
+}
+.mk-review-count {
+    color: #475569;
+    font-size: 0.82rem;
+}
+
+/* Consumer Advocate buy box (page 2). */
+.mk-advocate {
+    color: #0f172a;
+}
+
+/* Footer block. */
+.mk-footer {
+    color: #64748b;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
 </style>
 """
 
@@ -173,10 +295,13 @@ def apply_theme(page_title: str = "Munasib Khareed") -> None:
         page_title: Title suffix for browser tab.
     """
     full_title = f"{page_title} | Munasib Khareed" if page_title != "Munasib Khareed" else page_title
+    # Browser page icon: the local logo when present, else a neutral fallback.
+    # Never fetched from a CDN, so the tab works offline.
+    icon: str = str(logo_path()) if logo_path().is_file() else "🛒"
     try:
         st.set_page_config(
             page_title=full_title,
-            page_icon="🛒",
+            page_icon=icon,
             layout="wide",
             initial_sidebar_state="expanded",
         )

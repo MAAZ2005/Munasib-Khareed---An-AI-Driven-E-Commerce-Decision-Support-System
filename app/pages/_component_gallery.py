@@ -29,7 +29,9 @@ from app.components import (  # noqa: E402
     metric_card,
     render_aspect_bar_chart,
     render_evidence_indicator_radar,
+    render_footer,
     render_fuzzy_membership_chart,
+    render_header,
     render_rating_distribution_chart,
     render_risk_gauge,
     render_sentiment_breakdown_chart,
@@ -199,6 +201,7 @@ def render_components(analysis: AnalysisResponse, empty: bool) -> None:
 def main() -> None:
     """Render the component gallery page."""
     apply_theme("Component Gallery")
+    render_header()
     render_sidebar()
 
     st.title("🎨 Component gallery")
@@ -211,6 +214,7 @@ def main() -> None:
         "empty states can be checked without breaking anything.",
     )
     render_components(sample_analysis(), empty)
+    render_footer()
 
 
 if __name__ == "__main__":

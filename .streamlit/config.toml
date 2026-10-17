@@ -7,7 +7,7 @@ address = "127.0.0.1"
 port = 8501
 
 [theme]
-primaryColor = "#1f77b4"
+primaryColor = "#4338ca"
 backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f8f9fa"
 textColor = "#1e293b"

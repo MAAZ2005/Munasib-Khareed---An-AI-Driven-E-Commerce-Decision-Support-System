@@ -25,6 +25,8 @@ from app.cache import get_cached_reviews  # noqa: E402
 from app.components import (  # noqa: E402
     metric_card,
     render_aspect_bar_chart,
+    render_footer,
+    render_header,
     render_rating_distribution_chart,
     render_sentiment_breakdown_chart,
     render_sentiment_over_time_chart,
@@ -112,14 +114,11 @@ def _render_review_table(asin: str) -> None:
             st.rerun()
 
 
-def main() -> None:
-    """Render the Review Analysis page."""
-    apply_theme("Review Analysis")
-    render_sidebar()
-
+def _render_body() -> None:
+    """Render the review charts, evidence metrics and the review sample table."""
     asin = require_product()
 
-    st.title("💬 3. Review Analysis")
+    st.title("💬 Review Analysis")
     st.caption(f"Active subject ASIN: `{asin}`")
 
     try:
@@ -151,6 +150,16 @@ def main() -> None:
 
     st.divider()
     _render_review_table(asin)
+
+
+def main() -> None:
+    """Render the Review Analysis page."""
+    apply_theme("Review Analysis")
+    render_header()
+    render_sidebar()
+
+    _render_body()
+    render_footer()
 
 
 if __name__ == "__main__":

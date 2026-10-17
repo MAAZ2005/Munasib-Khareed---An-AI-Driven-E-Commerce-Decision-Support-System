@@ -37,7 +37,15 @@ from app.components.fuzzy_membership_chart import (
     build_fuzzy_membership_figure,
     render_fuzzy_membership_chart,
 )
+from app.components.header import render_footer, render_header
 from app.components.metric_card import metric_card
+from app.components.product_card import (
+    CARD_WIDTH,
+    card_brand_html,
+    card_price_html,
+    card_rating_html,
+    card_title_html,
+)
 from app.components.product_image import (
     IMAGE_ATTRIBUTION as PRODUCT_IMAGE_ATTRIBUTION,
 )
@@ -81,6 +89,7 @@ from app.components.verdict_badge import verdict_badge
 
 __all__ = [
     "ASPECT_NO_DATA_MESSAGE",
+    "CARD_WIDTH",
     "EVIDENCE_COST_SUFFIX",
     "NO_IMAGE_LABEL",
     "PRODUCT_IMAGE_ATTRIBUTION",
@@ -98,6 +107,10 @@ __all__ = [
     "build_sentiment_breakdown_figure",
     "build_sentiment_over_time_figure",
     "build_topsis_ranking_figure",
+    "card_brand_html",
+    "card_price_html",
+    "card_rating_html",
+    "card_title_html",
     "concern_list",
     "has_renderable_image",
     "load_risk_bands",
@@ -106,7 +119,9 @@ __all__ = [
     "product_image",
     "render_aspect_bar_chart",
     "render_evidence_indicator_radar",
+    "render_footer",
     "render_fuzzy_membership_chart",
+    "render_header",
     "render_rating_distribution_chart",
     "render_risk_gauge",
     "render_shap_waterfall_chart",

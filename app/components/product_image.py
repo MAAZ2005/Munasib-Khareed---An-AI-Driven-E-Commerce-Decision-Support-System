@@ -99,19 +99,22 @@ def product_image(
     has_image: bool,
     width: int = DEFAULT_WIDTH,
     title: str | None = None,
+    show_attribution: bool = True,
 ) -> None:
     """Render a product's cached thumbnail or the neutral placeholder.
 
     The image is requested only when ``has_image`` is true; a fetch that returns
     ``None`` (no cached thumbnail) or raises (backend down) still renders the
     placeholder, never a broken image and never an exception. A caption with the
-    required attribution is shown underneath in every case.
+    required attribution is shown underneath in every case unless
+    ``show_attribution`` is false (grid pages print it once, under the grid).
 
     Args:
         asin: Product ASIN.
         has_image: ``has_image`` from the product summary/detail.
         width: Rendered edge length in pixels.
         title: Product title, used only for the placeholder's initial letter.
+        show_attribution: Whether to print the image attribution caption here.
     """
     import streamlit as st
 
@@ -126,11 +129,12 @@ def product_image(
             data = None
 
     if has_renderable_image(has_image, data) and data is not None:
-        st.image(data, width=width, caption=title)
+        st.image(data, width=width, caption=title, alt=title or asin)
     else:
         st.markdown(_placeholder_html(placeholder_initial(title, asin), width), unsafe_allow_html=True)
 
-    st.caption(IMAGE_ATTRIBUTION)
+    if show_attribution:
+        st.caption(IMAGE_ATTRIBUTION)
 
 
 __all__ = [
