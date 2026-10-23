@@ -647,21 +647,64 @@ def test_overview_advocate_panel_is_labelled_placeholder_under_stub() -> None:
 
 
 def test_about_page_renders_the_team_and_publishes_no_contact_details() -> None:
-    """The About page shows the team and contains no email or long digit run."""
+    """The About page shows the team, academic info, pipeline, tech stack, and no contact details."""
     at = AppTest.from_file(_app_path("app/pages/About.py")).run()
 
     assert not at.exception, at.exception
     text = _page_text(at)
 
+    # Project title & supervisor
+    assert "Munasib Khareed: An AI Driven E-Commerce Decision Support System" in text
     assert "Mr. Ubaid Aftab Chawla" in text
+
+    # Members, registration numbers, and Leader role
     assert "Muhammad Maaz Nizami" in text
     assert "23K-2052" in text
+    assert "Leader" in text
     assert "Muhammad Shehryar Choudhary" in text
     assert "23K-0503" in text
     assert "Abuzar Ali" in text
     assert "23K-0819" in text
-    assert "Leader" in text
-    assert "FAST National University" in text
 
+    # Academic information
+    assert "Department of Computer Science" in text
+    assert "FAST School of Computing" in text
+    assert "FAST National University, Karachi Campus" in text
+    assert "BS Computer Science, Final Year Project, Session Fall 2026" in text
+
+    # System pipeline & technology stack
+    assert (
+        "Data -> Intelligence -> Evidence -> Risk -> Decision -> Explanation "
+        "-> Alternatives -> Consumer Verdict"
+    ) in text
+    for tech in (
+        "Python",
+        "PyTorch",
+        "spaCy",
+        "scikit-learn",
+        "scikit-fuzzy",
+        "TOPSIS",
+        "SHAP",
+        "FastAPI",
+        "Streamlit",
+    ):
+        assert tech in text
+
+    # Dataset citation & prototype notice
+    assert "Ni, Li" in text and "McAuley" in text and "EMNLP 2019" in text
+    assert "academic prototype" in text.lower()
+    assert "placeholder" in text.lower()
+
+    # Absence of email addresses and phone numbers / runs of 8+ digits
     assert "@" not in text, "the About page must publish no email address"
     assert re.search(r"\d{8,}", text) is None, "the About page must contain no long digit run"
+
+
+def test_home_page_icon_configured() -> None:
+    """Home._page_icon returns the committed logo path when present, else fallback."""
+    from app.Home import _page_icon
+
+    assert _page_icon() == str(LOGO_PATH)
+    with mock.patch("app.Home.logo_path") as mock_path:
+        mock_path.return_value = Path("/nonexistent/logo.png")
+        assert _page_icon() == "🛒"

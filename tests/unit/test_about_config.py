@@ -124,3 +124,30 @@ def test_non_mapping_yaml_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(AboutConfigError):
         load_about_config(target)
+
+
+def test_blank_registration_is_rejected(tmp_path: Path) -> None:
+    """A member with an empty registration number fails validation."""
+    payload = _base_payload()
+    payload["members"][0]["registration"] = ""
+
+    with pytest.raises(AboutConfigError):
+        load_about_config(_write(tmp_path, payload))
+
+
+def test_member_missing_name_field_is_rejected(tmp_path: Path) -> None:
+    """A member missing the name attribute entirely fails validation."""
+    payload = _base_payload()
+    del payload["members"][0]["name"]
+
+    with pytest.raises(AboutConfigError):
+        load_about_config(_write(tmp_path, payload))
+
+
+def test_malformed_yaml_syntax_raises_config_error(tmp_path: Path) -> None:
+    """Syntax errors in the YAML file raise an AboutConfigError."""
+    target = tmp_path / "about.yaml"
+    target.write_text("title: [unclosed list", encoding="utf-8")
+
+    with pytest.raises(AboutConfigError):
+        load_about_config(target)

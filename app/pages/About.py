@@ -62,10 +62,27 @@ def _render_body() -> None:
     st.divider()
     st.markdown("### How it works")
     st.markdown(
-        "**Pipeline:** " + escape(format_pipeline(config.pipeline))
+        "**Pipeline:** " + format_pipeline(config.pipeline)
     )
+    pipeline_html_parts: list[str] = []
+    for idx, stage in enumerate(config.pipeline):
+        pipeline_html_parts.append(f'<span class="mk-pipeline-step">{escape(stage)}</span>')
+        if idx < len(config.pipeline) - 1:
+            pipeline_html_parts.append('<span class="mk-pipeline-arrow">➔</span>')
+    st.markdown(
+        f'<div class="mk-pipeline-container">{" ".join(pipeline_html_parts)}</div>',
+        unsafe_allow_html=True,
+    )
+
     st.markdown(
         "**Technologies:** " + escape(", ".join(config.technologies))
+    )
+    tech_html_parts = [
+        f'<span class="mk-tech-badge">{escape(tech)}</span>' for tech in config.technologies
+    ]
+    st.markdown(
+        f'<div style="margin-top: 6px;">{"".join(tech_html_parts)}</div>',
+        unsafe_allow_html=True,
     )
 
     st.divider()

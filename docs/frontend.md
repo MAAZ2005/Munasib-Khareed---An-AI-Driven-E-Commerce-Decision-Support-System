@@ -432,3 +432,24 @@ missing or unreadable the header falls back to the app name as text — the help
 a page. A dark-on-light logo (like the current one) is displayed on a light chip on
 the navy band; a light-on-transparent logo can be dropped on the band directly.
 
+### Manual verification steps (not covered by automated tests)
+
+While automated tests cover state management, headless rendering via `AppTest`,
+and API fault tolerance, perform the following visual checks in a live browser
+prior to final project defense:
+
+1. **Responsive Viewport Scaling:**
+   - **375px (Mobile):** Verify the header wraps gracefully without horizontal overflow, product cards stack cleanly in a single column, and the Product Overview three-zone layout stacks into image → details → Consumer Advocate buy box.
+   - **768px (Tablet):** Verify product cards arrange in 2 columns and charts expand to fill container width.
+   - **1024px / 1440px (Desktop):** Verify 4-card grid on Product Selection, 3-zone desktop layout on Product Overview, and proper alignment of the shared header band.
+2. **Visual Contrast and Logo Legibility:**
+   - Confirm the white chip behind `app/assets/logo.png` provides sharp contrast against the midnight navy `#0f172a` header container.
+   - Confirm verdict badges and risk gauge colors match their semantic labels (`CONSIDER` green, `CONSIDER WITH CAUTION` amber, `CONSUMER RISK` red) and are never communicated by color alone.
+3. **Interactive Browser Downloads:**
+   - On page 7 (*Consumer Verdict*), click **Full analysis (JSON)** and **Flat summary (CSV)** in the browser to confirm native browser download prompts trigger and files save with appropriate `.json` and `.csv` extensions.
+4. **Interactive Toasts and Transitions:**
+   - On page 1 (*Product Selection*), click **Select** on a product card; verify that a confirmation toast pops up and the button immediately turns into a disabled **Selected ✅**.
+   - On page 6 (*Alternatives*), click **Switch to this product**; verify the active ASIN switches and new analysis loads with a success toast.
+5. **Keyboard Accessibility and Focus Rings:**
+   - Tab through the header search input, search submit button, and navigation links to verify standard browser focus rings remain visible.
+

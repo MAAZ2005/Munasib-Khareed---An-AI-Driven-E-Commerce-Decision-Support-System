@@ -282,6 +282,39 @@ html, body, [class*="css"] {
     font-size: 0.78rem;
     line-height: 1.5;
 }
+
+/* Pipeline sequence & tech chips on About page */
+.mk-pipeline-container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0 16px 0;
+}
+.mk-pipeline-step {
+    background-color: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+.mk-pipeline-arrow {
+    color: #6366f1;
+    font-weight: 700;
+}
+.mk-tech-badge {
+    display: inline-block;
+    background-color: #e0e7ff;
+    border: 1px solid #c7d2fe;
+    color: #3730a3;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin: 3px 4px 3px 0;
+}
 </style>
 """
 
