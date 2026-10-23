@@ -100,6 +100,29 @@ review_intel:
       helpfulness_ratio: 0.30
       review_depth: 0.20
 
+# Product Intelligence: metadata-derived indicators for the risk stage
+# (see docs/product_intelligence.md for every formula and tie rule).
+product_intel:
+  # A description counts as "complete" once it has at least this many words; a
+  # longer description does not score above 1.0.
+  target_description_words: 100
+  # A feature list counts as "complete" once it has at least this many bullets.
+  target_feature_count: 5
+  # A brand needs at least this many OTHER priced products before its price
+  # percentile means anything (a 2-product brand would always score 0 or 1).
+  min_brand_peers: 5
+  # A rank category needs at least this many OTHER ranked products before a
+  # rank percentile is reported.
+  min_rank_peers: 5
+  # Fields whose share of presence is reported as metadata_completeness (0-1).
+  metadata_fields:
+    - "title"
+    - "brand"
+    - "price"
+    - "rank"
+    - "description"
+    - "features"
+
 risk:
   fuzzy_rules_file: "configs/fuzzy_rules.yaml"
   scale_min: 0.0

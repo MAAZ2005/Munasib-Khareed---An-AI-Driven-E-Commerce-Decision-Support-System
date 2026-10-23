@@ -16,11 +16,12 @@ ordering, paging) so API handlers never hand-write SQL. Conventions:
 from __future__ import annotations
 
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Generic, TypeVar
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from munasib.core.constants import (
@@ -28,7 +29,14 @@ from munasib.core.constants import (
     SPLIT_ORDER,
 )
 from munasib.core.exceptions import ProductNotFoundError
-from munasib.db.models import AnalysisResult, Product, RelatedProduct, Review
+from munasib.db.models import (
+    RELATION_ALSO_BOUGHT,
+    RELATION_ALSO_VIEWED,
+    AnalysisResult,
+    Product,
+    RelatedProduct,
+    Review,
+)
 
 T = TypeVar("T")
 
@@ -44,6 +52,23 @@ class Page(Generic[T]):
     total: int
     limit: int
     offset: int
+
+
+@dataclass(frozen=True)
+class RelatedCounts:
+    """Distinct related-product counts for one subject product.
+
+    Every count is per distinct **related product**, never per edge, matching the
+    alternatives contract in :mod:`munasib.pipeline.service`: a target linked by
+    both ``also_bought`` and ``also_viewed`` counts once in each of those two
+    fields, a product never counts itself (self-referencing edges are ignored),
+    and ``usable_alternatives`` counts only targets that are themselves in the
+    processed subset (so it can never exceed the other two).
+    """
+
+    also_bought: int = 0
+    also_viewed: int = 0
+    usable_alternatives: int = 0
 
 
 def _validate_split(split: str | None) -> None:
@@ -165,6 +190,35 @@ class ProductRepository:
         if split is not None:
             statement = statement.where(Product.split == split)
         return list(self._session.scalars(statement))
+
+    def list_all_products(self) -> list[Product]:
+        """Fetch every product row, ordered by ASIN (stable).
+
+        Used by offline batch jobs (``scripts/compute_product_features.py``)
+        that need the whole candidate set in memory to build peer
+        distributions; the paged API paths keep using
+        :meth:`search_products` instead of loading everything.
+
+        Returns:
+            Every stored product, ascending by ASIN (empty list when the cache
+            has no products).
+        """
+        return list(self._session.scalars(select(Product).order_by(Product.asin)))
+
+    def get_products(self, asins: Sequence[str]) -> list[Product]:
+        """Fetch several products by ASIN, ordered by ASIN (stable).
+
+        Unlike :meth:`get_product` this never raises for an unknown ASIN - the
+        caller decides whether a missing row is an error (batch jobs compare
+        the requested set against the returned one).
+
+        Args:
+            asins: ASINs to fetch (duplicates collapse to one row each).
+
+        Returns:
+            The products that exist, ascending by ASIN.
+        """
+        return self._fetch_by_asins(sorted(set(asins)))
 
     def list_peer_products(self, asin: str, n: int, seed: int) -> list[Product]:
         """Deterministic sample of ``n`` other products from the same category.
@@ -321,6 +375,75 @@ class RelatedRepository:
         )
         return list(rows)
 
+    def count_related(self, asins: Sequence[str] | None = None) -> dict[str, RelatedCounts]:
+        """Aggregate the distinct related-product counts for many products.
+
+        One grouped query replaces a per-product edge scan, so profiling the
+        whole candidate set stays a single pass. The three counts follow the
+        :class:`RelatedCounts` contract: per distinct target product, never per
+        edge, self-references excluded, and ``usable_alternatives`` restricted
+        to in-subset targets.
+
+        Args:
+            asins: Subject ASINs to restrict the aggregation to, or None for
+                every product that has at least one edge.
+
+        Returns:
+            Mapping ``asin -> RelatedCounts``; a product with no edges is
+            absent from the mapping (callers treat that as the zero counts,
+            never as an error). Ordered by ASIN.
+        """
+        bought = case(
+            (
+                and_(
+                    RelatedProduct.relation_type == RELATION_ALSO_BOUGHT,
+                    RelatedProduct.related_asin != RelatedProduct.asin,
+                ),
+                RelatedProduct.related_asin,
+            ),
+            else_=None,
+        )
+        viewed = case(
+            (
+                and_(
+                    RelatedProduct.relation_type == RELATION_ALSO_VIEWED,
+                    RelatedProduct.related_asin != RelatedProduct.asin,
+                ),
+                RelatedProduct.related_asin,
+            ),
+            else_=None,
+        )
+        usable = case(
+            (
+                and_(
+                    RelatedProduct.in_subset.is_(True),
+                    RelatedProduct.related_asin != RelatedProduct.asin,
+                ),
+                RelatedProduct.related_asin,
+            ),
+            else_=None,
+        )
+        statement = (
+            select(
+                RelatedProduct.asin.label("asin"),
+                func.count(func.distinct(bought)).label("also_bought"),
+                func.count(func.distinct(viewed)).label("also_viewed"),
+                func.count(func.distinct(usable)).label("usable"),
+            )
+            .group_by(RelatedProduct.asin)
+            .order_by(RelatedProduct.asin)
+        )
+        if asins is not None:
+            statement = statement.where(RelatedProduct.asin.in_(asins))
+        return {
+            str(asin): RelatedCounts(
+                also_bought=int(also_bought),
+                also_viewed=int(also_viewed),
+                usable_alternatives=int(usable_count),
+            )
+            for asin, also_bought, also_viewed, usable_count in self._session.execute(statement)
+        }
+
 
 class AnalysisRepository:
     """Persisted pipeline outputs keyed by (asin, pipeline_version)."""
@@ -401,6 +524,7 @@ __all__ = [
     "AnalysisRepository",
     "Page",
     "ProductRepository",
+    "RelatedCounts",
     "RelatedRepository",
     "ReviewRepository",
 ]

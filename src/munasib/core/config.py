@@ -282,6 +282,75 @@ class ImagesConfig(BaseModel):
         return self
 
 
+#: Metadata fields whose share of presence is reported as
+#: ``metadata_completeness`` by ``munasib.product_intel``. Kept here so the
+#: config validator and the profiler agree on the vocabulary.
+METADATA_FIELD_VOCABULARY: tuple[str, ...] = (
+    "title",
+    "brand",
+    "price",
+    "rank",
+    "description",
+    "features",
+)
+
+
+class ProductIntelConfig(BaseModel):
+    """Product-intelligence thresholds (see ``docs/product_intelligence.md``).
+
+    These turn raw product metadata into 0-1 indicators: the completeness
+    targets (a description is "complete" at ``target_description_words`` words,
+    a feature list at ``target_feature_count`` bullets), the minimum peer counts
+    that keep a brand or rank percentile meaningful, and the exact field list
+    whose share of presence is reported as ``metadata_completeness``. Nothing
+    here imputes a value - a missing field scores 0 for completeness and its
+    ``*_missing`` flag is set.
+    """
+
+    target_description_words: int = 100
+    target_feature_count: int = 5
+    #: Other priced products a brand needs before ``price_percentile_brand`` is
+    #: reported (small brands would otherwise give a meaningless percentile).
+    min_brand_peers: int = 5
+    #: Other ranked products a rank category needs before ``rank_percentile`` is
+    #: reported.
+    min_rank_peers: int = 5
+    metadata_fields: list[str] = Field(
+        default_factory=lambda: list(METADATA_FIELD_VOCABULARY)
+    )
+
+    @model_validator(mode="after")
+    def _check_product_intel_values(self) -> "ProductIntelConfig":
+        """Validate the product-intelligence thresholds.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When a target or minimum is not positive, or the
+                metadata field list is empty or names an unknown field.
+        """
+        for name, value in (
+            ("target_description_words", self.target_description_words),
+            ("target_feature_count", self.target_feature_count),
+            ("min_brand_peers", self.min_brand_peers),
+            ("min_rank_peers", self.min_rank_peers),
+        ):
+            if value < 1:
+                raise ValueError(f"product_intel.{name} must be >= 1, got {value}")
+        if not self.metadata_fields:
+            raise ValueError("product_intel.metadata_fields must not be empty")
+        unknown = sorted(set(self.metadata_fields) - set(METADATA_FIELD_VOCABULARY))
+        if unknown:
+            raise ValueError(
+                f"product_intel.metadata_fields contains unknown fields {unknown}; "
+                f"expected a subset of {list(METADATA_FIELD_VOCABULARY)}"
+            )
+        if len(set(self.metadata_fields)) != len(self.metadata_fields):
+            raise ValueError("product_intel.metadata_fields must not repeat a field")
+        return self
+
+
 class WellReviewedConfig(BaseModel):
     """Thresholds for "well-reviewed" demo products."""
 
@@ -368,6 +437,7 @@ class Settings(BaseModel):
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     images: ImagesConfig = Field(default_factory=ImagesConfig)
     demo_products: DemoProductsConfig = Field(default_factory=DemoProductsConfig)
+    product_intel: ProductIntelConfig = Field(default_factory=ProductIntelConfig)
     api: APIConfig = Field(default_factory=APIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
