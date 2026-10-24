@@ -75,9 +75,6 @@ dataset:
 review_intel:
   # Sentiment analysis
   sentiment:
-    model_name: "distilbert-base-uncased"
-    max_sequence_length: 256
-    batch_size: 32
     # Weak supervision mapping from star ratings (locked FYP design decision)
     # Ratings 1-2: negative (0), Rating 3: neutral (1), Ratings 4-5: positive (2)
     rating_mapping:
@@ -99,7 +96,7 @@ review_intel:
     min_chars: 3
     # Seed for the deterministic review selection (never the global RNG).
     seed: 42
-    # Token budget for the transformer stage; unused by the TF-IDF baseline.
+    # Token budget every neural model truncates and pads to.
     max_length_tokens: 128
     tfidf:
       # Word unigrams + bigrams, terms seen in >= 3 documents, capped vocabulary.
@@ -110,6 +107,42 @@ review_intel:
     logreg:
       C: 1.0
       max_iter: 1000
+
+    # --- Neural models -------------------------------------------------------
+    # Class weighting used by the neural loss: none | sqrt_inverse | balanced.
+    # `sqrt_inverse` sits between ignoring the class mix and full balancing,
+    # which over-states negativity in the downstream risk stage.
+    class_weighting: "sqrt_inverse"
+
+    # DistilBERT fine-tuning. Linear warmup then decay (warmup_ratio of the total
+    # steps), AdamW, gradient clipping, early stopping on validation macro-F1.
+    transformer:
+      model_name: "distilbert-base-uncased"
+      learning_rate: 0.00003
+      batch_size: 32
+      epochs: 3
+      warmup_ratio: 0.06
+      weight_decay: 0.01
+      max_grad_norm: 1.0
+      early_stopping_patience: 1
+      output_dir: "models/sentiment_distilbert"
+
+    # BiGRU/BiLSTM from scratch. The vocabulary is fitted on the training sample
+    # only (terms seen >= min_freq times, capped at vocab_size). The learning
+    # rate is separate from the transformer's: a scratch model at a fine-tuning
+    # rate barely moves.
+    rnn:
+      embedding_dim: 128
+      hidden_size: 128
+      num_layers: 1
+      bidirectional: true
+      dropout: 0.3
+      vocab_size: 50000
+      min_freq: 2
+      cell: "gru"
+      learning_rate: 0.001
+      output_dir: "models/sentiment_rnn"
+
     # Fitted artifact (git-ignored `models/`) and evaluation reports.
     model_path: "models/sentiment_tfidf_logreg.joblib"
     report_dir: "reports/evaluation"

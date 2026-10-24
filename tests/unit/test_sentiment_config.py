@@ -14,12 +14,16 @@ import pytest
 from pydantic import ValidationError
 
 from munasib.core.config import (
+    CLASS_WEIGHTING_CHOICES,
+    RNN_CELL_CHOICES,
     SENTIMENT_LABEL_COLUMN_VOCABULARY,
     SENTIMENT_TEXT_COLUMN_VOCABULARY,
     LogRegConfig,
+    RnnConfig,
     SentimentConfig,
     Settings,
     TfidfConfig,
+    TransformerConfig,
     load_settings,
 )
 
@@ -61,8 +65,11 @@ def test_shipped_config_declares_every_setting() -> None:
         "min_chars:",
         "seed:",
         "max_length_tokens:",
+        "class_weighting:",
         "tfidf:",
         "logreg:",
+        "transformer:",
+        "rnn:",
         "model_path:",
         "report_dir:",
     ):
@@ -99,8 +106,6 @@ def test_unknown_label_column_is_rejected() -> None:
         "max_train_rows",
         "min_chars",
         "max_length_tokens",
-        "batch_size",
-        "max_sequence_length",
     ],
 )
 def test_zero_counts_are_rejected(field: str) -> None:
@@ -157,3 +162,89 @@ def test_single_ngram_and_larger_cap_are_accepted() -> None:
     )
     assert config.tfidf.ngram_range == (1, 1)
     assert config.logreg.C == 0.5
+
+
+def test_neural_defaults() -> None:
+    """The transformer and RNN defaults match docs/sentiment.md."""
+    config = SentimentConfig()
+    assert config.class_weighting == "sqrt_inverse"
+    assert config.transformer == TransformerConfig(
+        model_name="distilbert-base-uncased",
+        learning_rate=3e-5,
+        batch_size=32,
+        epochs=3,
+        warmup_ratio=0.06,
+        weight_decay=0.01,
+        max_grad_norm=1.0,
+        early_stopping_patience=1,
+        output_dir=Path("models/sentiment_distilbert"),
+    )
+    assert config.rnn == RnnConfig(
+        embedding_dim=128,
+        hidden_size=128,
+        num_layers=1,
+        bidirectional=True,
+        dropout=0.3,
+        vocab_size=50_000,
+        min_freq=2,
+        cell="gru",
+        learning_rate=1e-3,
+        output_dir=Path("models/sentiment_rnn"),
+    )
+
+
+def test_class_weighting_choices_are_derived_from_the_literal() -> None:
+    """The CLI choices cannot drift from the validated type."""
+    assert CLASS_WEIGHTING_CHOICES == ("none", "sqrt_inverse", "balanced")
+    assert RNN_CELL_CHOICES == ("gru", "lstm")
+
+
+def test_unknown_class_weighting_is_rejected() -> None:
+    """A typo in the weighting scheme would silently change the loss."""
+    with pytest.raises(ValidationError, match="class_weighting"):
+        SentimentConfig(class_weighting="inverse")  # type: ignore[arg-type]
+
+
+def test_unknown_rnn_cell_is_rejected() -> None:
+    """Only the two implemented recurrences are accepted."""
+    with pytest.raises(ValidationError, match="cell"):
+        RnnConfig(cell="rnn")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("model_name", "   "),
+        ("learning_rate", 0.0),
+        ("learning_rate", 1.5),
+        ("batch_size", 0),
+        ("epochs", 0),
+        ("warmup_ratio", 1.0),
+        ("warmup_ratio", -0.1),
+        ("weight_decay", -0.01),
+        ("max_grad_norm", 0.0),
+        ("early_stopping_patience", -1),
+    ],
+)
+def test_invalid_transformer_settings_are_rejected(field: str, value: object) -> None:
+    """Every invalid fine-tuning value fails at load time, not mid-run."""
+    with pytest.raises(ValidationError, match=field):
+        TransformerConfig(**{field: value})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("embedding_dim", 0),
+        ("hidden_size", 0),
+        ("num_layers", 0),
+        ("vocab_size", 1),
+        ("min_freq", 0),
+        ("dropout", 1.0),
+        ("dropout", -0.1),
+    ],
+)
+def test_invalid_rnn_settings_are_rejected(field: str, value: object) -> None:
+    """Every invalid recurrent value fails at load time, not mid-run."""
+    with pytest.raises(ValidationError, match=field):
+        RnnConfig(**{field: value})

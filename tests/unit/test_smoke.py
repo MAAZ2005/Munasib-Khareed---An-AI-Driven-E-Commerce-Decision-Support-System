@@ -27,7 +27,7 @@ def test_load_settings() -> None:
     assert settings.project.name == "munasib"
     assert settings.project.environment == "development"
     assert settings.dataset.category == "Appliances"
-    assert settings.review_intel.sentiment.model_name == "distilbert-base-uncased"
+    assert settings.review_intel.sentiment.transformer.model_name == "distilbert-base-uncased"
     assert settings.review_intel.aspects.spacy_model == "en_core_web_sm"
     assert settings.review_intel.sentiment.rating_mapping.negative_max == 2
     assert settings.review_intel.sentiment.rating_mapping.positive_min == 4

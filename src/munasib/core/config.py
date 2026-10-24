@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import yaml
 from dotenv import load_dotenv
@@ -137,6 +137,18 @@ SENTIMENT_TEXT_COLUMN_VOCABULARY: tuple[str, ...] = (
 #: Review columns that carry the weak-supervision sentiment target.
 SENTIMENT_LABEL_COLUMN_VOCABULARY: tuple[str, ...] = ("sentiment_label_weak",)
 
+#: Class-weighting schemes accepted by the neural sentiment trainers. ``none``
+#: uses the raw class frequencies, ``balanced`` weights each class by inverse
+#: frequency, and ``sqrt_inverse`` takes the square root of those weights - a
+#: middle path between raw accuracy (which ignores the ~5% neutral class) and
+#: full balancing (which over-states negativity in the downstream risk stage).
+ClassWeighting = Literal["none", "sqrt_inverse", "balanced"]
+CLASS_WEIGHTING_CHOICES: tuple[str, ...] = get_args(ClassWeighting)
+
+#: Recurrent cells the RNN sentiment model can use.
+RnnCell = Literal["gru", "lstm"]
+RNN_CELL_CHOICES: tuple[str, ...] = get_args(RnnCell)
+
 
 class TfidfConfig(BaseModel):
     """TF-IDF vectoriser settings for the sentiment baseline.
@@ -210,21 +222,154 @@ class LogRegConfig(BaseModel):
         return self
 
 
-class SentimentConfig(BaseModel):
-    """Sentiment model settings: weak-supervision sample, baseline and transformer.
+class TransformerConfig(BaseModel):
+    """DistilBERT fine-tuning settings for the three-class sentiment classifier.
 
-    The first group configures the **training sample** the baseline learns from:
-    which review column holds the text and the weak label, how many reviews per
-    product may enter the sample, the overall row budget, the shortest usable
-    review and the seed. The second group configures the TF-IDF + logistic
-    regression baseline and where its artifact and evaluation reports live. The
-    transformer settings (``model_name``/``max_sequence_length``/``batch_size``)
-    are used later by the DistilBERT stage, not by the baseline.
+    ``learning_rate`` is the peak AdamW rate (linear warmup then decay),
+    ``warmup_ratio`` is the share of total steps spent warming up and
+    ``early_stopping_patience`` counts epochs without a macro-F1 improvement
+    before training stops. ``output_dir`` lives under the git-ignored ``models/``
+    tree so checkpoints never enter the repository.
     """
 
     model_name: str = "distilbert-base-uncased"
-    max_sequence_length: int = 256
+    learning_rate: float = 3e-5
     batch_size: int = 32
+    epochs: int = 3
+    warmup_ratio: float = 0.06
+    weight_decay: float = 0.01
+    max_grad_norm: float = 1.0
+    early_stopping_patience: int = 1
+    output_dir: Path = Path("models/sentiment_distilbert")
+
+    @model_validator(mode="after")
+    def _check_transformer_values(self) -> "TransformerConfig":
+        """Validate the fine-tuning schedule and the artifact path.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the model name or output directory is empty, the
+                learning rate is outside ``(0, 1)``, a count is below one, the
+                warmup ratio is outside ``[0, 1)``, or a regularisation value is
+                negative.
+        """
+        if not self.model_name.strip():
+            raise ValueError("review_intel.sentiment.transformer.model_name must not be empty")
+        if not 0.0 < self.learning_rate < 1.0:
+            raise ValueError(
+                "review_intel.sentiment.transformer.learning_rate must be in (0, 1), "
+                f"got {self.learning_rate}"
+            )
+        if self.batch_size < 1:
+            raise ValueError(
+                "review_intel.sentiment.transformer.batch_size must be >= 1, "
+                f"got {self.batch_size}"
+            )
+        if self.epochs < 1:
+            raise ValueError(
+                f"review_intel.sentiment.transformer.epochs must be >= 1, got {self.epochs}"
+            )
+        if not 0.0 <= self.warmup_ratio < 1.0:
+            raise ValueError(
+                "review_intel.sentiment.transformer.warmup_ratio must be in [0, 1), "
+                f"got {self.warmup_ratio}"
+            )
+        if self.weight_decay < 0.0:
+            raise ValueError(
+                "review_intel.sentiment.transformer.weight_decay must be >= 0, "
+                f"got {self.weight_decay}"
+            )
+        if self.max_grad_norm <= 0.0:
+            raise ValueError(
+                "review_intel.sentiment.transformer.max_grad_norm must be > 0, "
+                f"got {self.max_grad_norm}"
+            )
+        if self.early_stopping_patience < 0:
+            raise ValueError(
+                "review_intel.sentiment.transformer.early_stopping_patience must be >= 0, "
+                f"got {self.early_stopping_patience}"
+            )
+        if not str(self.output_dir).strip():
+            raise ValueError("review_intel.sentiment.transformer.output_dir must not be empty")
+        return self
+
+
+class RnnConfig(BaseModel):
+    """BiGRU/BiLSTM sentiment model settings.
+
+    The vocabulary is fitted on the training sample only (terms seen at least
+    ``min_freq`` times, capped at ``vocab_size``), so no evaluation-split token
+    can reach the embedding table. ``learning_rate`` is separate from the
+    transformer's because a model trained from scratch needs a much larger step
+    than a fine-tune; ``output_dir`` keeps its checkpoints under the git-ignored
+    ``models/`` tree.
+    """
+
+    embedding_dim: int = 128
+    hidden_size: int = 128
+    num_layers: int = 1
+    bidirectional: bool = True
+    dropout: float = 0.3
+    vocab_size: int = 50_000
+    min_freq: int = 2
+    cell: RnnCell = "gru"
+    learning_rate: float = 1e-3
+    output_dir: Path = Path("models/sentiment_rnn")
+
+    @model_validator(mode="after")
+    def _check_rnn_values(self) -> "RnnConfig":
+        """Validate the recurrent model dimensions and vocabulary caps.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When a dimension is below one, the vocabulary cap is
+                below two (it must hold padding and unknown tokens), ``min_freq``
+                is below one, dropout is outside ``[0, 1)``, the learning rate is
+                outside ``(0, 1)`` or the output directory is empty.
+        """
+        for name, value in (
+            ("embedding_dim", self.embedding_dim),
+            ("hidden_size", self.hidden_size),
+            ("num_layers", self.num_layers),
+            ("min_freq", self.min_freq),
+        ):
+            if value < 1:
+                raise ValueError(f"review_intel.sentiment.rnn.{name} must be >= 1, got {value}")
+        if self.vocab_size < 2:
+            raise ValueError(
+                "review_intel.sentiment.rnn.vocab_size must be >= 2 (padding + unknown), "
+                f"got {self.vocab_size}"
+            )
+        if not 0.0 <= self.dropout < 1.0:
+            raise ValueError(
+                f"review_intel.sentiment.rnn.dropout must be in [0, 1), got {self.dropout}"
+            )
+        if not 0.0 < self.learning_rate < 1.0:
+            raise ValueError(
+                "review_intel.sentiment.rnn.learning_rate must be in (0, 1), "
+                f"got {self.learning_rate}"
+            )
+        if not str(self.output_dir).strip():
+            raise ValueError("review_intel.sentiment.rnn.output_dir must not be empty")
+        return self
+
+
+class SentimentConfig(BaseModel):
+    """Sentiment model settings: weak-supervision sample, models and reports.
+
+    The first group configures the **training sample** every model learns from:
+    which review column holds the text and the weak label, how many reviews per
+    product may enter the sample, the overall row budget, the shortest usable
+    review and the seed. The second group configures the TF-IDF + logistic
+    regression baseline, the DistilBERT fine-tuning schedule
+    (``transformer``) and the recurrent model (``rnn``). ``max_length_tokens`` is
+    the single token budget every neural model truncates and pads to.
+    """
+
     rating_mapping: RatingMappingConfig = Field(default_factory=RatingMappingConfig)
 
     #: Review column holding the text the model reads (cleaned text by default).
@@ -241,10 +386,14 @@ class SentimentConfig(BaseModel):
     min_chars: int = 3
     #: Seed for the deterministic review selection (never the global RNG).
     seed: int = 42
-    #: Token budget for the transformer stage (unused by the TF-IDF baseline).
+    #: Token budget every neural model truncates and pads to.
     max_length_tokens: int = 128
+    #: How the neural trainers weight the three classes in the loss.
+    class_weighting: ClassWeighting = "sqrt_inverse"
     tfidf: TfidfConfig = Field(default_factory=TfidfConfig)
     logreg: LogRegConfig = Field(default_factory=LogRegConfig)
+    transformer: TransformerConfig = Field(default_factory=TransformerConfig)
+    rnn: RnnConfig = Field(default_factory=RnnConfig)
     #: Where the fitted baseline artifact is written (git-ignored ``models/``).
     model_path: Path = Path("models/sentiment_tfidf_logreg.joblib")
     #: Where the JSON/Markdown/CSV evaluation reports are written.
@@ -276,8 +425,6 @@ class SentimentConfig(BaseModel):
             ("max_train_rows", self.max_train_rows),
             ("min_chars", self.min_chars),
             ("max_length_tokens", self.max_length_tokens),
-            ("batch_size", self.batch_size),
-            ("max_sequence_length", self.max_sequence_length),
         ):
             if value < 1:
                 raise ValueError(f"review_intel.sentiment.{name} must be >= 1, got {value}")

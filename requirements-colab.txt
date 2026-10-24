@@ -1,0 +1,22 @@
+# Colab training requirements for the sentiment models.
+#
+# Versions are pinned to the ones the project was verified against in its own
+# virtual environment, so a Colab run reproduces the same library behaviour.
+#
+# torch is deliberately NOT listed: Colab already ships a CUDA-enabled PyTorch
+# build, and installing any torch wheel here would either replace it with a CPU
+# build (silently disabling the GPU) or download hundreds of megabytes for
+# nothing. Install this file first, then the project itself:
+#
+#   pip install -r requirements-colab.txt
+#   pip install -e . --no-deps
+#
+# (`pip install -e .` without --no-deps would also be harmless; the project's own
+# dependencies are pydantic, pydantic-settings, pyyaml and python-dotenv.)
+
+transformers==5.19.0
+tokenizers==0.23.3
+scikit-learn==1.9.1
+pandas==3.0.6
+numpy==2.5.4
+pyarrow==25.0.1

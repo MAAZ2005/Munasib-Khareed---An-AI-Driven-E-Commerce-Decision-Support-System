@@ -543,7 +543,7 @@ def classification_metrics(
 
 
 def compute_product_calibration(
-    asins: Any, y_true: Any, y_pred: Any
+    asins: Any, y_true: Any, y_pred: Any, prob_negative: Any | None = None
 ) -> ProductCalibration:
     """Compare predicted and weak-label negative shares product by product.
 
@@ -552,17 +552,29 @@ def compute_product_calibration(
     stage consumes: review-level F1 can look good while a product's negative
     share is systematically over- or under-stated, and this check exposes that.
 
+    Two modes share the same aggregation:
+
+    * **hard** (default) - the per-review indicator is ``y_pred == negative``, so
+      the predicted share is a fraction of discrete predictions.
+    * **soft** - when ``prob_negative`` is supplied, the per-review indicator is
+      that predicted negative probability, so the predicted share is the mean
+      probability. A model can be well calibrated on hard labels yet shift its
+      probabilities under class weighting; both are reported for that reason.
+
     Args:
         asins: Product id per evaluated review.
         y_true: True weak label codes.
         y_pred: Predicted label codes.
+        prob_negative: Optional predicted probability of the negative class, one
+            value in ``[0, 1]`` per review. ``None`` selects hard calibration.
 
     Returns:
         Per-product table plus mean absolute error, Pearson correlation and the
         signed mean difference (``predicted - weak``).
 
     Raises:
-        ValueError: If the inputs are empty or have different lengths.
+        ValueError: If the inputs are empty or have different lengths, or if a
+            supplied probability is not finite or outside ``[0, 1]``.
     """
     ids = pd.Series(np.asarray(asins), name=CALIBRATION_ASIN_COLUMN)
     true = pd.Series(_as_label_array(y_true, "y_true"), name="y_true")
@@ -572,11 +584,25 @@ def compute_product_calibration(
             "asins, y_true and y_pred must have the same length, got "
             f"{len(ids)}, {len(true)}, {len(predicted)}"
         )
+    if prob_negative is None:
+        predicted_negative: pd.Series = (predicted == SENTIMENT_LABEL_NEGATIVE).astype("int64")
+    else:
+        probabilities = np.asarray(prob_negative, dtype="float64")
+        if len(probabilities) != len(ids):
+            raise ValueError(
+                "prob_negative must have the same length as asins, got "
+                f"{len(probabilities)} and {len(ids)}"
+            )
+        if not np.all(np.isfinite(probabilities)):
+            raise ValueError("prob_negative must be finite, found nan or inf")
+        if probabilities.min(initial=0.0) < 0.0 or probabilities.max(initial=0.0) > 1.0:
+            raise ValueError("prob_negative must lie in [0, 1]")
+        predicted_negative = pd.Series(probabilities, name="predicted_negative")
     frame = pd.DataFrame(
         {
             CALIBRATION_ASIN_COLUMN: ids,
             "true_negative": (true == SENTIMENT_LABEL_NEGATIVE).astype("int64"),
-            "predicted_negative": (predicted == SENTIMENT_LABEL_NEGATIVE).astype("int64"),
+            "predicted_negative": predicted_negative,
         }
     )
     grouped = frame.groupby(CALIBRATION_ASIN_COLUMN, sort=True)

@@ -46,10 +46,15 @@ No number in this document should be read as "sentiment accuracy".
 | File | Responsibility |
 |---|---|
 | `src/munasib/review_intel/sentiment/sampling.py` | `build_train_sample()` (train-only, capped, deterministic) and `load_eval_split()` (the full val/test rows); the leakage guard `assert_split_only()`. |
-| `src/munasib/review_intel/sentiment/metrics.py` | Accuracy, macro-F1, per-class precision/recall/F1, confusion matrix, majority baseline, binary negative-vs-positive metrics with ROC AUC, the product-level calibration check, and the JSON/Markdown/CSV writers. |
+| `src/munasib/review_intel/sentiment/metrics.py` | Accuracy, macro-F1, per-class precision/recall/F1, confusion matrix, majority baseline, binary negative-vs-positive metrics with ROC AUC, the product-level calibration check (hard and soft), and the JSON/Markdown/CSV writers. |
 | `src/munasib/review_intel/sentiment/baseline.py` | TF-IDF + logistic regression: fitting, prediction, the joblib artifact round trip. |
+| `src/munasib/review_intel/sentiment/models.py` | The two neural architectures: `load_transformer()` (DistilBERT fine-tune), `build_tiny_transformer()` (offline miniature for smoke/tests), `build_rnn()` (BiGRU/BiLSTM), the training-fitted `Vocabulary`, and the reloadable checkpoint format. |
+| `src/munasib/review_intel/sentiment/data.py` | Tokenisation, `SentimentDataset`, dynamic padding (`collate_batch`) and the deterministic length-bucketed batch sampler. |
+| `src/munasib/review_intel/sentiment/train.py` | The shared training loop: class weighting, seeding, AMP, warmup/decay, gradient clipping, per-epoch checkpointing, early stopping, resume, and the report assembly. |
 | `scripts/train_sentiment_baseline.py` | CLI: sample report, both `class_weight` variants, val by default and test only with `--final`. |
-| `configs/config.yaml` → `review_intel.sentiment` | Text/label columns, cap, budget, minimum length, seed, TF-IDF and logistic-regression settings, artifact and report paths. |
+| `scripts/train_sentiment.py` | CLI for the neural models: `--model transformer\|rnn`, `--smoke`, `--resume`, `--val-subset`, val by default, test only with `--final`. |
+| `scripts/export_colab_bundle.py` | Builds the allowlisted zip used for GPU training on Colab (see `docs/training_on_colab.md`). |
+| `configs/config.yaml` → `review_intel.sentiment` | Text/label columns, cap, budget, minimum length, seed, token budget, class weighting, TF-IDF, logistic-regression, transformer and RNN settings, artifact and report paths. |
 
 Nothing here writes to the database, the API or the UI; the stage is a library
 plus a CLI.
@@ -255,6 +260,9 @@ Outputs:
 | `reports/evaluation/sentiment_baseline_<split>_<variant>_calibration.csv` | Per-product calibration rows. |
 | `models/sentiment_tfidf_logreg.joblib` | The saved variant (git-ignored). |
 
+The neural models have a separate CLI with the same `val`-by-default rule; see
+§11.
+
 ---
 
 ## 9. The test split is used once
@@ -340,12 +348,165 @@ fits, 62,768 reviews scored twice, reports written): 33 s on this machine
 
 ---
 
-## 11. What this stage does not do
+## 11. Neural models (DistilBERT and BiGRU/BiLSTM)
+
+The neural stage adds two architectures that compete with the TF-IDF baseline.
+Both read the same leakage-safe sample and both obey one calling contract, so the
+training loop, the sampler and the metrics never branch on architecture:
+
+```python
+logits = model(input_ids=..., attention_mask=...)   # (batch, 3)
+```
+
+`forward_logits()` unwraps the `ModelOutput` a transformer returns, so
+`train.py` only ever calls that helper.
+
+| Architecture | How it is built | What it needs to encode text |
+|---|---|---|
+| DistilBERT | `AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=3, id2label=..., label2id=...)`; `build_tiny_transformer()` builds the same head from a randomly initialised miniature config for the offline smoke and the tests | the pretrained tokenizer, saved beside the weights |
+| BiGRU / BiLSTM | embedding -> packed recurrent layer -> masked mean **and** masked max pooling -> linear; trained from scratch | a `Vocabulary` fitted on the training sample only |
+
+Details that matter:
+
+* **Label order is pinned in the artifact.** `id2label`/`label2id` come from
+  `SENTIMENT_LABELS` (0 negative, 1 neutral, 2 positive) and are written into the
+  model config, so a reloaded checkpoint cannot be silently re-indexed.
+* **Padding cannot influence a prediction.** Trailing pads push the ids to a
+  fixed width, but the recurrent layer is packed to the true lengths (so even the
+  backward direction never reads a pad) and both pooling statistics respect the
+  attention mask. The transformer gets the mask directly.
+* **The vocabulary is train-only.** `Vocabulary.from_texts()` is fed the training
+  sample; a token that appears solely in `val`/`test` becomes `[UNK]`, which the
+  unit tests assert.
+* **One token budget.** `max_length_tokens` (128) is the only truncation length;
+  there is no separate `max_sequence_length`.
+* **Dynamic padding.** `collate_batch()` pads to the longest review *in the
+  batch*, not to 128. With a median review of 16 words, that is most of the
+  speed-up.
+* **Length bucketing.** `LengthBucketedBatchSampler` sorts rows by length, cuts
+  them into pools of `batch_size * 50`, shuffles each pool and then the pool
+  order from a private `random.Random(seed * 1_000_003 + epoch)`. Every row is
+  seen exactly once per epoch, the batch count is exactly
+  `ceil(rows / batch_size)`, and a new epoch really is a new permutation (sorting
+  alone would re-serve identical batches).
+
+### 11.1 Class weighting
+
+The loss is `CrossEntropyLoss(weight=...)` with weights printed at the start of
+every run, computed from the training sample only:
+
+| `class_weighting` | Weight for class *c* | Why |
+|---|---|---|
+| `none` | `1` | Matches the `class_weight=None` baseline column. |
+| `balanced` | `n / (k * count_c)` | Full inverse frequency; maximises minority recall but over-states negativity. |
+| `sqrt_inverse` (default) | `sqrt(n / (k * count_c))` | Geometric middle: some minority pressure without the full shift. |
+
+A class missing from the sample is an error, not a silently zero weight.
+
+### 11.2 Selection, early stopping and the reported split
+
+Each epoch is scored on **macro-F1** over the validation split - never accuracy,
+because a constant "positive" prediction already scores ~0.83. The best epoch's
+checkpoint is kept, and training stops after
+`transformer.early_stopping_patience` epochs without an improvement (default 1,
+so a run lasts at least two epochs or ends early).
+
+`--val-subset N` replaces the per-epoch selection data with a deterministic,
+class-stratified `N`-row subset (proportional, with every present class
+guaranteed at least one row). **The final report always uses the full validation
+split**, and the report states which was used, so a cheap selection loop cannot
+masquerade as a full-split result.
+
+### 11.3 Checkpoints and resume
+
+```
+<output_dir>/best/   weights + tokenizer (or vocab.json) + model_meta.json
+<output_dir>/last/   the same, plus trainer_state.pt
+<output_dir>/training_log.json
+```
+
+`model_meta.json` records the architecture, token budget, class weighting, base
+model and (for the RNN) the hyper-parameters needed to rebuild the module.
+`--resume` restores weights, optimizer, scheduler and the completed epoch count
+from `last/`. It does not replay the RNG stream, so a resumed run is not
+bit-identical to an uninterrupted one; the epoch history is preserved in
+`training_log.json`.
+
+### 11.4 Running the neural models
+
+```powershell
+# Offline CPU checks - no weights, no network, temp output directory
+python scripts/train_sentiment.py --model transformer --smoke
+python scripts/train_sentiment.py --model rnn --smoke
+
+# Validation only (the normal loop)
+python scripts/train_sentiment.py --model transformer
+python scripts/train_sentiment.py --model rnn --class-weighting balanced
+
+# Faster loop: cheap per-epoch selection, full-split report
+python scripts/train_sentiment.py --model transformer --val-subset 5000 --epochs 1
+
+# Continue an interrupted GPU run
+python scripts/train_sentiment.py --model transformer --resume
+
+# One-shot hold-out, only after the settings are frozen
+python scripts/train_sentiment.py --model transformer --final
+```
+
+| Flag | Effect |
+|---|---|
+| `--model {transformer,rnn}` | Architecture to train (default `transformer`). |
+| `--smoke` | 300 training rows (stratified), 300 validation rows, 1 epoch, CPU, temp directory, no download. Rejected with `--final` and `--resume`. |
+| `--max-train-rows`, `--per-product-cap`, `--seed` | Sample overrides, same meaning as the baseline CLI. |
+| `--epochs` | Overrides the configured epoch count. |
+| `--class-weighting` | `none`, `sqrt_inverse` or `balanced`. |
+| `--output-dir` | Checkpoint directory (default: the configured transformer/RNN path). |
+| `--val-subset N` | Stratified per-epoch selection subset; the report still uses the full split. |
+| `--resume` | Continue from `<output-dir>/last`. |
+| `--device {auto,cpu,cuda}` | `auto` prefers CUDA; `cuda` fails loudly when unavailable. |
+| `--final` | Also score the test split with the best checkpoint. |
+
+The smoke run is the only one that executes on this CPU-only machine. The
+classifier is randomly initialised and sees 300 rows for one epoch, so its report
+is *not* a result - it exists to prove the whole path (data -> tokenizer ->
+batching -> training -> checkpoint -> reload -> report) works offline in a few
+seconds. Measured here (torch 2.14.1+cpu, Windows, no GPU): the epoch itself takes
+1.1 s for the transformer and 1.6 s for the RNN, while the whole process is about
+35 s because importing torch and transformers dominates. Real training happens on
+Colab; see `docs/training_on_colab.md`.
+
+### 11.5 Reports
+
+| Path | Contents |
+|---|---|
+| `reports/evaluation/sentiment_<model>_val.{json,md}` | Full validation split: accuracy, macro-F1, per-class P/R/F1, confusion matrix, majority baseline, binary negative-vs-positive block with ROC AUC. |
+| `reports/evaluation/sentiment_<model>_final.{json,md}` | The same for the test split, written only by `--final`. |
+| `reports/evaluation/sentiment_<model>_<split>_hard_calibration.csv` | Per-product negative-share calibration using **hard** predictions. |
+| `reports/evaluation/sentiment_<model>_<split>_soft_calibration.csv` | The same using the **mean predicted negative probability**. |
+
+Both calibration modes are reported because class weighting can leave hard-label
+F1 healthy while shifting the probabilities the risk stage would consume.
+
+---
+
+## 12. What this stage does not do
 
 * No aspects or evidence strength - that is `review_intel/aspects` and
   `review_intel/evidence`.
-* No DistilBERT fine-tuning: `max_length_tokens`, `model_name`,
-  `max_sequence_length` and `batch_size` are configured but unused here, and no
-  GPU is touched by this stage.
-* No API, database or frontend wiring: the artifact and reports are the output.
+* No GPU training in this build: no pretrained weights were downloaded and the
+  Colab bundle has not been run. The neural numbers in a report are only real
+  once `scripts/train_sentiment.py` has actually run on a GPU machine.
+* No API, database or frontend wiring: the artifacts and reports are the output.
 * No threshold tuning against `test`; see §9.
+
+Environment note for the tests: this torch build (2.14.1+cpu on Windows/Python
+3.13) reports a *first-chance* access violation from some CPU kernels
+(`layer_norm`, `max`) when `faulthandler` is enabled, which pytest does. It
+reproduces without any project code:
+
+```powershell
+python -X faulthandler -c "import torch, torch.nn as nn; nn.LayerNorm(8)(torch.randn(2, 8))"
+```
+
+The dumps in the pytest output are therefore handler noise, not test failures;
+the suite still exits 0.
