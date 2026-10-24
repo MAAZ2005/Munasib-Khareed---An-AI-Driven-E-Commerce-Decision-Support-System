@@ -1,0 +1,318 @@
+{
+  "artifact": {
+    "class_weight": "balanced",
+    "metadata": {
+      "class_weight": "balanced",
+      "converged": true,
+      "format_version": 1,
+      "label_column": "sentiment_label_weak",
+      "labels": [
+        0,
+        1,
+        2
+      ],
+      "n_iter": 123,
+      "seed": 42,
+      "text_column": "review_text_clean",
+      "train_products": 1444,
+      "train_rows": 72052,
+      "vocabulary_size": 103348
+    },
+    "path": "models\\sentiment_tfidf_logreg.joblib"
+  },
+  "config": {
+    "label_column": "sentiment_label_weak",
+    "logreg": {
+      "C": 1.0,
+      "max_iter": 1000
+    },
+    "max_length_tokens": 128,
+    "max_reviews_per_product": 50,
+    "max_train_rows": 100000,
+    "min_chars": 3,
+    "seed": 42,
+    "text_column": "review_text_clean",
+    "tfidf": {
+      "max_features": 200000,
+      "min_df": 3,
+      "ngram_range": [
+        1,
+        2
+      ],
+      "sublinear_tf": true
+    }
+  },
+  "elapsed_seconds": 33.076,
+  "evaluations": {
+    "val": {
+      "rows": 62768,
+      "seconds": 5.525,
+      "split": "val",
+      "variants": {
+        "balanced": {
+          "calibration": {
+            "mae": 0.03167177897779368,
+            "mean_signed_difference": 0.024390139225152145,
+            "n_products": 310,
+            "n_reviews": 62768,
+            "note": null,
+            "pearson_r": 0.954917351442804
+          },
+          "class_weight": "balanced",
+          "eval_seconds": 2.757,
+          "metrics": {
+            "accuracy": 0.862445832271221,
+            "binary": {
+              "accuracy": 0.9431304987789784,
+              "f1": 0.7844554329909978,
+              "n": 59786,
+              "precision": 0.7427370948379352,
+              "prevalence": 0.12451075502626033,
+              "recall": 0.8311391724879097,
+              "roc_auc": 0.9714488216126439
+            },
+            "confusion": [
+              [
+                6187,
+                870,
+                387
+              ],
+              [
+                887,
+                1389,
+                706
+              ],
+              [
+                2143,
+                3641,
+                46558
+              ]
+            ],
+            "labels": [
+              {
+                "label": 0,
+                "name": "negative"
+              },
+              {
+                "label": 1,
+                "name": "neutral"
+              },
+              {
+                "label": 2,
+                "name": "positive"
+              }
+            ],
+            "macro_f1": 0.6622283653163915,
+            "majority_baseline": {
+              "accuracy": 0.8338962528677033,
+              "label": 2,
+              "macro_f1": 0.3031419222193264,
+              "name": "positive",
+              "share": 0.8338962528677033
+            },
+            "n": 62768,
+            "per_class": [
+              {
+                "f1": 0.7426925154552548,
+                "label": 0,
+                "name": "negative",
+                "precision": 0.6712596289465119,
+                "recall": 0.8311391724879097,
+                "support": 7444
+              },
+              {
+                "f1": 0.31276739473091647,
+                "label": 1,
+                "name": "neutral",
+                "precision": 0.23542372881355933,
+                "recall": 0.46579476861167,
+                "support": 2982
+              },
+              {
+                "f1": 0.9312251857630034,
+                "label": 2,
+                "name": "positive",
+                "precision": 0.977062391135548,
+                "recall": 0.8894960070306828,
+                "support": 52342
+              }
+            ]
+          },
+          "model": {
+            "class_weight": "balanced",
+            "converged": true,
+            "format_version": 1,
+            "label_column": "sentiment_label_weak",
+            "labels": [
+              0,
+              1,
+              2
+            ],
+            "n_iter": 123,
+            "seed": 42,
+            "text_column": "review_text_clean",
+            "train_products": 1444,
+            "train_rows": 72052,
+            "vocabulary_size": 103348
+          },
+          "train_seconds": 13.611
+        },
+        "none": {
+          "calibration": {
+            "mae": 0.021542821801013575,
+            "mean_signed_difference": -0.012122465157286207,
+            "n_products": 310,
+            "n_reviews": 62768,
+            "note": null,
+            "pearson_r": 0.9738500274459975
+          },
+          "class_weight": "none",
+          "eval_seconds": 2.767,
+          "metrics": {
+            "accuracy": 0.912455391282182,
+            "binary": {
+              "accuracy": 0.956545010537584,
+              "f1": 0.8086610693769333,
+              "n": 59786,
+              "precision": 0.8950114118030649,
+              "prevalence": 0.12451075502626033,
+              "recall": 0.7375067168189146,
+              "roc_auc": 0.9803032551217162
+            },
+            "confusion": [
+              [
+                5490,
+                69,
+                1885
+              ],
+              [
+                655,
+                207,
+                2120
+              ],
+              [
+                644,
+                122,
+                51576
+              ]
+            ],
+            "labels": [
+              {
+                "label": 0,
+                "name": "negative"
+              },
+              {
+                "label": 1,
+                "name": "neutral"
+              },
+              {
+                "label": 2,
+                "name": "positive"
+              }
+            ],
+            "macro_f1": 0.6165748003329452,
+            "majority_baseline": {
+              "accuracy": 0.8338962528677033,
+              "label": 2,
+              "macro_f1": 0.3031419222193264,
+              "name": "positive",
+              "share": 0.8338962528677033
+            },
+            "n": 62768,
+            "per_class": [
+              {
+                "f1": 0.771446638094569,
+                "label": 0,
+                "name": "negative",
+                "precision": 0.8086610693769333,
+                "recall": 0.7375067168189146,
+                "support": 7444
+              },
+              {
+                "f1": 0.12248520710059173,
+                "label": 1,
+                "name": "neutral",
+                "precision": 0.5201005025125628,
+                "recall": 0.06941649899396378,
+                "support": 2982
+              },
+              {
+                "f1": 0.9557925558036748,
+                "label": 2,
+                "name": "positive",
+                "precision": 0.9279430021050359,
+                "recall": 0.9853654808757786,
+                "support": 52342
+              }
+            ]
+          },
+          "model": {
+            "class_weight": "none",
+            "converged": true,
+            "format_version": 1,
+            "label_column": "sentiment_label_weak",
+            "labels": [
+              0,
+              1,
+              2
+            ],
+            "n_iter": 93,
+            "seed": 42,
+            "text_column": "review_text_clean",
+            "train_products": 1444,
+            "train_rows": 72052,
+            "vocabulary_size": 103348
+          },
+          "train_seconds": 11.277
+        }
+      }
+    }
+  },
+  "sample": {
+    "class_counts": {
+      "negative": 9127,
+      "neutral": 3514,
+      "positive": 59411
+    },
+    "class_shares": {
+      "negative": 0.12667240326430912,
+      "neutral": 0.048770332537611726,
+      "positive": 0.8245572641980792
+    },
+    "label_column": "sentiment_label_weak",
+    "notes": [],
+    "positives_available": 59411,
+    "positives_kept": 59411,
+    "products": 1444,
+    "rows": 72052,
+    "split": "train",
+    "steps": [
+      {
+        "detail": "review frame as loaded",
+        "rows": 425993,
+        "step": "input rows"
+      },
+      {
+        "detail": "split == 'train'",
+        "rows": 303317,
+        "step": "train split only"
+      },
+      {
+        "detail": "review_text_clean non-null and >= 3 chars",
+        "rows": 302392,
+        "step": "text present and long enough"
+      },
+      {
+        "detail": "at most 50 per product (class-blind, seeded)",
+        "rows": 72052,
+        "step": "per-product cap"
+      },
+      {
+        "detail": "total budget max_train_rows=100,000",
+        "rows": 72052,
+        "step": "positive subsample"
+      }
+    ]
+  },
+  "script": "scripts/train_sentiment_baseline.py"
+}

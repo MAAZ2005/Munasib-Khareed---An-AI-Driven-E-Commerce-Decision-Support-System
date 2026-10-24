@@ -85,6 +85,35 @@ review_intel:
       neutral_val: 3
       positive_min: 4
 
+    # --- Weak-supervision baseline (TF-IDF + logistic regression) ------------
+    # Review column holding the text and the column holding the weak label.
+    # `review_text_clean` is the cleaned text the models read; `_raw` is display-only.
+    text_column: "review_text_clean"
+    label_column: "sentiment_label_weak"
+    # Cap per product so one 6,510-review product cannot dominate the sample.
+    max_reviews_per_product: 50
+    # Overall row budget: positive reviews are subsampled to reach it; negatives
+    # and neutrals are kept in full (never dropped just to hit the budget).
+    max_train_rows: 100000
+    # Shortest review text (characters) that may enter training or evaluation.
+    min_chars: 3
+    # Seed for the deterministic review selection (never the global RNG).
+    seed: 42
+    # Token budget for the transformer stage; unused by the TF-IDF baseline.
+    max_length_tokens: 128
+    tfidf:
+      # Word unigrams + bigrams, terms seen in >= 3 documents, capped vocabulary.
+      ngram_range: [1, 2]
+      min_df: 3
+      max_features: 200000
+      sublinear_tf: true
+    logreg:
+      C: 1.0
+      max_iter: 1000
+    # Fitted artifact (git-ignored `models/`) and evaluation reports.
+    model_path: "models/sentiment_tfidf_logreg.joblib"
+    report_dir: "reports/evaluation"
+
   # Aspect-based attribute extraction
   aspects:
     spacy_model: "en_core_web_sm"

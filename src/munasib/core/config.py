@@ -126,13 +126,168 @@ class RatingMappingConfig(BaseModel):
     positive_min: int = 4  # Ratings 4-5: positive
 
 
+#: Review text columns a sentiment model may read. Kept beside the config
+#: validator so a typo cannot silently select a column the review schema does
+#: not have (the vocabulary mirrors ``munasib.data.preprocessing.REVIEW_SCHEMA``).
+SENTIMENT_TEXT_COLUMN_VOCABULARY: tuple[str, ...] = (
+    "review_text_clean",
+    "review_text_raw",
+)
+
+#: Review columns that carry the weak-supervision sentiment target.
+SENTIMENT_LABEL_COLUMN_VOCABULARY: tuple[str, ...] = ("sentiment_label_weak",)
+
+
+class TfidfConfig(BaseModel):
+    """TF-IDF vectoriser settings for the sentiment baseline.
+
+    ``ngram_range`` is a closed interval of word n-gram sizes, ``min_df`` drops
+    terms seen in fewer documents, ``max_features`` caps the vocabulary and
+    ``sublinear_tf`` applies ``1 + log(tf)`` so a repeated word cannot dominate.
+    """
+
+    ngram_range: tuple[int, int] = (1, 2)
+    min_df: int = 3
+    max_features: int = 200_000
+    sublinear_tf: bool = True
+
+    @model_validator(mode="after")
+    def _check_tfidf_values(self) -> "TfidfConfig":
+        """Validate the vectoriser settings.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the n-gram range is descending or non-positive, or
+                ``min_df``/``max_features`` is not positive.
+        """
+        low, high = self.ngram_range
+        if low < 1 or high < low:
+            raise ValueError(
+                "review_intel.sentiment.tfidf.ngram_range must be ascending and "
+                f">= 1, got {self.ngram_range}"
+            )
+        if self.min_df < 1:
+            raise ValueError(
+                f"review_intel.sentiment.tfidf.min_df must be >= 1, got {self.min_df}"
+            )
+        if self.max_features < 1:
+            raise ValueError(
+                "review_intel.sentiment.tfidf.max_features must be >= 1, got "
+                f"{self.max_features}"
+            )
+        return self
+
+
+class LogRegConfig(BaseModel):
+    """Logistic-regression settings for the sentiment baseline.
+
+    ``C`` is the inverse regularisation strength (smaller = stronger) and
+    ``max_iter`` caps the L-BFGS iterations; a run that fails to converge says so
+    in the evaluation report rather than silently reporting partial weights.
+    """
+
+    C: float = 1.0
+    max_iter: int = 1000
+
+    @model_validator(mode="after")
+    def _check_logreg_values(self) -> "LogRegConfig":
+        """Validate the classifier settings.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When ``C`` is not positive or ``max_iter`` is < 1.
+        """
+        if self.C <= 0.0:
+            raise ValueError(f"review_intel.sentiment.logreg.C must be > 0, got {self.C}")
+        if self.max_iter < 1:
+            raise ValueError(
+                f"review_intel.sentiment.logreg.max_iter must be >= 1, got {self.max_iter}"
+            )
+        return self
+
+
 class SentimentConfig(BaseModel):
-    """Transformer sentiment inference configuration."""
+    """Sentiment model settings: weak-supervision sample, baseline and transformer.
+
+    The first group configures the **training sample** the baseline learns from:
+    which review column holds the text and the weak label, how many reviews per
+    product may enter the sample, the overall row budget, the shortest usable
+    review and the seed. The second group configures the TF-IDF + logistic
+    regression baseline and where its artifact and evaluation reports live. The
+    transformer settings (``model_name``/``max_sequence_length``/``batch_size``)
+    are used later by the DistilBERT stage, not by the baseline.
+    """
 
     model_name: str = "distilbert-base-uncased"
     max_sequence_length: int = 256
     batch_size: int = 32
     rating_mapping: RatingMappingConfig = Field(default_factory=RatingMappingConfig)
+
+    #: Review column holding the text the model reads (cleaned text by default).
+    text_column: str = "review_text_clean"
+    #: Review column holding the weak-supervision label (0/1/2).
+    label_column: str = "sentiment_label_weak"
+    #: Hard cap on how many reviews one product may contribute to the sample, so
+    #: a single 6,510-review product cannot dominate the training set.
+    max_reviews_per_product: int = 50
+    #: Overall row budget for the training sample (positive reviews are
+    #: subsampled to reach it; negatives and neutrals are never dropped for it).
+    max_train_rows: int = 100_000
+    #: Shortest review text, in characters, that may enter training or evaluation.
+    min_chars: int = 3
+    #: Seed for the deterministic review selection (never the global RNG).
+    seed: int = 42
+    #: Token budget for the transformer stage (unused by the TF-IDF baseline).
+    max_length_tokens: int = 128
+    tfidf: TfidfConfig = Field(default_factory=TfidfConfig)
+    logreg: LogRegConfig = Field(default_factory=LogRegConfig)
+    #: Where the fitted baseline artifact is written (git-ignored ``models/``).
+    model_path: Path = Path("models/sentiment_tfidf_logreg.joblib")
+    #: Where the JSON/Markdown/CSV evaluation reports are written.
+    report_dir: Path = Path("reports/evaluation")
+
+    @model_validator(mode="after")
+    def _check_sentiment_values(self) -> "SentimentConfig":
+        """Validate the sample, vocabulary and path settings.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When a column name is outside the review vocabulary, a
+                count is not positive, or an artifact path is empty.
+        """
+        if self.text_column not in SENTIMENT_TEXT_COLUMN_VOCABULARY:
+            raise ValueError(
+                "review_intel.sentiment.text_column must be one of "
+                f"{list(SENTIMENT_TEXT_COLUMN_VOCABULARY)}, got {self.text_column!r}"
+            )
+        if self.label_column not in SENTIMENT_LABEL_COLUMN_VOCABULARY:
+            raise ValueError(
+                "review_intel.sentiment.label_column must be one of "
+                f"{list(SENTIMENT_LABEL_COLUMN_VOCABULARY)}, got {self.label_column!r}"
+            )
+        for name, value in (
+            ("max_reviews_per_product", self.max_reviews_per_product),
+            ("max_train_rows", self.max_train_rows),
+            ("min_chars", self.min_chars),
+            ("max_length_tokens", self.max_length_tokens),
+            ("batch_size", self.batch_size),
+            ("max_sequence_length", self.max_sequence_length),
+        ):
+            if value < 1:
+                raise ValueError(f"review_intel.sentiment.{name} must be >= 1, got {value}")
+        for name, path in (
+            ("model_path", self.model_path),
+            ("report_dir", self.report_dir),
+        ):
+            if not str(path).strip():
+                raise ValueError(f"review_intel.sentiment.{name} must not be empty")
+        return self
 
 
 class AspectsConfig(BaseModel):
