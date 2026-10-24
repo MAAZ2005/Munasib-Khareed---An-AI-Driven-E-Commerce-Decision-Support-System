@@ -26,6 +26,7 @@ def test_documented_defaults() -> None:
     assert config.target_feature_count == 5
     assert config.min_brand_peers == 5
     assert config.min_rank_peers == 5
+    assert config.min_price_peers == 10
     assert config.metadata_fields == list(METADATA_FIELD_VOCABULARY)
 
 
@@ -37,6 +38,7 @@ def test_shipped_config_declares_every_threshold() -> None:
         "target_feature_count",
         "min_brand_peers",
         "min_rank_peers",
+        "min_price_peers",
         "metadata_fields",
     ):
         assert f"{key}:" in text
@@ -54,7 +56,9 @@ def test_zero_completeness_target_is_rejected(field: str) -> None:
         ProductIntelConfig(**{field: 0})
 
 
-@pytest.mark.parametrize("field", ["min_brand_peers", "min_rank_peers"])
+@pytest.mark.parametrize(
+    "field", ["min_brand_peers", "min_rank_peers", "min_price_peers"]
+)
 def test_zero_peer_minimum_is_rejected(field: str) -> None:
     """A zero peer minimum would report percentiles over no peers - rejected."""
     with pytest.raises(ValidationError, match=field):

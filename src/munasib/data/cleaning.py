@@ -17,6 +17,9 @@ Cleaning rules (project rule: *never fabricate*):
 * ``parse_rank_fields`` extracts ``(rank_value, rank_category)`` from strings such as
   ``">#1,234 in Appliances (See top 100)"``; unparseable input yields ``None`` for
   the missing part rather than a fabricated number.
+* ``parse_category_path`` extracts ``(category_path, category_leaf)`` from the
+  ``category`` browse breadcrumb (a list of strings, a single string, or missing);
+  empty or absent input yields ``(None, None)``.
 """
 
 from __future__ import annotations
@@ -46,6 +49,10 @@ _RANK_PATTERN = re.compile(
 )
 _RANK_TOP_SUFFIX = re.compile(r"\s*\(see\s+top[^)]*\)\s*$", re.IGNORECASE)
 _BRAND_EDGE_PUNCTUATION = string.punctuation + " \t\r\n|"
+#: Separator between the levels of the metadata ``category`` breadcrumb. One
+#: constant shared by :func:`parse_category_path`, the preprocessing schema and
+#: the product-intelligence price peer groups, so the three can never drift.
+CATEGORY_PATH_SEPARATOR = " > "
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -288,3 +295,45 @@ def parse_rank_fields(value: Any) -> tuple[int | None, str | None]:
         cleaned = html.unescape(cleaned).strip().rstrip(" (").strip()
         rank_category = collapse_whitespace(cleaned) or None
     return rank_value, rank_category
+
+
+def parse_category_path(value: Any) -> tuple[str | None, str | None]:
+    """Parse a metadata ``category`` breadcrumb into ``(category_path, leaf)``.
+
+    The 2018 metadata stores the browse path as a list of node names ordered
+    broad -> specific (``["Appliances", "Parts & Accessories"]``), with a single
+    string and an absent field as the other two shapes a loader must tolerate. A
+    scalar string is split on ``" > "`` exactly like a list item, so both shapes
+    end up as the same level structure.
+
+    Every level is HTML-unescaped and whitespace-collapsed before joining. That
+    is not cosmetic: the source really mixes ``"Parts &amp; Accessories"`` with
+    ``"Parts & Accessories"`` (both spellings occur in
+    ``data/raw/meta_Appliances.json.gz``), and the two must group under the same
+    peer group instead of silently splitting one browse node in two. Blank
+    levels are dropped.
+
+    Args:
+        value: Raw ``category`` value: list of strings, single string, or missing.
+
+    Returns:
+        Tuple ``(category_path, category_leaf)`` - the levels joined by
+        ``CATEGORY_PATH_SEPARATOR`` and the most specific level. ``(None, None)``
+        when the field is absent, empty or holds nothing usable; never an empty
+        string.
+    """
+    if not is_present(value):
+        return None, None
+    raw_levels = list(value) if isinstance(value, (list, tuple)) else [value]
+    levels: list[str] = []
+    for item in raw_levels:
+        if not is_present(item):
+            continue
+        cleaned = collapse_whitespace(fix_encoding_artifacts(str(item)))
+        for part in cleaned.split(CATEGORY_PATH_SEPARATOR):
+            part = part.strip()
+            if part:
+                levels.append(part)
+    if not levels:
+        return None, None
+    return CATEGORY_PATH_SEPARATOR.join(levels), levels[-1]

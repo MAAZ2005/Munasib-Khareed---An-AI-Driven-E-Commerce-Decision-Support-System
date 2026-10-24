@@ -95,7 +95,8 @@ REVIEW_RENAME = {"review_datetime": "review_time", "review_year": "year", "revie
 EXPECTED_PRODUCT_COLUMNS = (
     "asin", "split", "title", "title_clean", "brand", "brand_clean", "brand_missing",
     "price", "price_max", "price_status", "price_missing", "rank", "rank_value",
-    "rank_category", "rank_missing", "description_clean", "features_clean",
+    "rank_category", "rank_missing", "category_path", "category_leaf",
+    "description_clean", "features_clean",
     "n_reviews", "mean_rating", "first_review_time", "last_review_time",
     "image_url", "image_missing",
 )
@@ -107,17 +108,28 @@ EXPECTED_REVIEW_COLUMNS = (
 )
 EXPECTED_RELATED_COLUMNS = ("asin", "related_asin", "relation_type", "in_subset")
 
+#: Serving-cache-only column whose presence the ``--verify`` flag scan depends
+#: on (``create_all`` never migrates an existing database, so a stale file can
+#: lack it). Part of ``VERIFIED_PRODUCT_COLUMNS`` below.
+IMAGE_CACHED_COLUMN = "image_cached"
+
 #: Table columns that have no parquet counterpart, with their ingest default.
 #: ``image_cached`` is a serving-cache flag (see munasib.db.models.Product): a
 #: freshly ingested row has no local thumbnail yet, so it starts False. The real
 #: value is then derived from the thumbnail files on disk by
 #: :func:`sync_image_flags`, so a rebuild never loses what was already downloaded.
 EXTRAS = {
-    "products": {"image_cached": False},
+    "products": {IMAGE_CACHED_COLUMN: False},
 }
 
 #: Columns ``--verify`` requires on the products table (schema-drift check).
-VERIFIED_PRODUCT_COLUMNS = ("image_url", "image_missing", "image_cached")
+VERIFIED_PRODUCT_COLUMNS = (
+    "image_url",
+    "image_missing",
+    IMAGE_CACHED_COLUMN,
+    "category_path",
+    "category_leaf",
+)
 
 #: Tables loaded from parquet, children before parents for clearing.
 CACHE_TABLES = ("reviews", "related_products", "products")
@@ -562,8 +574,9 @@ def verify(engine: Engine, processed_dir: Path, images_dir: Path) -> bool:
     1. Row counts per cache table versus the parquet row counts.
     2. Row counts of the pipeline-owned tables (informational).
     3. The ``products`` table carries the image columns (parquet mirror plus the
-       cache-only ``image_cached`` flag) - catches a stale database built before
-       the columns were added, which ``create_all`` never migrates.
+       cache-only ``image_cached`` flag) and the category-breadcrumb columns
+       (``category_path``/``category_leaf``) - catches a stale database built
+       before the columns were added, which ``create_all`` never migrates.
     4. ``image_cached`` agrees with the thumbnail files on disk: no flagged
        product may lack its file (the API would answer 404 for a product that
        claims ``has_image=true``) and no cached file may be unflagged.
@@ -609,10 +622,11 @@ def verify(engine: Engine, processed_dir: Path, images_dir: Path) -> bool:
         integrity = [
             row[0] for row in connection.exec_driver_sql("PRAGMA integrity_check").fetchall()
         ]
-        # Only usable once the flag column is known to exist (previous check).
+        # A stale database without the cache-only column is reported as MISSING
+        # by the column check below instead of raising here.
         flag_rows = (
             connection.execute(select(Product.asin, Product.image_cached)).all()
-            if VERIFIED_PRODUCT_COLUMNS[-1] in product_columns
+            if IMAGE_CACHED_COLUMN in product_columns
             else []
         )
     missing_columns = [c for c in VERIFIED_PRODUCT_COLUMNS if c not in product_columns]

@@ -26,6 +26,10 @@ Design contract (project rules: *never fabricate*, *faithful load*):
 
 * Nothing is imputed. Missing/unparseable price, rank or brand stay null and get a
   ``*_missing`` boolean flag; review text empties to null with ``has_text=False``.
+* The metadata ``category`` breadcrumb becomes ``category_path``/``category_leaf``
+  (levels HTML-unescaped and whitespace-collapsed, joined by ``" > "`` broad ->
+  specific, see :func:`munasib.data.cleaning.parse_category_path`); a product
+  whose source published no breadcrumb keeps null in both columns.
 * The display-only product image (``image_url`` + ``image_missing``) is the first
   high-resolution URL, else the first small URL, else null. It is resolved over
   every duplicate row of an ASIN *before* rows are dropped, so an image carried
@@ -60,6 +64,7 @@ from munasib.data.cleaning import (
     clean_review_text,
     clean_title,
     normalize_brand,
+    parse_category_path,
     parse_rank_fields,
 )
 from munasib.data.features import (
@@ -131,6 +136,11 @@ PRODUCT_SCHEMA = pa.schema(
         ("rank_value", pa.int64()),
         ("rank_category", pa.string()),
         ("rank_missing", pa.bool_()),
+        # Browse breadcrumb from the raw metadata "category" field: the levels
+        # joined by " > " (broad -> specific) plus the most specific level.
+        # Both NULL when the source published no usable breadcrumb.
+        ("category_path", pa.string()),
+        ("category_leaf", pa.string()),
         ("description_clean", pa.string()),
         ("features_clean", pa.list_(pa.string())),
         ("n_reviews", pa.int32()),
@@ -458,11 +468,13 @@ def _clean_product_frame(
     """Clean product fields for the candidate subset.
 
     Strips HTML from title/description/features, normalises brand into a
-    comparison key, parses rank into ``(rank_value, rank_category)``, flags
+    comparison key, parses rank into ``(rank_value, rank_category)``, parses the
+    ``category`` breadcrumb into ``(category_path, category_leaf)``, flags
     missing/unparseable price, rank and brand with booleans, and resolves the
     display-only product image (``image_url`` plus its ``image_missing`` flag).
-    Raw ``title``, ``brand`` and ``rank`` are preserved for display; nothing is
-    imputed.
+    Raw ``title``, ``brand`` and ``rank`` are preserved for display; the source
+    ``category`` list is read but not stored (``category_path`` *is* its cleaned
+    form); nothing is imputed.
 
     Args:
         products: Raw metadata rows for candidates (``asin`` unique).
@@ -507,6 +519,19 @@ def _clean_product_frame(
     )
     # rank_missing means "no numeric rank could be derived" (unparsable counts).
     out["rank_missing"] = out["rank_value"].isna()
+
+    # Browse breadcrumb: the raw `category` field (list of strings, single string
+    # or missing) becomes the typed " > "-joined path plus its most specific
+    # level; both stay None when the source published nothing usable.
+    parsed_paths = [
+        parse_category_path(value) for value in _get_or_na(products, "category", "object")
+    ]
+    out["category_path"] = pd.Series(
+        [path for path, _ in parsed_paths], index=products.index, dtype="object"
+    )
+    out["category_leaf"] = pd.Series(
+        [leaf for _, leaf in parsed_paths], index=products.index, dtype="object"
+    )
 
     description_raw = _get_or_na(products, "description", "object")
     feature_raw = _get_or_na(products, "feature", "object")

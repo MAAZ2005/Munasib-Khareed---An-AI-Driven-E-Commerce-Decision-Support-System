@@ -670,3 +670,118 @@ class TestDuplicateImageRecovery:
         assert pd.isna(products.loc["B0000000A2", "image_url"])
         assert bool(products.loc["B0000000A2", "image_missing"]) is True
 
+
+class TestCategoryBreadcrumb:
+    """``category_path``/``category_leaf`` from the three shapes of the raw field.
+
+    The 2018 metadata publishes ``category`` as a list of browse nodes ordered
+    broad -> specific, occasionally as a single string, and sometimes not at
+    all. All three must be handled without ever inventing a breadcrumb.
+    """
+
+    def _products(self, tmp_path: Path, metadata: list[dict[str, Any]]) -> pd.DataFrame:
+        """Build a dataset over one-metadata-record-per-product fixtures.
+
+        Args:
+            tmp_path: Temporary directory for the build.
+            metadata: Raw metadata records, one review each so all are candidates.
+
+        Returns:
+            ``products.parquet`` content indexed by ASIN.
+        """
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir()
+        reviews = [
+            {
+                "asin": record["asin"],
+                "rating": 5.0,
+                "reviewText": f"text {index}",
+                "unixReviewTime": 1_500_000_000 + index,
+            }
+            for index, record in enumerate(metadata)
+        ]
+        _write_gzip_jsonl(raw_dir / "Appliances.json.gz", reviews)
+        _write_gzip_jsonl(raw_dir / "meta_Appliances.json.gz", metadata)
+        out = tmp_path / "processed"
+        build_processed_dataset(
+            _settings(min_reviews=1),
+            raw_dir=raw_dir,
+            processed_dir=out,
+            reports_dir=tmp_path / "reports",
+            chunk_size=2,
+        )
+        return pd.read_parquet(out / "products.parquet").set_index("asin")
+
+    def test_list_string_and_missing_shapes(self, tmp_path: Path) -> None:
+        """A list is joined, a scalar string is split, an absent field stays NULL."""
+        products = self._products(
+            tmp_path,
+            [
+                # List form, with an HTML entity that must be decoded so the two
+                # spellings of "Parts & Accessories" cannot split one browse node.
+                {
+                    "asin": "B0000000C1",
+                    "category": ["Appliances", "Parts &amp; Accessories"],
+                },
+                # Scalar string form, pre-joined with the separator.
+                {
+                    "asin": "B0000000C2",
+                    "category": "Appliances > Water Filters",
+                },
+                # Scalar string naming a single node.
+                {"asin": "B0000000C3", "category": "Appliances"},
+                # Absent entirely (and an empty list, which means the same).
+                {"asin": "B0000000C4"},
+                {"asin": "B0000000C5", "category": []},
+            ],
+        )
+        assert products.loc["B0000000C1", "category_path"] == "Appliances > Parts & Accessories"
+        assert products.loc["B0000000C1", "category_leaf"] == "Parts & Accessories"
+        assert products.loc["B0000000C2", "category_path"] == "Appliances > Water Filters"
+        assert products.loc["B0000000C2", "category_leaf"] == "Water Filters"
+        assert products.loc["B0000000C3", "category_path"] == "Appliances"
+        assert products.loc["B0000000C3", "category_leaf"] == "Appliances"
+        for asin in ("B0000000C4", "B0000000C5"):
+            assert pd.isna(products.loc[asin, "category_path"])
+            assert pd.isna(products.loc[asin, "category_leaf"])
+
+    def test_leaf_is_the_last_level_not_a_reparse(self, tmp_path: Path) -> None:
+        """``category_leaf`` is the final breadcrumb level, never a re-derived guess."""
+        products = self._products(
+            tmp_path,
+            [
+                {"asin": "B0000000C1", "category": ["Appliances", "Water Filters"]},
+                {
+                    "asin": "B0000000C2",
+                    "category": ["Appliances", "Water Filters", "Replacement Cartridges"],
+                },
+            ],
+        )
+        # C2's breadcrumb sits one level below C1's, so C1's node is a genuine
+        # ancestor prefix of C2's - which is what the peer-group walk relies on.
+        assert products.loc["B0000000C1", "category_path"] == "Appliances > Water Filters"
+        assert (
+            products.loc["B0000000C2", "category_path"]
+            == "Appliances > Water Filters > Replacement Cartridges"
+        )
+        assert products.loc["B0000000C1", "category_leaf"] == "Water Filters"
+        assert products.loc["B0000000C2", "category_leaf"] == "Replacement Cartridges"
+
+    def test_blank_levels_are_dropped_not_invented(self, tmp_path: Path) -> None:
+        """Empty or whitespace-only levels disappear; an all-blank field is NULL."""
+        products = self._products(
+            tmp_path,
+            [
+                {
+                    "asin": "B0000000C1",
+                    "category": ["  Appliances  ", "", "   ", "Water Filters"],
+                },
+                # Nothing usable survives -> NULL rather than " > " or similar.
+                {"asin": "B0000000C2", "category": ["", "   "]},
+            ],
+        )
+        assert products.loc["B0000000C1", "category_path"] == "Appliances > Water Filters"
+        assert products.loc["B0000000C1", "category_leaf"] == "Water Filters"
+        assert pd.isna(products.loc["B0000000C2", "category_path"])
+        assert pd.isna(products.loc["B0000000C2", "category_leaf"])
+

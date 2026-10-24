@@ -269,6 +269,69 @@ def test_summarize_counts_missing_values_and_percentiles() -> None:
     # Only X1 is priced, and it is the only member of its price set, so its
     # category percentile is None (no peers) and the stat is omitted.
     assert "price_percentile_category" not in summary.percentile_stats
+    # Neither stub declares a breadcrumb, so both are compared against the whole
+    # candidate set and no depth bucket is filled.
+    assert summary.peer_group_depths == {}
+    assert summary.peer_group_all_products == 2
+    assert summary.price_peer_fallback == 2
+
+
+def test_summarize_reports_the_peer_group_depth_distribution() -> None:
+    """The depth distribution buckets products by the group they were compared in."""
+    module = _load_module()
+    products = [
+        # Two products sharing a depth-2 leaf, plus two at a deeper leaf under
+        # the same root, plus one with no breadcrumb at all.
+        _stub("P1", price=1.0, category_path="Appliances > Water Filters"),
+        _stub("P2", price=2.0, category_path="Appliances > Water Filters"),
+        _stub("P3", price=3.0, category_path="Appliances > Parts > Filters"),
+        _stub("P4", price=4.0, category_path="Appliances > Parts > Filters"),
+        _stub("P5", price=5.0, category_path=None),
+    ]
+    peers = PeerStats.from_products(products, get_settings().product_intel)
+    profiles = build_profiles(products, peers, get_settings().product_intel)
+    summary = module.summarize(profiles)
+
+    # Every group holds 2 priced products, which is below the configured
+    # minimum, so all five fall back to the whole candidate set.
+    assert summary.peer_group_all_products == 5
+    assert summary.peer_group_depths == {}
+    assert summary.price_peer_fallback == 5
+
+    # Raise the priced peers in the depth-2 leaf above the minimum and it is
+    # used directly, which fills exactly one depth bucket. The depth-3 product
+    # cannot use its own leaf (1 priced product) but its root holds 10, so it
+    # falls back one level to a depth-1 group - still not the whole set.
+    wide = [
+        _stub(f"W{i}", price=float(i), category_path="Appliances > Water Filters")
+        for i in range(10)
+    ]
+    deep = _stub("D1", price=1.0, category_path="Appliances > Parts > Filters")
+    peers = PeerStats.from_products([*wide, deep], get_settings().product_intel)
+    profiles = build_profiles([*wide, deep], peers, get_settings().product_intel)
+    summary = module.summarize(profiles)
+    assert summary.peer_group_depths == {1: 1, 2: 10}
+    assert summary.peer_group_all_products == 0
+    assert summary.price_peer_fallback == 1  # only D1 fell back from its leaf
+
+
+def test_summarize_summary_lines_name_every_peer_group_bucket() -> None:
+    """The rendered lines carry the depth histogram, so a run is auditable."""
+    module = _load_module()
+    summary = module.RunSummary(
+        written=3,
+        without_price=0,
+        without_rank=0,
+        without_brand=0,
+        with_brand_percentile=3,
+        price_peer_fallback=1,
+        peer_group_depths={2: 2},
+        peer_group_all_products=1,
+    )
+    lines = summary.lines()
+    assert any("price peer fell back" in line and "1" in line for line in lines)
+    assert any("peer group depth 2" in line for line in lines)
+    assert any("peer group all products" in line for line in lines)
 
 
 def test_summarize_on_an_empty_batch_is_all_zero() -> None:
@@ -277,6 +340,9 @@ def test_summarize_on_an_empty_batch_is_all_zero() -> None:
     summary = module.summarize([])
     assert summary.written == 0
     assert summary.percentile_stats == {}
+    assert summary.peer_group_depths == {}
+    assert summary.peer_group_all_products == 0
+    assert summary.price_peer_fallback == 0
     assert any("profiles written" in line for line in summary.lines())
 
 

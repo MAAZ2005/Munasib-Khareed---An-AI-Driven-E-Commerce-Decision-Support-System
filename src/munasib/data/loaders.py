@@ -32,6 +32,12 @@ Design contract (project rule: *load faithfully*):
     ``image_urls``    ``imageURL`` (metadata; same normalisation as above)
     ================  =====================================================
 
+  * The metadata ``category`` browse breadcrumb (a list of strings ordered broad
+    -> specific, occasionally a single string, sometimes absent) is **preserved
+    verbatim** on the row, like every other raw field. The pipeline turns it into
+    the ``category_path``/``category_leaf`` columns in preprocessing via
+    :func:`munasib.data.cleaning.parse_category_path`, so the loader's output for
+    this field is byte-identical to the file.
   * Missing data stays missing (``None``/``<NA>``) - it is never replaced with a
     fabricated default. ``vote``/``verified`` use pandas nullable dtypes so "absent"
     and "false/zero" stay distinguishable.
@@ -480,7 +486,10 @@ def canonicalize_metadata_chunk(
     Adds canonical columns: ``asin``, ``price``/``price_max``/``price_status``/
     ``price_raw``, ``rank``, ``brand``, ``feature``, ``also_buy``, ``also_view``,
     ``image_urls_highres`` (from ``imageURLHighRes``) and ``image_urls`` (from
-    ``imageURL``). The raw ``related`` dict stays on the row untouched.
+    ``imageURL``). The raw ``related`` dict and the raw ``category`` breadcrumb
+    stay on the row untouched (``category`` becomes the typed
+    ``category_path``/``category_leaf`` columns in preprocessing, where the
+    cleaning helpers live).
 
     Args:
         df: Raw chunk of metadata records (all original fields preserved).

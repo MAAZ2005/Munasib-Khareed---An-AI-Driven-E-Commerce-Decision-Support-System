@@ -301,10 +301,10 @@ class ProductIntelConfig(BaseModel):
     These turn raw product metadata into 0-1 indicators: the completeness
     targets (a description is "complete" at ``target_description_words`` words,
     a feature list at ``target_feature_count`` bullets), the minimum peer counts
-    that keep a brand or rank percentile meaningful, and the exact field list
-    whose share of presence is reported as ``metadata_completeness``. Nothing
-    here imputes a value - a missing field scores 0 for completeness and its
-    ``*_missing`` flag is set.
+    that keep a brand, rank or category price percentile meaningful, and the
+    exact field list whose share of presence is reported as
+    ``metadata_completeness``. Nothing here imputes a value - a missing field
+    scores 0 for completeness and its ``*_missing`` flag is set.
     """
 
     target_description_words: int = 100
@@ -315,6 +315,11 @@ class ProductIntelConfig(BaseModel):
     #: Other ranked products a rank category needs before ``rank_percentile`` is
     #: reported.
     min_rank_peers: int = 5
+    #: Priced products a category-breadcrumb prefix must hold before it is used
+    #: as the price peer group of a product (see
+    #: ``docs/product_intelligence.md``); below it the peer group falls back one
+    #: level towards the whole candidate set.
+    min_price_peers: int = 10
     metadata_fields: list[str] = Field(
         default_factory=lambda: list(METADATA_FIELD_VOCABULARY)
     )
@@ -335,6 +340,7 @@ class ProductIntelConfig(BaseModel):
             ("target_feature_count", self.target_feature_count),
             ("min_brand_peers", self.min_brand_peers),
             ("min_rank_peers", self.min_rank_peers),
+            ("min_price_peers", self.min_price_peers),
         ):
             if value < 1:
                 raise ValueError(f"product_intel.{name} must be >= 1, got {value}")

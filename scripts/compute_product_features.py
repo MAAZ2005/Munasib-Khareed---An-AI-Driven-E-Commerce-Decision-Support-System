@@ -9,7 +9,9 @@ Determinism: ``computed_at`` is the dataset build timestamp from
 ``data/processed/meta.json``, so two runs over the same cache write identical
 rows; re-running is therefore idempotent (upsert on the ``asin`` key). The
 summary printed at the end reports **counts and percentile statistics only** -
-no invented numbers.
+no invented numbers - including the price peer-group distribution (how deep the
+compared-against category breadcrumb of each product was, and how many products
+had to fall back to the whole candidate set).
 
 Usage::
 
@@ -29,6 +31,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -38,6 +41,7 @@ from sqlalchemy.orm import Session
 
 from munasib.core.config import Settings, load_settings
 from munasib.core.exceptions import ConfigError, DataError, ProductNotFoundError
+from munasib.data.cleaning import CATEGORY_PATH_SEPARATOR
 from munasib.db.models import Product
 from munasib.db.repositories import ProductRepository, RelatedRepository
 from munasib.db.session import (
@@ -47,7 +51,7 @@ from munasib.db.session import (
     session_scope,
 )
 from munasib.product_intel.features import read_build_timestamp, write_product_features
-from munasib.product_intel.peers import PeerStats
+from munasib.product_intel.peers import ALL_PRODUCTS_GROUP, PeerStats
 from munasib.product_intel.profile import ProductProfile, build_profiles
 
 logging.basicConfig(
@@ -72,6 +76,13 @@ class RunSummary:
     without_brand: int
     #: Written profiles that carry a brand price percentile.
     with_brand_percentile: int
+    #: Written profiles whose price peer group was not their own leaf category.
+    price_peer_fallback: int
+    #: Peer-group depth distribution: ``{breadcrumb levels: profile count}``.
+    peer_group_depths: dict[int, int] = field(default_factory=dict)
+    #: Written profiles compared against the whole candidate set instead of a
+    #: category peer group (no breadcrumb, or no prefix large enough).
+    peer_group_all_products: int = 0
     #: ``name -> (min, median, max)`` over the non-None percentiles written.
     percentile_stats: dict[str, tuple[float, float, float]] = field(default_factory=dict)
 
@@ -88,6 +99,12 @@ class RunSummary:
             f"without rank                : {self.without_rank:,}",
             f"without brand               : {self.without_brand:,}",
             f"with brand percentile       : {self.with_brand_percentile:,}",
+            f"price peer fell back        : {self.price_peer_fallback:,}",
+            *(
+                f"{f'peer group depth {depth}':<28}: {count:,}"
+                for depth, count in sorted(self.peer_group_depths.items())
+            ),
+            f"peer group all products     : {self.peer_group_all_products:,}",
             *(
                 f"{name:<28}: min={stats[0]:.4f} median={stats[1]:.4f} max={stats[2]:.4f}"
                 for name, stats in sorted(self.percentile_stats.items())
@@ -171,9 +188,11 @@ def summarize(profiles: Sequence[ProductProfile]) -> RunSummary:
         profiles: Profiles written this run.
 
     Returns:
-        Counts of missing values and min/median/max over each non-None
-        percentile. A percentile that is None for every profile is omitted
-        rather than reported as zero.
+        Counts of missing values, the price peer-group distribution (how many
+        breadcrumb levels each compared-against group has, plus how many
+        products fell back to the whole candidate set or away from their own
+        leaf) and min/median/max over each non-None percentile. A percentile
+        that is None for every profile is omitted rather than reported as zero.
     """
     names = (
         "price_percentile_category",
@@ -187,6 +206,12 @@ def summarize(profiles: Sequence[ProductProfile]) -> RunSummary:
         )
         if values:
             stats[name] = (values[0], float(median(values)), values[-1])
+    peer_depths: Counter[int] = Counter()
+    for profile in profiles:
+        group = profile.price_peer_group
+        if group == ALL_PRODUCTS_GROUP:
+            continue
+        peer_depths[len(group.split(CATEGORY_PATH_SEPARATOR))] += 1
     return RunSummary(
         written=len(profiles),
         without_price=sum(1 for profile in profiles if profile.price_missing),
@@ -194,6 +219,11 @@ def summarize(profiles: Sequence[ProductProfile]) -> RunSummary:
         without_brand=sum(1 for profile in profiles if profile.brand_missing),
         with_brand_percentile=sum(
             1 for profile in profiles if profile.price_percentile_brand is not None
+        ),
+        price_peer_fallback=sum(1 for profile in profiles if profile.price_peer_fallback),
+        peer_group_depths=dict(sorted(peer_depths.items())),
+        peer_group_all_products=sum(
+            1 for profile in profiles if profile.price_peer_group == ALL_PRODUCTS_GROUP
         ),
         percentile_stats=stats,
     )

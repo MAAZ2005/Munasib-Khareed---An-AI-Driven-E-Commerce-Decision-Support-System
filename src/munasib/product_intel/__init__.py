@@ -25,7 +25,14 @@ from munasib.product_intel.features import (
     read_profiles,
     write_product_features,
 )
-from munasib.product_intel.peers import PeerStats, ProductLike, normalized_brand
+from munasib.product_intel.peers import (
+    ALL_PRODUCTS_GROUP,
+    PeerStats,
+    PricePeerSelection,
+    ProductLike,
+    category_prefixes,
+    normalized_brand,
+)
 from munasib.product_intel.profile import (
     PROFILE_INDICATOR_KEYS,
     ProductProfile,
@@ -36,12 +43,15 @@ from munasib.product_intel.profile import (
 )
 
 __all__ = [
+    "ALL_PRODUCTS_GROUP",
     "PROFILE_INDICATOR_KEYS",
     "PeerStats",
+    "PricePeerSelection",
     "ProductLike",
     "ProductProfile",
     "build_profile",
     "build_profiles",
+    "category_prefixes",
     "description_word_count",
     "feature_bullet_count",
     "list_profiled_asins",

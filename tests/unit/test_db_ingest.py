@@ -73,6 +73,9 @@ def _products_frame() -> pd.DataFrame:
             "rank_value": pd.array([1, None, 9], dtype="Int64"),
             "rank_category": ["Widgets", None, "Slicers"],
             "rank_missing": [False, True, False],
+            # Row 2 published no browse breadcrumb (NULL stays NULL).
+            "category_path": ["Appliances > Widgets", None, "Appliances"],
+            "category_leaf": ["Widgets", None, "Appliances"],
             "description_clean": ["a widget", None, "a slicer"],
             "features_clean": [["steel", "compact"], None, ["plastic"]],
             "n_reviews": [2, 1, 1],
@@ -361,6 +364,50 @@ def test_ingest_sets_image_columns(workspace: dict[str, Path]) -> None:
     assert rows["B000000002"] == (None, True, False)
     assert rows["B000000003"] == ("https://example.com/three.jpg", False, False)
     assert all(entry[2] is False for entry in rows.values())
+
+
+def test_ingest_sets_category_columns(workspace: dict[str, Path]) -> None:
+    """``category_path``/``category_leaf`` mirror the parquet; NULL stays NULL."""
+    module = _load_module()
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    engine = create_engine_from_settings(db_url=f"sqlite:///{workspace['db']}")
+    try:
+        with engine.connect() as connection:
+            rows = {
+                row.asin: (row.category_path, row.category_leaf)
+                for row in connection.execute(
+                    select(Product.asin, Product.category_path, Product.category_leaf)
+                )
+            }
+    finally:
+        engine.dispose()
+    assert rows["B000000001"] == ("Appliances > Widgets", "Widgets")
+    assert rows["B000000002"] == (None, None)  # no breadcrumb published
+    assert rows["B000000003"] == ("Appliances", "Appliances")
+
+
+def test_verify_requires_the_category_columns(workspace: dict[str, Path]) -> None:
+    """A cache missing the breadcrumb columns fails --verify, never half-verifies."""
+    module = _load_module()
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    engine = create_engine_from_settings(db_url=f"sqlite:///{workspace['db']}")
+    try:
+        with engine.begin() as connection:
+            try:
+                connection.exec_driver_sql("ALTER TABLE products DROP COLUMN category_leaf")
+            except Exception as exc:  # pragma: no cover - old SQLite without DROP COLUMN
+                pytest.skip(f"SQLite cannot DROP COLUMN here: {exc}")
+    finally:
+        engine.dispose()
+    assert module.main(["--config", str(workspace["config"]), "--verify"]) == 1
+
+
+def test_missing_category_column_aborts_the_load(workspace: dict[str, Path]) -> None:
+    """A parquet without the breadcrumb columns aborts instead of ingesting."""
+    module = _load_module()
+    without_category = _products_frame().drop(columns=["category_path", "category_leaf"])
+    without_category.to_parquet(workspace["processed"] / "products.parquet", index=False)
+    assert module.main(["--config", str(workspace["config"])]) == 1
 
 
 def test_verify_requires_the_image_columns(workspace: dict[str, Path]) -> None:

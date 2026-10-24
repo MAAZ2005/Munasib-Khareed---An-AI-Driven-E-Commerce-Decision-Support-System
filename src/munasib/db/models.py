@@ -23,6 +23,8 @@ never assumed):
   supervision, not true sentiment) and stays nullable for unlabelled rows.
 * Price, rank and brand stay NULL when missing/unparseable; the ``*_missing``
   boolean flags record why. Nothing is imputed.
+* ``category_path``/``category_leaf`` mirror the parquet breadcrumb columns and
+  are both NULL when the source published no usable ``category`` value.
 * All datetime columns are **UTC** (review dates run 2001-11-08 .. 2018-10-04);
   SQLite stores them without an offset, so every value in this database is UTC
   by contract. Nothing in this layer ever uses today's date.
@@ -83,6 +85,12 @@ class Product(Base):
     rank_value: Mapped[int | None] = mapped_column(Integer)
     rank_category: Mapped[str | None] = mapped_column(String)
     rank_missing: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    #: Browse breadcrumb from the raw metadata ``category`` field: the levels
+    #: joined by ``" > "``, broad -> specific; NULL when the source published
+    #: none (nothing is fabricated for a product without a breadcrumb).
+    category_path: Mapped[str | None] = mapped_column(Text)
+    #: Most specific level of ``category_path`` (its last ``" > "`` part).
+    category_leaf: Mapped[str | None] = mapped_column(String)
     #: Cleaned description (parquet ``description_clean``).
     description: Mapped[str | None] = mapped_column(Text)
     #: Cleaned feature bullets (parquet ``features_clean``) as a JSON array.

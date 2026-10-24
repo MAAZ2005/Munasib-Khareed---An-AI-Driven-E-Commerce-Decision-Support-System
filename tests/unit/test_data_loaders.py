@@ -400,6 +400,25 @@ def test_metadata_image_raw_columns_preserved() -> None:
     assert df["imageURL"].iloc[2] == "https://example.com/c.jpg"
 
 
+def test_metadata_category_is_preserved_verbatim() -> None:
+    """The raw ``category`` breadcrumb survives canonicalisation untouched.
+
+    The loader never interprets this field: list shape, HTML entity and all.
+    Turning it into ``category_path``/``category_leaf`` is preprocessing's job
+    (``munasib.data.cleaning.parse_category_path``).
+    """
+    df = _load_metadata_frame()
+    assert "category" in df.columns
+    assert df["category"].iloc[0] == ["Appliances", "Parts &amp; Accessories"]
+    assert df["category"].iloc[2] == [
+        "Appliances",
+        "Parts & Accessories",
+        "Range Parts & Accessories",
+    ]
+    # A record without the field stays missing rather than being back-filled.
+    assert not is_present(df["category"].iloc[4])
+
+
 def test_canonicalize_metadata_chunk_idempotent() -> None:
     """Re-canonicalising an already canonical metadata frame changes nothing."""
     once = _load_metadata_frame()

@@ -106,7 +106,7 @@ subset only. Built on 2026-10-10 from the raw files above:
 
 | Output | Rows | Contents |
 |---|---:|---|
-| `products.parquet` | 2,066 | `split`, cleaned title/description/features, normalised brand, parsed price/rank + `*_missing` flags, display-only `image_url` + `image_missing`, per-product review aggregates (`n_reviews`, `mean_rating`, first/last review time) |
+| `products.parquet` | 2,066 | `split`, cleaned title/description/features, normalised brand, parsed price/rank + `*_missing` flags, the `category` breadcrumb as `category_path` (levels joined by `" > "`, broad to specific) + `category_leaf` (its last level) - both null for the 26 products whose source published no usable breadcrumb, display-only `image_url` + `image_missing`, per-product review aggregates (`n_reviews`, `mean_rating`, first/last review time) |
 | `reviews.parquet` | 425,993 | `split`, raw + cleaned text, `has_text`/`text_length`, `helpful_votes`, nullable `verified`, UTC dates, weak labels |
 | `related_products.parquet` | 84,885 | `also_bought`/`also_viewed` edges + `in_subset` flag (22,349 in-subset) |
 | `meta.json` | - | category, config values (incl. split seed/fractions), row/drop counts, split sizes, review date range, build timestamp |

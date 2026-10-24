@@ -19,6 +19,7 @@ from munasib.data.cleaning import (
     collapse_whitespace,
     fix_encoding_artifacts,
     normalize_brand,
+    parse_category_path,
     parse_rank_fields,
     remove_urls,
     strip_html,
@@ -220,3 +221,99 @@ class TestParseRankFields:
     def test_unparseable_returns_none_none(self, raw: object) -> None:
         """Missing/unparseable input never fabricates a rank."""
         assert parse_rank_fields(raw) == (None, None)
+
+
+class TestParseCategoryPath:
+    """Browse-breadcrumb parsing against the real Appliances formats.
+
+    Every shape verified in ``data/raw/meta_Appliances.json.gz`` is covered:
+    the list form (always the shape in the 2018 Appliances file), a single
+    string, an absent field and the blank/HTML-entity quirks.
+    """
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            # Verified against data/raw/meta_Appliances.json.gz:
+            (
+                ["Appliances", "Refrigerators, Freezers & Ice Makers"],
+                ("Appliances > Refrigerators, Freezers & Ice Makers",
+                 "Refrigerators, Freezers & Ice Makers"),
+            ),
+            # The source spells the same node both encoded and plain; both must
+            # land on the same path or one browse node splits into two peer groups.
+            (
+                ["Appliances", "Parts &amp; Accessories"],
+                ("Appliances > Parts & Accessories", "Parts & Accessories"),
+            ),
+            (
+                ["Appliances", "Parts & Accessories"],
+                ("Appliances > Parts & Accessories", "Parts & Accessories"),
+            ),
+            # Deep breadcrumb (depth 8 occurs in the real file).
+            (
+                [
+                    "Appliances",
+                    "Parts & Accessories",
+                    "Range Parts & Accessories",
+                    "Plug Receptacles",
+                ],
+                (
+                    "Appliances > Parts & Accessories > Range Parts & Accessories"
+                    " > Plug Receptacles",
+                    "Plug Receptacles",
+                ),
+            ),
+            # Single string, already written with the separator.
+            (
+                "Appliances > Water Filters",
+                ("Appliances > Water Filters", "Water Filters"),
+            ),
+            # Single string naming one node.
+            ("Appliances", ("Appliances", "Appliances")),
+            # A single-element list behaves like the scalar string.
+            (["Appliances"], ("Appliances", "Appliances")),
+            # Padding and double spaces are collapsed before joining.
+            (
+                ["  Appliances  ", "Parts   &  Accessories"],
+                ("Appliances > Parts & Accessories", "Parts & Accessories"),
+            ),
+        ],
+    )
+    def test_parses(self, raw: object, expected: tuple[str, str]) -> None:
+        """Known shapes parse into (category_path, category_leaf)."""
+        assert parse_category_path(raw) == expected
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            None,
+            "",
+            "   ",
+            [],  # empty list (real file: 806 records)
+            ["", "   "],  # nothing usable left
+            [None, None],
+            float("nan"),
+        ],
+    )
+    def test_absent_or_empty_returns_none_none(self, raw: object) -> None:
+        """Missing/unusable input never fabricates a breadcrumb or an empty string."""
+        assert parse_category_path(raw) == (None, None)
+
+    def test_blank_levels_are_dropped(self) -> None:
+        """An empty level inside a list disappears instead of creating a gap."""
+        assert parse_category_path(["Appliances", "", "Water Filters"]) == (
+            "Appliances > Water Filters",
+            "Water Filters",
+        )
+
+    def test_non_string_levels_are_coerced(self) -> None:
+        """A numeric node (never seen, but tolerated) is read as its text."""
+        assert parse_category_path(["Appliances", 7]) == ("Appliances > 7", "7")
+
+    def test_never_returns_an_empty_string(self) -> None:
+        """The contract is (None, None), never ("", "") - null and empty differ."""
+        for raw in (None, "", [], [" "], float("nan")):
+            path, leaf = parse_category_path(raw)
+            assert path is None and leaf is None
+            assert path != "" and leaf != ""

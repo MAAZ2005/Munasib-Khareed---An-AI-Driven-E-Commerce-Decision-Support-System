@@ -25,6 +25,17 @@ brand has fewer than ``product_intel.min_brand_peers`` priced peers gets ``None`
 for the brand percentile, and the same holds for a rank category with fewer than
 ``product_intel.min_rank_peers`` ranked peers. Every ``None`` is paired with a
 ``*_missing`` flag on the profile (see :mod:`munasib.product_intel.profile`).
+
+**The category price percentile is measured inside a peer group, not over the
+whole category.** Comparing a $9 filter with a $900 air conditioner says
+nothing about either, so ``price_percentile_category`` uses the product's own
+browse breadcrumb (``category_path``): the most specific breadcrumb prefix that
+still holds at least ``product_intel.min_price_peers`` priced products, falling
+back one level at a time and ending at the whole candidate set
+(:data:`ALL_PRODUCTS_GROUP`). The chosen group, its priced size and whether it
+had to fall back are reported as ``price_peer_group``/``price_peer_count``/
+``price_peer_fallback``, so the comparison a consumer sees is always
+self-describing.
 """
 
 from __future__ import annotations
@@ -36,7 +47,14 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from munasib.core.config import ProductIntelConfig
+from munasib.data.cleaning import CATEGORY_PATH_SEPARATOR
 from munasib.data.cleaning import normalize_brand as _normalize_raw_brand
+
+#: ``price_peer_group`` value meaning "the whole candidate set", used when no
+#: breadcrumb prefix (not even the root) is large enough or the product has no
+#: breadcrumb at all. Exact-matched, so it is distinguishable from a browse node
+#: that happens to be one level deep.
+ALL_PRODUCTS_GROUP = "all products"
 
 
 class ProductLike(Protocol):
@@ -59,8 +77,50 @@ class ProductLike(Protocol):
     rank_value: int | None
     rank_category: str | None
     rank_missing: bool
+    #: Browse breadcrumb (" > "-joined levels, broad -> specific) or None.
+    category_path: str | None
     description: str | None
     features: list[str] | None
+
+
+@dataclass(frozen=True)
+class PricePeerSelection:
+    """The peer group chosen for one product's price percentile.
+
+    Attributes:
+        group: Breadcrumb prefix used for the comparison (``" > "``-joined) or
+            :data:`ALL_PRODUCTS_GROUP` when the whole candidate set was used.
+        priced_count: Number of **priced** products in the group. The subject
+            counts as one of them whenever it has a price, so a reported
+            percentile always has at least this many points behind it.
+        fallback: True when the product's own full breadcrumb (its leaf) was not
+            the group - either a shorter prefix was, or the whole set.
+    """
+
+    group: str
+    priced_count: int
+    fallback: bool
+
+
+def category_prefixes(category_path: str) -> list[str]:
+    """Every breadcrumb prefix of a ``category_path``, most specific first.
+
+    Matching happens on **level boundaries**: prefixes are built by joining the
+    *leading levels*, so ``"Appliances > Parts"`` is never a prefix of
+    ``"Appliances > Parts & Accessories"`` - the shared leading text is a
+    coincidence of the node names, not a shared browse node.
+
+    Args:
+        category_path: ``" > "``-joined breadcrumb levels, broad -> specific.
+
+    Returns:
+        ``[most specific, ..., root]``; a single-level path yields just itself.
+    """
+    levels = category_path.split(CATEGORY_PATH_SEPARATOR)
+    return [
+        CATEGORY_PATH_SEPARATOR.join(levels[:depth])
+        for depth in range(len(levels), 0, -1)
+    ]
 
 
 @dataclass(frozen=True)
@@ -76,10 +136,18 @@ class PeerStats:
         rank_by_asin: Sales rank of every ranked product, keyed by ASIN.
         rank_category_by_asin: Rank category of every ranked product.
         sorted_ranks_by_category: Per-category ascending rank arrays.
+        category_path_by_asin: Browse breadcrumb of every product that has one,
+            keyed by ASIN (None is never stored - an absent breadcrumb simply
+            leaves the product out of the map).
+        sorted_prices_by_category_prefix: Per-breadcrumb-prefix ascending price
+            arrays (priced products only), keyed by the prefix itself; built on
+            level boundaries, so a prefix never leaks into a sibling node.
         min_brand_peers: Minimum other priced products a brand needs for a
             brand price percentile (``product_intel.min_brand_peers``).
         min_rank_peers: Minimum other ranked products a category needs for a
             rank percentile (``product_intel.min_rank_peers``).
+        min_price_peers: Priced products a breadcrumb prefix needs before it is
+            used as a price peer group (``product_intel.min_price_peers``).
     """
 
     prices_by_asin: Mapping[str, float]
@@ -90,8 +158,11 @@ class PeerStats:
     rank_by_asin: Mapping[str, int]
     rank_category_by_asin: Mapping[str, str]
     sorted_ranks_by_category: Mapping[str, tuple[int, ...]]
+    category_path_by_asin: Mapping[str, str]
+    sorted_prices_by_category_prefix: Mapping[str, tuple[float, ...]]
     min_brand_peers: int
     min_rank_peers: int
+    min_price_peers: int
 
     @classmethod
     def from_products(
@@ -114,18 +185,27 @@ class PeerStats:
         brand_counts: Counter[str] = Counter()
         rank_by_asin: dict[str, int] = {}
         rank_category_by_asin: dict[str, str] = {}
+        category_path_by_asin: dict[str, str] = {}
         brand_prices: dict[str, list[float]] = {}
         ranks_by_category: dict[str, list[int]] = {}
+        prefix_prices: dict[str, list[float]] = {}
 
         for product in ordered:
             brand = normalized_brand(product)
             if brand is not None:
                 brand_by_asin[product.asin] = brand
                 brand_counts[brand] += 1
+            raw_path = product.category_path
+            path = raw_path if isinstance(raw_path, str) and raw_path.strip() else None
+            if path is not None:
+                category_path_by_asin[product.asin] = path
             if product.price is not None:
                 prices_by_asin[product.asin] = float(product.price)
                 if brand is not None:
                     brand_prices.setdefault(brand, []).append(float(product.price))
+                if path is not None:
+                    for prefix in category_prefixes(path):
+                        prefix_prices.setdefault(prefix, []).append(float(product.price))
             if product.rank_value is not None and product.rank_category is not None:
                 rank_by_asin[product.asin] = int(product.rank_value)
                 rank_category_by_asin[product.asin] = product.rank_category
@@ -147,8 +227,13 @@ class PeerStats:
                 category: tuple(sorted(values))
                 for category, values in sorted(ranks_by_category.items())
             },
+            category_path_by_asin=category_path_by_asin,
+            sorted_prices_by_category_prefix={
+                prefix: tuple(sorted(values)) for prefix, values in sorted(prefix_prices.items())
+            },
             min_brand_peers=config.min_brand_peers,
             min_rank_peers=config.min_rank_peers,
+            min_price_peers=config.min_price_peers,
         )
 
     # ------------------------------------------------------------------------
@@ -166,24 +251,66 @@ class PeerStats:
 
     @property
     def n_priced(self) -> int:
-        """Number of priced products (the ``price_percentile_category`` base)."""
+        """Number of priced products (the size of the whole-set peer group)."""
         return len(self.sorted_prices)
 
-    def price_percentile_category(self, asin: str) -> float | None:
-        """Price percentile over every priced product in the candidate set.
+    def price_peer_selection(self, asin: str) -> PricePeerSelection:
+        """Choose the price peer group of one product.
+
+        Walks the product's own breadcrumb from the most specific prefix to the
+        root and takes the first one holding at least ``min_price_peers`` priced
+        products; when even the root is too small (or the product has no
+        breadcrumb at all) the whole candidate set is used. The subject is never
+        excluded from its own group: a priced product always sits inside the
+        group its percentile is measured against.
 
         Args:
             asin: Subject product ASIN (must belong to the candidate set).
 
         Returns:
-            Fraction of other priced products at or below this price
-            (0 = cheapest, 1 = most expensive), or None when the product has no
-            price or it is the only priced product (no peers to compare with).
+            The chosen :class:`PricePeerSelection`. ``fallback`` is True whenever
+            the product's full breadcrumb was not used, including the
+            whole-candidate-set case.
+        """
+        path = self.category_path_by_asin.get(asin)
+        if path is not None:
+            for prefix in category_prefixes(path):
+                priced = len(self.sorted_prices_by_category_prefix.get(prefix, ()))
+                if priced >= self.min_price_peers:
+                    return PricePeerSelection(
+                        group=prefix, priced_count=priced, fallback=prefix != path
+                    )
+        return PricePeerSelection(
+            group=ALL_PRODUCTS_GROUP,
+            priced_count=len(self.sorted_prices),
+            fallback=True,
+        )
+
+    def price_percentile_category(self, asin: str) -> float | None:
+        """Price percentile inside the subject's own category peer group.
+
+        The group is chosen by :meth:`price_peer_selection` - the most specific
+        breadcrumb prefix holding at least ``min_price_peers`` priced products,
+        falling back one level at a time and ending at the whole candidate set.
+        Comparing against products a shopper would actually compare this one
+        with is the whole point: a single mixed set would rank a water filter
+        against a refrigerator.
+
+        Args:
+            asin: Subject product ASIN (must belong to the candidate set).
+
+        Returns:
+            Fraction of other priced products **of the same peer group** at or
+            below this price (0 = cheapest, 1 = most expensive), or None when
+            the product has no price or its group holds no other priced product.
         """
         price = self.prices_by_asin.get(asin)
         if price is None:
             return None
-        return _percentile(self.sorted_prices, price)
+        group = self.price_peer_selection(asin).group
+        if group == ALL_PRODUCTS_GROUP:
+            return _percentile(self.sorted_prices, price)
+        return _percentile(self.sorted_prices_by_category_prefix.get(group, ()), price)
 
     def price_percentile_brand(self, asin: str) -> float | None:
         """Price percentile among the subject's own brand.
@@ -287,7 +414,10 @@ def _percentile(sorted_values: tuple[float, ...], value: float) -> float | None:
 
 
 __all__ = [
+    "ALL_PRODUCTS_GROUP",
     "PeerStats",
+    "PricePeerSelection",
     "ProductLike",
+    "category_prefixes",
     "normalized_brand",
 ]

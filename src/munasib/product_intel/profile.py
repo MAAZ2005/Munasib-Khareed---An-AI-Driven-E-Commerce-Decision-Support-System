@@ -1,9 +1,9 @@
 """Product profile: metadata turned into typed, honest product indicators.
 
 A :class:`ProductProfile` is the product-level view the risk stage consumes: how
-complete the listing is, where its price sits against the category and against
-its own brand, where its sales rank sits inside its rank category, and how much
-related-product evidence exists to compare it with.
+complete the listing is, where its price sits against its category peer group
+and against its own brand, where its sales rank sits inside its rank category,
+and how much related-product evidence exists to compare it with.
 
 Two rules govern every field here:
 
@@ -13,7 +13,7 @@ Two rules govern every field here:
   back-filled from a peer, a median or a default.
 * **Every threshold comes from config** (``product_intel`` in
   ``configs/config.yaml``): the description/feature completeness targets, the
-  brand and rank peer minima, and the metadata field list.
+  brand, rank and price peer minima, and the metadata field list.
 
 Percentiles are delegated to :class:`munasib.product_intel.peers.PeerStats`,
 which owns the tie rule (fraction of *other* products at or below the subject's
@@ -52,6 +52,9 @@ PROFILE_INDICATOR_KEYS: tuple[str, ...] = (
     "price_missing",
     "price_percentile_category",
     "price_percentile_category_missing",
+    "price_peer_group",
+    "price_peer_count",
+    "price_peer_fallback",
     "price_percentile_brand",
     "price_percentile_brand_missing",
     "n_also_bought",
@@ -100,9 +103,16 @@ class ProductProfile:
     price_max: float | None
     price_status: str | None
     price_missing: bool
-    #: 0 = cheapest priced product in the category, 1 = most expensive.
+    #: 0 = cheapest priced product of the peer group, 1 = most expensive.
     price_percentile_category: float | None
     price_percentile_category_missing: bool
+    #: Peer group the category percentile was measured in: the " > "-joined
+    #: breadcrumb prefix used, or "all products" for the whole candidate set.
+    price_peer_group: str
+    #: Priced products in that group (the subject counts when it has a price).
+    price_peer_count: int
+    #: True when the product's own full breadcrumb was not the peer group.
+    price_peer_fallback: bool
     #: Same, but among the brand's priced products only.
     price_percentile_brand: float | None
     price_percentile_brand_missing: bool
@@ -194,6 +204,7 @@ def build_profile(
         "price_percentile_brand": peers.price_percentile_brand(product.asin),
         "rank_percentile": peers.rank_percentile(product.asin),
     }
+    peer_group = peers.price_peer_selection(product.asin)
     missing_fields = _missing_metadata_fields(product, config)
 
     return ProductProfile(
@@ -222,6 +233,9 @@ def build_profile(
         price_missing=product.price is None,
         price_percentile_category=percentiles["price_percentile_category"],
         price_percentile_category_missing=percentiles["price_percentile_category"] is None,
+        price_peer_group=peer_group.group,
+        price_peer_count=peer_group.priced_count,
+        price_peer_fallback=peer_group.fallback,
         price_percentile_brand=percentiles["price_percentile_brand"],
         price_percentile_brand_missing=percentiles["price_percentile_brand"] is None,
         n_also_bought=related.also_bought if related is not None else 0,

@@ -47,7 +47,12 @@ from munasib.product_intel.features import (
     read_profiles,
     write_product_features,
 )
-from munasib.product_intel.peers import PeerStats, normalized_brand
+from munasib.product_intel.peers import (
+    ALL_PRODUCTS_GROUP,
+    PeerStats,
+    category_prefixes,
+    normalized_brand,
+)
 from munasib.product_intel.profile import (
     PROFILE_INDICATOR_KEYS,
     ProductProfile,
@@ -90,6 +95,7 @@ class StubProduct:
     rank_value: int | None = None
     rank_category: str | None = None
     rank_missing: bool = True
+    category_path: str | None = None
     description: str | None = None
     features: list[str] | None = None
 
@@ -101,6 +107,7 @@ def _product(
     price: float | None = CHEAP_PRICE,
     rank_value: int | None = 1,
     rank_category: str | None = "Widgets",
+    category_path: str | None = None,
     description: str | None = "A widget.",
     features: list[str] | None | object = _NO_FEATURES,
 ) -> StubProduct:
@@ -112,6 +119,8 @@ def _product(
         price: Price (None = unpriced).
         rank_value: Sales rank (None = unranked).
         rank_category: Rank category (None = unranked).
+        category_path: Browse breadcrumb (None = none published, which sends
+            the price percentile to the whole-candidate-set peer group).
         description: Cleaned description.
         features: Feature bullets; ``None`` stays ``None`` (an absent list),
             and omitting the argument yields the default two bullets.
@@ -135,6 +144,7 @@ def _product(
         rank_value=rank_value,
         rank_category=rank_category,
         rank_missing=rank_value is None,
+        category_path=category_path,
         description=description,
         features=bullets,
     )
@@ -153,6 +163,22 @@ FIXTURE_PRODUCTS: list[StubProduct] = [
 ]
 
 CONFIG = ProductIntelConfig(target_description_words=10, target_feature_count=2)
+
+
+def min_price_config(min_price_peers: int) -> ProductIntelConfig:
+    """The fixture config with only the price peer minimum overridden.
+
+    Args:
+        min_price_peers: ``product_intel.min_price_peers`` for the test.
+
+    Returns:
+        A config whose completeness targets stay the fixture defaults.
+    """
+    return ProductIntelConfig(
+        target_description_words=CONFIG.target_description_words,
+        target_feature_count=CONFIG.target_feature_count,
+        min_price_peers=min_price_peers,
+    )
 
 
 def _peers(products: list[StubProduct] | None = None, **overrides: object) -> PeerStats:
@@ -333,6 +359,172 @@ def test_brand_peer_count_is_zero_for_a_unique_or_missing_brand() -> None:
     assert stats.brand_peer_count(UNBRANDED) == 0
 
 
+# ------------------------------------------------------------------------------
+# Price peer groups: the breadcrumb walk that picks the comparison set
+# ------------------------------------------------------------------------------
+
+#: Two sibling browse nodes under one root, used by the peer-group tests below.
+WATER_FILTERS = "Appliances > Water Filters"
+AIR_PURIFIERS = "Appliances > Air Purifiers"
+
+#: ASINs of the hand-checked grouped fixture (prices chosen so the expected
+#: percentiles below are computable by hand).
+WF1, WF2, WF3, WF4 = "B0000000WF1", "B0000000WF2", "B0000000WF3", "B0000000WF4"
+AP1, AP2, AP3, AP4 = "B0000000AP1", "B0000000AP2", "B0000000AP3", "B0000000AP4"
+
+
+def _grouped_fixture() -> list[StubProduct]:
+    """Eight priced products, four per browse node, prices 10..400.
+
+    Returns:
+        The candidate set; Water Filters holds 10/20/30/40 and Air Purifiers
+        100/200/300/400, so a product's in-group and whole-set percentiles
+        always differ.
+    """
+    return [
+        _product(WF1, category_path=WATER_FILTERS, price=10.0),
+        _product(WF2, category_path=WATER_FILTERS, price=20.0),
+        _product(WF3, category_path=WATER_FILTERS, price=30.0),
+        _product(WF4, category_path=WATER_FILTERS, price=40.0),
+        _product(AP1, category_path=AIR_PURIFIERS, price=100.0),
+        _product(AP2, category_path=AIR_PURIFIERS, price=200.0),
+        _product(AP3, category_path=AIR_PURIFIERS, price=300.0),
+        _product(AP4, category_path=AIR_PURIFIERS, price=400.0),
+    ]
+
+
+def test_category_prefixes_run_most_specific_first() -> None:
+    """Every leading level is a prefix, from the leaf up to the root."""
+    assert category_prefixes(WATER_FILTERS) == [WATER_FILTERS, "Appliances"]
+    assert category_prefixes("Appliances") == ["Appliances"]
+
+
+def test_price_peer_group_uses_the_leaf_when_it_is_large_enough() -> None:
+    """Four priced products beats ``min_price_peers=3``, so no fallback."""
+    stats = _peers(_grouped_fixture(), min_price_peers=3)
+    selection = stats.price_peer_selection(WF1)
+    assert selection.group == WATER_FILTERS
+    assert selection.priced_count == 4
+    assert selection.fallback is False
+
+
+def test_price_peer_group_falls_back_one_level_when_the_leaf_is_too_small() -> None:
+    """A 2-product leaf falls back to the root, which has 6 priced products."""
+    products = [
+        _product(WF1, category_path=WATER_FILTERS, price=10.0),
+        _product(WF2, category_path=WATER_FILTERS, price=20.0),
+        _product(AP1, category_path=AIR_PURIFIERS, price=100.0),
+        _product(AP2, category_path=AIR_PURIFIERS, price=200.0),
+        _product(AP3, category_path=AIR_PURIFIERS, price=300.0),
+        _product(AP4, category_path=AIR_PURIFIERS, price=400.0),
+    ]
+    stats = _peers(products, min_price_peers=3)
+    selection = stats.price_peer_selection(WF1)
+    assert selection.group == "Appliances"
+    assert selection.priced_count == 6
+    assert selection.fallback is True
+    # Hand check against that 6-product group: prices 10, 20, 100, 200, 300,
+    # 400; at or below 10 is just WF1 -> (1-1)/(6-1) = 0.0, and at or below 20
+    # is WF1+WF2 -> (2-1)/(6-1) = 0.2.
+    assert stats.price_percentile_category(WF1) == 0.0
+    assert stats.price_percentile_category(WF2) == pytest.approx(0.2)
+
+
+def test_price_peer_group_falls_back_to_all_products_when_no_prefix_qualifies() -> None:
+    """Neither the leaf nor the root clears the minimum -> the whole set."""
+    products = [
+        _product(WF1, category_path=WATER_FILTERS, price=10.0),
+        _product(WF2, category_path=WATER_FILTERS, price=20.0),
+    ]
+    stats = _peers(products, min_price_peers=3)
+    selection = stats.price_peer_selection(WF1)
+    assert selection.group == ALL_PRODUCTS_GROUP
+    assert selection.priced_count == 2
+    assert selection.fallback is True
+
+
+def test_price_peer_group_is_all_products_without_a_breadcrumb() -> None:
+    """A product with no breadcrumb compares against the whole candidate set."""
+    products = [*_grouped_fixture(), _product("B0000000NC", category_path=None, price=250.0)]
+    stats = _peers(products, min_price_peers=3)
+    selection = stats.price_peer_selection("B0000000NC")
+    assert selection.group == ALL_PRODUCTS_GROUP
+    assert selection.priced_count == 9  # 8 grouped + the ungrouped subject
+    assert selection.fallback is True
+    # Hand check over all nine prices (10, 20, 30, 40, 100, 200, 250, 300,
+    # 400): at or below 250 is seven products -> (7-1)/(9-1) = 0.75.
+    assert stats.price_percentile_category("B0000000NC") == pytest.approx(0.75)
+
+
+def test_price_percentile_is_measured_inside_the_group_not_the_whole_set() -> None:
+    """The point of the peer group: 40 is the priciest water filter, not a mid-price."""
+    stats = _peers(_grouped_fixture(), min_price_peers=3)
+    # Inside "Appliances > Water Filters" (10, 20, 30, 40) WF4 is the maximum.
+    assert stats.price_percentile_category(WF4) == 1.0
+    # Against all eight it would have been (4-1)/(8-1) = 3/7 - the group is
+    # what changed, not the arithmetic.
+    assert stats.price_percentile_category(WF4) != pytest.approx(3 / 7)
+
+
+def test_price_peer_count_includes_the_subject_when_it_is_priced() -> None:
+    """A priced subject is one of its own group's priced products."""
+    stats = _peers(_grouped_fixture(), min_price_peers=3)
+    assert stats.price_peer_selection(WF2).priced_count == 4  # WF1..WF4
+
+
+def test_price_peer_group_is_reported_for_an_unpriced_product_too() -> None:
+    """The group is where the price *would* be compared; the percentile stays None."""
+    products = [
+        _product(WF1, category_path=WATER_FILTERS, price=10.0),
+        _product(WF2, category_path=WATER_FILTERS, price=20.0),
+        _product(WF3, category_path=WATER_FILTERS, price=None),
+    ]
+    stats = _peers(products, min_price_peers=2)
+    selection = stats.price_peer_selection(WF3)
+    assert selection.group == WATER_FILTERS
+    # Only the priced rows count: the subject has no price, so it is not one.
+    assert selection.priced_count == 2
+    assert stats.price_percentile_category(WF3) is None
+
+
+def test_breadcrumb_prefixes_match_on_level_boundaries_only() -> None:
+    """"Parts" is not a prefix of "Parts & Accessories" - the text is a coincidence."""
+    products = [
+        _product("PARTS001", category_path="Appliances > Parts", price=10.0),
+        _product("PARTS002", category_path="Appliances > Parts", price=20.0),
+        _product("ACCES001", category_path="Appliances > Parts & Accessories", price=30.0),
+        _product("ACCES002", category_path="Appliances > Parts & Accessories", price=40.0),
+    ]
+    stats = _peers(products, min_price_peers=2)
+    selection = stats.price_peer_selection("PARTS001")
+    assert selection.group == "Appliances > Parts"
+    assert selection.priced_count == 2  # not 4: the sibling node did not leak in
+
+
+def test_price_peer_selection_is_deterministic_across_input_order() -> None:
+    """ASIN-ordered building makes the chosen group independent of row order."""
+    products = _grouped_fixture()
+    forward = _peers(products, min_price_peers=3)
+    backward = _peers(list(reversed(products)), min_price_peers=3)
+    for product in products:
+        assert forward.price_peer_selection(product.asin) == backward.price_peer_selection(
+            product.asin
+        )
+        assert forward.price_percentile_category(product.asin) == (
+            backward.price_percentile_category(product.asin)
+        )
+
+
+def test_price_percentiles_stay_in_bounds_inside_peer_groups() -> None:
+    """Grouped percentiles obey the same [0, 1] bounds as the whole-set ones."""
+    stats = _peers(_grouped_fixture(), min_price_peers=3)
+    for product in _grouped_fixture():
+        value = stats.price_percentile_category(product.asin)
+        assert value is not None
+        assert 0.0 <= value <= 1.0
+        assert stats.price_peer_selection(product.asin).priced_count >= 2
+
+
 def test_single_product_candidate_set_is_handled() -> None:
     """One product, no peers: every percentile is None, counts still valid."""
     stats = _peers([_product("SOLO", price=7.5, rank_value=4)])
@@ -375,6 +567,42 @@ def test_missing_price_sets_none_and_the_flag() -> None:
     assert profile.price_missing is True
     assert profile.price_percentile_category is None
     assert profile.price_percentile_category_missing is True
+
+
+def test_profile_carries_the_price_peer_group_fields() -> None:
+    """The peer group a percentile was measured in is reported, not hidden."""
+    products = _grouped_fixture()
+    stats = _peers(products, min_price_peers=3)
+    dearest_water_filter = next(p for p in products if p.asin == WF4)
+    profile = build_profile(dearest_water_filter, stats, min_price_config(3))
+    assert profile.price_peer_group == WATER_FILTERS
+    assert profile.price_peer_count == 4
+    assert profile.price_peer_fallback is False
+    assert profile.price_percentile_category == 1.0
+    assert profile.price_percentile_category_missing is False
+
+
+def test_profile_flags_a_fallback_peer_group() -> None:
+    """A fallback group is reported as such so the comparison stays honest."""
+    products = [
+        _product(WF1, category_path=WATER_FILTERS, price=10.0),
+        _product(WF2, category_path=WATER_FILTERS, price=20.0),
+    ]
+    stats = _peers(products, min_price_peers=3)
+    profile = build_profile(products[0], stats, min_price_config(3))
+    assert profile.price_peer_group == ALL_PRODUCTS_GROUP
+    assert profile.price_peer_count == 2
+    assert profile.price_peer_fallback is True
+
+
+def test_profile_peer_group_is_all_products_when_the_breadcrumb_is_missing() -> None:
+    """No breadcrumb at all still yields a group, never an empty string."""
+    stats = _peers(FIXTURE_PRODUCTS)
+    for product in FIXTURE_PRODUCTS:
+        profile = build_profile(product, stats, CONFIG)
+        assert profile.price_peer_group == ALL_PRODUCTS_GROUP
+        assert profile.price_peer_fallback is True
+        assert profile.price_peer_count >= 0
 
 
 def test_description_completeness_at_the_boundaries() -> None:
@@ -758,6 +986,11 @@ def test_real_database_percentiles_are_in_bounds_and_flagged() -> None:
         with session_scope(factory) as session:
             products = ProductRepository(session).list_all_products()
             assert products, "expected a non-empty candidate set"
+            source_paths = {
+                row.asin: row.category_path
+                for row in products
+                if row.category_path is not None
+            }
             peers = PeerStats.from_products(products, get_settings().product_intel)
             profiles = build_profiles(products, peers, get_settings().product_intel)
     finally:
@@ -765,6 +998,7 @@ def test_real_database_percentiles_are_in_bounds_and_flagged() -> None:
 
     priced = [p for p in profiles if not p.price_missing]
     assert priced, "expected at least one priced product"
+    priced_by_asin = {p.asin: p for p in priced}
     for profile in profiles:
         for value in (
             profile.price_percentile_category,
@@ -787,3 +1021,21 @@ def test_real_database_percentiles_are_in_bounds_and_flagged() -> None:
         assert 0.0 <= profile.feature_completeness <= 1.0
         assert 0.0 <= profile.metadata_completeness <= 1.0
         assert set(profile.metadata_missing_fields) <= set(CONFIG.metadata_fields)
+        # Peer-group invariants: the group is always named and self-describing.
+        assert profile.price_peer_group
+        assert profile.price_peer_count >= 0
+        source = source_paths.get(profile.asin)
+        if source is None:
+            # No breadcrumb published -> the whole candidate set is the group.
+            assert profile.price_peer_group == ALL_PRODUCTS_GROUP
+            assert profile.price_peer_fallback is True
+        elif not profile.price_peer_fallback:
+            assert profile.price_peer_group == source  # the leaf itself
+        else:
+            # A fallback group is always a shorter prefix of the product's own
+            # breadcrumb (never a sibling node, never an unrelated string).
+            assert profile.price_peer_group in category_prefixes(source)[1:]
+        if profile.asin in priced_by_asin:
+            # A priced product's group always contains it, and the group size
+            # matches the peer array the percentile was measured against.
+            assert profile.price_peer_count >= 1

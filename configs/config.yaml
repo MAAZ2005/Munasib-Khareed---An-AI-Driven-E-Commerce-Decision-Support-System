@@ -114,6 +114,12 @@ product_intel:
   # A rank category needs at least this many OTHER ranked products before a
   # rank percentile is reported.
   min_rank_peers: 5
+  # A category-breadcrumb prefix (from the metadata "category" breadcrumb) must
+  # hold at least this many PRICED products before it is used as a product's
+  # price peer group; otherwise the group falls back one level towards the whole
+  # candidate set. Comparability is the point: a 4-product leaf node cannot say
+  # whether a price is ordinary, and neither can a mixed whole-category set.
+  min_price_peers: 10
   # Fields whose share of presence is reported as metadata_completeness (0-1).
   metadata_fields:
     - "title"
