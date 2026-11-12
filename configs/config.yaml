@@ -147,6 +147,20 @@ review_intel:
     model_path: "models/sentiment_tfidf_logreg.joblib"
     report_dir: "reports/evaluation"
 
+    # --- Batch scoring -------------------------------------------------------
+    # Reusable predictor settings (scripts/predict_reviews.py). `checkpoint` is
+    # the `best/` directory written by the trainer; scoring reads every review of
+    # the input table and writes per-review probabilities to the output parquet,
+    # with a `.meta.json` sidecar recording the checkpoint hashes.
+    prediction:
+      checkpoint: "models/sentiment_distilbert/best"
+      input_path: "data/processed/reviews.parquet"
+      output_path: "data/interim/review_predictions.parquet"
+      # Rows per forward pass on CPU/GPU.
+      batch_size: 64
+      # Rows per resumable chunk; completed chunks survive a Colab disconnect.
+      chunk_rows: 25000
+
   # Aspect-based attribute extraction
   aspects:
     spacy_model: "en_core_web_sm"

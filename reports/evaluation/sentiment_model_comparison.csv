@@ -1,0 +1,6 @@
+model,variant,split,rows,accuracy,macro_f1,neutral_f1,binary_f1,binary_roc_auc,calibration_mae_hard,calibration_mae_soft,majority_accuracy,majority_macro_f1,source
+TF-IDF + logistic regression,balanced,val,62768,0.862446,0.662228,0.312767,0.784455,0.971449,0.031672,,0.833896,0.303142,sentiment_baseline_val.json
+TF-IDF + logistic regression,none,val,62768,0.912455,0.616575,0.122485,0.808661,0.980303,0.021543,,0.833896,0.303142,sentiment_baseline_val.json
+DistilBERT,,val,62768,0.921059,0.731438,0.397581,0.872458,0.989192,0.016392,0.017760,0.833896,0.303142,sentiment_transformer_val.json
+BiGRU,,val,62768,0.891426,0.670876,0.315614,0.788897,0.973816,0.023462,0.025605,0.833896,0.303142,sentiment_rnn_val.json
+Majority class (positive),,val,62768,0.833896,0.303142,,,,,,0.833896,0.303142,sentiment_transformer_val.json

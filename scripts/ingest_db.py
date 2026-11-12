@@ -51,7 +51,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from sqlalchemy import delete, func, insert, select, text, update
+from sqlalchemy import delete, func, insert, inspect, select, text, update
 from sqlalchemy.engine import Engine
 
 from munasib.core.config import load_settings
@@ -365,6 +365,51 @@ def clear_cache_tables(engine: Engine) -> None:
         for name in CLEAR_ORDER:
             session.execute(delete(Base.metadata.tables[name]))
     logger.info("cache_cleared tables=%s", ",".join(CLEAR_ORDER))
+
+
+def count_review_features(engine: Engine) -> int:
+    """Count the rows later stages have written to ``review_features``.
+
+    Args:
+        engine: Target engine.
+
+    Returns:
+        Stored row count, or 0 when the table does not exist yet.
+    """
+    if not inspect(engine).has_table("review_features"):
+        return 0
+    with engine.connect() as connection:
+        value = connection.execute(
+            select(func.count()).select_from(ReviewFeature)
+        ).scalar_one()
+    return int(value or 0)
+
+
+def warn_predictions_will_be_deleted(engine: Engine, *, reason: str) -> int:
+    """Warn loudly that a rebuild is about to delete ingested predictions.
+
+    ``review_features`` is filled by later pipeline stages, not by this script,
+    so dropping or clearing the cache destroys every sentiment prediction in it.
+    The warning names the re-ingest command instead of pretending the table is
+    empty.
+
+    Args:
+        engine: Target engine.
+        reason: What is about to happen (``"--force rebuild"``/``"cache reload"``).
+
+    Returns:
+        Number of prediction rows that will be deleted.
+    """
+    stored = count_review_features(engine)
+    if stored:
+        message = (
+            f"{stored:,} row(s) in review_features will be deleted by this {reason}; "
+            "re-run 'python scripts/ingest_predictions.py' afterwards to restore the "
+            "sentiment predictions"
+        )
+        print(f"WARNING: {message}")
+        logger.warning("review_features_wiped rows=%d reason=%s", stored, reason)
+    return stored
 
 
 def cached_image_asins(images_dir: Path) -> set[str]:
@@ -715,6 +760,7 @@ def main(argv: list[str] | None = None) -> int:
         parquet_row_counts(processed_dir)
 
         if args.force:
+            warn_predictions_will_be_deleted(engine, reason="--force rebuild")
             Base.metadata.drop_all(engine)
             logger.info("schema_dropped detail=--force rebuild")
             init_db(engine)
@@ -740,6 +786,7 @@ def main(argv: list[str] | None = None) -> int:
                     counts["related_products"],
                 )
             else:
+                warn_predictions_will_be_deleted(engine, reason="cache reload")
                 clear_cache_tables(engine)
                 loaded = ingest_parquet(engine, processed_dir, args.batch_size)
                 logger.info(

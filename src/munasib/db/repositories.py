@@ -16,12 +16,13 @@ ordering, paging) so API handlers never hand-write SQL. Conventions:
 from __future__ import annotations
 
 import random
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Generic, TypeVar
 
 from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from munasib.core.constants import (
@@ -36,6 +37,7 @@ from munasib.db.models import (
     Product,
     RelatedProduct,
     Review,
+    ReviewFeature,
 )
 
 T = TypeVar("T")
@@ -520,11 +522,198 @@ class AnalysisRepository:
         return stored
 
 
+class ReviewFeatureRepository:
+    """Model outputs per review, keyed by the stable ``review_id``.
+
+    The table is a serving cache filled after the review ingest, so the two
+    operations that matter here are an idempotent bulk upsert (re-scoring the
+    corpus must not duplicate rows) and the coverage counts the ingest script
+    prints. Prediction columns are written together; ``aspects_json`` belongs to
+    the aspect stage and is never touched by :meth:`upsert_predictions`.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_feature(self, review_id: str) -> ReviewFeature | None:
+        """Fetch one review's derived features.
+
+        Args:
+            review_id: Stable review identifier.
+
+        Returns:
+            The stored row, or None when the review has no features yet.
+        """
+        return self._session.get(ReviewFeature, review_id)
+
+    def count_features(self) -> int:
+        """Count rows in ``review_features``.
+
+        Returns:
+            Stored row count.
+        """
+        total = self._session.scalar(select(func.count()).select_from(ReviewFeature))
+        return int(total or 0)
+
+    def count_predictions(self) -> int:
+        """Count rows that carry a predicted label.
+
+        Returns:
+            Rows with ``predicted_label IS NOT NULL``.
+        """
+        total = self._session.scalar(
+            select(func.count())
+            .select_from(ReviewFeature)
+            .where(ReviewFeature.predicted_label.is_not(None))
+        )
+        return int(total or 0)
+
+    def missing_review_ids(
+        self, review_ids: Sequence[str], *, batch_size: int = 500
+    ) -> list[str]:
+        """Return the ids that do not exist in ``reviews``.
+
+        Batched so a 400k-row prediction file never hits SQLite's bound-variable
+        limit, and so the message can name the offending ids.
+
+        Args:
+            review_ids: Candidate review identifiers.
+            batch_size: Ids per ``IN`` query.
+
+        Returns:
+            The subset of ``review_ids`` with no ``reviews`` row, in input order.
+        """
+        missing: list[str] = []
+        ids = list(review_ids)
+        for start in range(0, len(ids), batch_size):
+            chunk = ids[start : start + batch_size]
+            found = set(
+                self._session.scalars(
+                    select(Review.review_id).where(Review.review_id.in_(chunk))
+                ).all()
+            )
+            missing.extend(review_id for review_id in chunk if review_id not in found)
+        return missing
+
+    def upsert_predictions(
+        self, rows: Sequence[Mapping[str, object]], *, batch_size: int = 1000
+    ) -> int:
+        """Insert or update the prediction columns of many reviews.
+
+        ``ON CONFLICT(review_id) DO UPDATE`` makes re-runs idempotent: the row
+        count stays the same and the stored values become the new ones. Only the
+        four prediction columns are written.
+
+        Args:
+            rows: Mappings with ``review_id``, ``predicted_label`` and the three
+                probabilities.
+            batch_size: Rows per statement.
+
+        Returns:
+            Number of input rows written.
+        """
+        materialised = list(rows)
+        for start in range(0, len(materialised), batch_size):
+            chunk = materialised[start : start + batch_size]
+            statement = sqlite_insert(ReviewFeature).values(chunk)
+            statement = statement.on_conflict_do_update(
+                index_elements=[ReviewFeature.review_id],
+                set_={
+                    "predicted_label": statement.excluded.predicted_label,
+                    "prob_negative": statement.excluded.prob_negative,
+                    "prob_neutral": statement.excluded.prob_neutral,
+                    "prob_positive": statement.excluded.prob_positive,
+                },
+            )
+            self._session.execute(statement)
+        self._session.flush()
+        return len(materialised)
+
+    def count_text_reviews_without_predictions(self) -> int:
+        """Count reviews with usable text that have no predicted label.
+
+        "Usable text" is the same predicate the batch scorer applies: the clean
+        text column is not NULL and is not blank. Every such review must have a
+        prediction, otherwise the product aggregates would silently drop it.
+
+        Returns:
+            Number of uncovered reviews.
+        """
+        total = self._session.scalar(
+            select(func.count())
+            .select_from(Review)
+            .outerjoin(ReviewFeature, ReviewFeature.review_id == Review.review_id)
+            .where(
+                Review.review_text_clean.is_not(None),
+                func.trim(Review.review_text_clean) != "",
+                or_(
+                    ReviewFeature.review_id.is_(None),
+                    ReviewFeature.predicted_label.is_(None),
+                ),
+            )
+        )
+        return int(total or 0)
+
+    def count_predictions_on_textless_reviews(self) -> int:
+        """Count predicted labels attached to reviews with no usable text.
+
+        Returns:
+            Number of predictions that should not exist.
+        """
+        total = self._session.scalar(
+            select(func.count())
+            .select_from(ReviewFeature)
+            .join(Review, Review.review_id == ReviewFeature.review_id)
+            .where(
+                ReviewFeature.predicted_label.is_not(None),
+                or_(
+                    Review.review_text_clean.is_(None),
+                    func.trim(Review.review_text_clean) == "",
+                ),
+            )
+        )
+        return int(total or 0)
+
+    def count_probability_violations(self, tolerance: float = 1e-5) -> int:
+        """Count stored probability rows that are not a valid distribution.
+
+        Args:
+            tolerance: Allowed absolute deviation of the sum from 1.0.
+
+        Returns:
+            Rows with a probability outside ``[0, 1]`` or a sum that deviates by
+            more than ``tolerance``.
+        """
+        probability_sum = (
+            ReviewFeature.prob_negative
+            + ReviewFeature.prob_neutral
+            + ReviewFeature.prob_positive
+        )
+        violations = self._session.scalar(
+            select(func.count())
+            .select_from(ReviewFeature)
+            .where(
+                ReviewFeature.predicted_label.is_not(None),
+                or_(
+                    func.abs(probability_sum - 1.0) > tolerance,
+                    ReviewFeature.prob_negative < 0.0,
+                    ReviewFeature.prob_negative > 1.0,
+                    ReviewFeature.prob_neutral < 0.0,
+                    ReviewFeature.prob_neutral > 1.0,
+                    ReviewFeature.prob_positive < 0.0,
+                    ReviewFeature.prob_positive > 1.0,
+                ),
+            )
+        )
+        return int(violations or 0)
+
+
 __all__ = [
     "AnalysisRepository",
     "Page",
     "ProductRepository",
     "RelatedCounts",
     "RelatedRepository",
+    "ReviewFeatureRepository",
     "ReviewRepository",
 ]

@@ -358,6 +358,48 @@ class RnnConfig(BaseModel):
         return self
 
 
+class SentimentPredictionConfig(BaseModel):
+    """Batch-scoring settings for the frozen sentiment checkpoint.
+
+    ``checkpoint`` names the ``best/`` directory written by the trainer (a
+    directory, not a file). ``input_path`` is the processed review table and
+    ``output_path`` the per-review prediction parquet; the sidecar JSON that
+    records the checkpoint identity is derived from ``output_path`` (same stem,
+    ``.meta.json``). ``batch_size`` and ``chunk_rows`` control the two batching
+    levels: rows per forward pass, and rows per resumable output chunk.
+    """
+
+    checkpoint: Path = Path("models/sentiment_distilbert/best")
+    input_path: Path = Path("data/processed/reviews.parquet")
+    output_path: Path = Path("data/interim/review_predictions.parquet")
+    batch_size: int = 64
+    chunk_rows: int = 25_000
+
+    @model_validator(mode="after")
+    def _check_prediction_values(self) -> "SentimentPredictionConfig":
+        """Validate the scoring paths and the two row counts.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When a row count is not positive or a path is empty.
+        """
+        for name, value in (("batch_size", self.batch_size), ("chunk_rows", self.chunk_rows)):
+            if value < 1:
+                raise ValueError(
+                    f"review_intel.sentiment.prediction.{name} must be >= 1, got {value}"
+                )
+        for name, path in (
+            ("checkpoint", self.checkpoint),
+            ("input_path", self.input_path),
+            ("output_path", self.output_path),
+        ):
+            if not str(path).strip():
+                raise ValueError(f"review_intel.sentiment.prediction.{name} must not be empty")
+        return self
+
+
 class SentimentConfig(BaseModel):
     """Sentiment model settings: weak-supervision sample, models and reports.
 
@@ -394,6 +436,8 @@ class SentimentConfig(BaseModel):
     logreg: LogRegConfig = Field(default_factory=LogRegConfig)
     transformer: TransformerConfig = Field(default_factory=TransformerConfig)
     rnn: RnnConfig = Field(default_factory=RnnConfig)
+    #: Batch-scoring settings for the frozen checkpoint (predict_reviews.py).
+    prediction: SentimentPredictionConfig = Field(default_factory=SentimentPredictionConfig)
     #: Where the fitted baseline artifact is written (git-ignored ``models/``).
     model_path: Path = Path("models/sentiment_tfidf_logreg.joblib")
     #: Where the JSON/Markdown/CSV evaluation reports are written.

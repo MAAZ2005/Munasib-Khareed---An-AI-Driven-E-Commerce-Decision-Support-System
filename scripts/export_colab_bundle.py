@@ -62,6 +62,34 @@ REVIEW_COLUMNS: tuple[str, ...] = (
     "sentiment_label_weak",
 )
 
+#: Files the batch-scoring path needs in addition to the trainers. They are
+#: already covered by ``SOURCE_DIRS``; listing them makes ``--with-predictions``
+#: fail loudly if a rename drops one instead of shipping a bundle that cannot
+#: score reviews.
+PREDICTION_FILES: tuple[str, ...] = (
+    "scripts/predict_reviews.py",
+    "scripts/ingest_predictions.py",
+    "scripts/evaluate_sentiment_checkpoints.py",
+    "src/munasib/review_intel/sentiment/predictor.py",
+)
+
+#: Packages ``requirements-colab.txt`` must pin for per-review scoring (the
+#: parquet columns are written by pandas and read by ingest, so both sides need
+#: them; transformers brings tokenizers).
+PREDICTION_REQUIREMENTS: tuple[str, ...] = ("numpy", "pandas", "pyarrow", "transformers")
+
+#: Printed after the file list when ``--with-predictions`` is used. The
+#: checkpoint deliberately does not travel inside the archive.
+PREDICTION_NOTE = (
+    "prediction scoring: enabled - scripts/predict_reviews.py, "
+    "scripts/ingest_predictions.py, scripts/evaluate_sentiment_checkpoints.py and "
+    "src/munasib/review_intel/sentiment/predictor.py are in the bundle, and "
+    "requirements-colab.txt pins numpy/pandas/pyarrow/transformers.\n"
+    "checkpoint: NOT in this bundle (about 255 MB); upload the best/ directory to "
+    "Colab separately and pass --checkpoint with its path.\n"
+    "see docs/training_on_colab.md, section 'Scoring every review on Colab'."
+)
+
 #: Path fragments that must never appear in the archive. The allowlist above
 #: already excludes them; this guard makes a future widening of the allowlist
 #: fail loudly instead of shipping a secret or a 300 MB cache.
@@ -100,12 +128,15 @@ class BundleReport:
         size_bytes: Compressed size on disk.
         uncompressed_bytes: Sum of the member sizes.
         files: Members, sorted by archive name.
+        prediction_note: How the checkpoint is supplied when the bundle was built
+            with ``--with-predictions``; ``None`` otherwise.
     """
 
     path: Path
     size_bytes: int
     uncompressed_bytes: int
     files: tuple[BundleFile, ...]
+    prediction_note: str | None = None
 
     def lines(self) -> list[str]:
         """Render the size summary and the file list.
@@ -121,6 +152,8 @@ class BundleReport:
         ]
         for item in self.files:
             lines.append(f"  {item.arcname}  ({item.size / 1024:.1f} KB)")
+        if self.prediction_note:
+            lines.extend(["", self.prediction_note])
         return lines
 
 
@@ -137,11 +170,37 @@ def _is_forbidden(arcname: str) -> bool:
     return any(fragment in lowered for fragment in FORBIDDEN_FRAGMENTS)
 
 
-def collect_files(repo_root: Path) -> list[Path]:
+def _check_prediction_requirements(repo_root: Path) -> None:
+    """Check that the Colab requirements pin the packages scoring needs.
+
+    Args:
+        repo_root: Repository root.
+
+    Raises:
+        DataError: If the requirements file is missing or does not pin one of
+            :data:`PREDICTION_REQUIREMENTS`.
+    """
+    path = repo_root / "requirements-colab.txt"
+    if not path.is_file():
+        raise DataError(f"bundle input not found: {path}")
+    lowered = path.read_text(encoding="utf-8").lower()
+    missing = [
+        name for name in PREDICTION_REQUIREMENTS if f"{name}==" not in lowered
+    ]
+    if missing:
+        raise DataError(
+            f"{path} does not pin {missing}; the bundle could not write and read the "
+            "prediction parquet reproducibly"
+        )
+
+
+def collect_files(repo_root: Path, *, with_predictions: bool = False) -> list[Path]:
     """List the repository files the bundle should contain (minus the data).
 
     Args:
         repo_root: Repository root.
+        with_predictions: Also require the batch-scoring files and their pinned
+            dependencies (the checkpoint itself never travels in the bundle).
 
     Returns:
         Sorted relative paths.
@@ -164,6 +223,16 @@ def collect_files(repo_root: Path) -> list[Path]:
         if not path.is_file():
             raise DataError(f"bundle input not found: {path}")
         selected.append(Path(name))
+
+    if with_predictions:
+        for name in PREDICTION_FILES:
+            path = repo_root / name
+            if not path.is_file():
+                raise DataError(f"prediction bundle input not found: {path}")
+            relative = Path(name)
+            if relative not in selected:
+                selected.append(relative)
+        _check_prediction_requirements(repo_root)
 
     for relative in selected:
         arcname = relative.as_posix()
@@ -198,6 +267,8 @@ def _write_zip(
     repo_root: Path,
     relative_files: Sequence[Path],
     reviews: pd.DataFrame,
+    *,
+    prediction_note: str | None = None,
 ) -> BundleReport:
     """Write the archive and measure it.
 
@@ -206,6 +277,7 @@ def _write_zip(
         repo_root: Repository root.
         relative_files: Files to add from the repository.
         reviews: Slim review frame to serialise as ``data/processed/reviews.parquet``.
+        prediction_note: Note printed when the scoring path was bundled.
 
     Returns:
         The build report.
@@ -228,16 +300,21 @@ def _write_zip(
         size_bytes=output.stat().st_size,
         uncompressed_bytes=sum(item.size for item in members),
         files=tuple(members),
+        prediction_note=prediction_note,
     )
 
 
-def build_bundle(repo_root: Path, output: Path) -> BundleReport:
+def build_bundle(
+    repo_root: Path, output: Path, *, with_predictions: bool = False
+) -> BundleReport:
     """Build the Colab bundle from a repository checkout.
 
     Args:
         repo_root: Repository root containing ``src/``, ``configs/`` and the
             processed review table.
         output: Destination zip path.
+        with_predictions: Include the batch-scoring files and document that the
+            checkpoint is uploaded separately (it never travels in the zip).
 
     Returns:
         The build report.
@@ -246,9 +323,15 @@ def build_bundle(repo_root: Path, output: Path) -> BundleReport:
         DataError: If a required input is missing or a forbidden path is
             selected.
     """
-    files = collect_files(repo_root)
+    files = collect_files(repo_root, with_predictions=with_predictions)
     reviews = load_slim_reviews(repo_root)
-    return _write_zip(output, repo_root, files, reviews)
+    return _write_zip(
+        output,
+        repo_root,
+        files,
+        reviews,
+        prediction_note=PREDICTION_NOTE if with_predictions else None,
+    )
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -273,6 +356,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=str(Path(__file__).resolve().parents[1]),
         help="Repository root to export (default: the checkout this script lives in).",
     )
+    parser.add_argument(
+        "--with-predictions",
+        action="store_true",
+        help=(
+            "Also bundle the batch-scoring path (predict/ingest/comparison scripts "
+            "and predictor.py) and print how the separately-uploaded checkpoint is "
+            "supplied."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -287,7 +379,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     args = parse_args(argv)
     try:
-        report = build_bundle(Path(args.repo_root), Path(args.output))
+        report = build_bundle(
+            Path(args.repo_root), Path(args.output), with_predictions=args.with_predictions
+        )
     except DataError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

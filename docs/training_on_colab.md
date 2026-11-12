@@ -29,6 +29,13 @@ the CPU and a fresh temporary directory.
 | `docs/sentiment.md`, `docs/training_on_colab.md` | Reference material for the session. |
 | `data/processed/reviews.parquet` | Rewritten slim: only `review_id`, `asin`, `split`, `review_text_clean`, `sentiment_label_weak`. |
 
+`python scripts/export_colab_bundle.py --with-predictions` additionally asserts
+that the batch-scoring files (`predict_reviews.py`, `ingest_predictions.py`,
+`evaluate_sentiment_checkpoints.py`, `sentiment/predictor.py`) are present and
+that `requirements-colab.txt` pins numpy/pandas/pyarrow/transformers, then prints
+how the checkpoint is supplied. The checkpoint is **never** in the zip: upload
+`models/sentiment_distilbert/best` separately when you need to score reviews.
+
 Excluded by construction (the exporter uses an allowlist, not a copy):
 
 * `.env` and any other secret file,
@@ -309,7 +316,101 @@ table as if they were the model's results.
 
 ---
 
-## 13. Time estimates
+## 13. Scoring every review on Colab
+
+Training produces `models/sentiment_distilbert/best` (about 255 MB). The batch
+scorer turns that checkpoint into one prediction row per review, and the ingest
+script loads those rows into the SQLite serving cache. Both steps are pure
+inference, so they run on a CPU runtime too - a GPU runtime just finishes sooner.
+
+### 13.1 Upload the checkpoint (it is not in the bundle)
+
+Build the bundle with the scoring path checked:
+
+```powershell
+python scripts/export_colab_bundle.py --with-predictions
+```
+
+The archive still excludes `models/`. Zip and upload the checkpoint yourself -
+either into the Colab **Files** pane (`/content`, fastest) or to Drive (survives
+a disconnect):
+
+```python
+# after the bundle is unzipped and `pip install -e .` has run
+!ls /content/sentiment_distilbert/best   # model.safetensors, model_meta.json, tokenizer files
+```
+
+A 255 MB upload is a manual step; it is not part of the repository and not part
+of the zip.
+
+### 13.2 Score the full table
+
+```python
+!python scripts/predict_reviews.py \
+    --checkpoint /content/sentiment_distilbert/best \
+    --device cuda \
+    --output /content/preds/review_predictions.parquet
+```
+
+The defaults (input table, batch size 64, 25,000-row chunks) come from
+`review_intel.sentiment.prediction` in `configs/config.yaml`. The script prints
+rows scored, rows per second, elapsed time, and the number of rows that produced
+a prediction. It writes:
+
+| File | Contents |
+|---|---|
+| `review_predictions.parquet` | `review_id`, `prob_negative`, `prob_neutral`, `prob_positive`, `predicted_label`, `has_prediction`; 425,993 rows in input order. |
+| `review_predictions.meta.json` | Checkpoint path and SHA-256 of the weights/`model_meta.json`, input/output hashes, batch/chunk sizes, per-chunk row ranges. |
+| `review_predictions.parts/` | One parquet per completed chunk plus `run.json` (the resume fingerprint). |
+
+If the runtime disconnects, re-run the same command with `--resume`. Completed
+chunks are reused only when the input hash, checkpoint hashes and chunk size
+still match; otherwise the script exits 2 rather than mixing two runs. Changing
+the review table, the checkpoint or `--chunk-rows` means starting from scratch
+(delete `review_predictions.parts/`).
+
+Fast sanity check before the full run:
+
+```python
+!python scripts/predict_reviews.py --checkpoint /content/sentiment_distilbert/best --limit 1000 --device cuda
+```
+
+### 13.3 Download and ingest
+
+Download `review_predictions.parquet` **and** `review_predictions.meta.json`
+together; the ingest refuses a parquet without its sidecar. Then, on this
+machine:
+
+```powershell
+python scripts/ingest_predictions.py
+```
+
+The ingest re-verifies both hashes against the checkpoint in
+`models/sentiment_distilbert/best` (pass `--checkpoint` if the predictions came
+from a differently located copy), validates every probability row and the
+review-id coverage, and upserts the four prediction columns into
+`review_features` in `data/db/munasib.sqlite`. It prints the row counts before
+and after, and re-running it is safe.
+
+### 13.4 Time estimates
+
+These are **estimates**, not measurements - the full scoring run has not been
+executed on a GPU here. Ranges assume a free-tier T4, batch size 64 and 128
+tokens.
+
+| Step | Estimate |
+|---|---|
+| Model load + first batch (one-off) | 30-90 seconds |
+| Scoring 425,993 reviews (GPU) | 5-15 minutes |
+| Scoring 425,993 reviews (CPU) | 1-3 hours |
+| Writing the parquet + sidecar | under a minute |
+
+The chunk files make the tail of a long CPU run resumable, so a CPU-only session
+can be stopped and continued without losing completed chunks.
+
+---
+
+## 14. Time estimates
 
 These are **estimates**, not measurements: nothing here has been trained on a
 GPU. Ranges assume a free-tier T4 and the default 72,052-row sample.
@@ -327,7 +428,7 @@ the low end is realistic when validation macro-F1 plateaus.
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|

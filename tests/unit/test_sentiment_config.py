@@ -21,6 +21,7 @@ from munasib.core.config import (
     LogRegConfig,
     RnnConfig,
     SentimentConfig,
+    SentimentPredictionConfig,
     Settings,
     TfidfConfig,
     TransformerConfig,
@@ -72,6 +73,12 @@ def test_shipped_config_declares_every_setting() -> None:
         "rnn:",
         "model_path:",
         "report_dir:",
+        "prediction:",
+        "checkpoint:",
+        "input_path:",
+        "output_path:",
+        "batch_size:",
+        "chunk_rows:",
     ):
         assert key in text
 
@@ -85,6 +92,26 @@ def test_shipped_config_loads_with_the_repo_defaults() -> None:
 def test_settings_exposes_the_block() -> None:
     """``Settings`` surfaces the block under ``review_intel.sentiment``."""
     assert Settings().review_intel.sentiment.max_train_rows == 100_000
+
+
+def test_prediction_defaults() -> None:
+    """The batch-scoring defaults are the documented checkpoint and row counts."""
+    prediction = SentimentConfig().prediction
+    assert prediction == SentimentPredictionConfig(
+        checkpoint=Path("models/sentiment_distilbert/best"),
+        input_path=Path("data/processed/reviews.parquet"),
+        output_path=Path("data/interim/review_predictions.parquet"),
+        batch_size=64,
+        chunk_rows=25_000,
+    )
+
+
+@pytest.mark.parametrize("field", ["batch_size", "chunk_rows"])
+def test_prediction_zero_counts_are_rejected(field: str) -> None:
+    """A zero batch/chunk size would make scoring fail or loop forever."""
+    with pytest.raises(ValidationError, match=field):
+        SentimentPredictionConfig(**{field: 0})
+
 
 
 def test_unknown_text_column_is_rejected() -> None:

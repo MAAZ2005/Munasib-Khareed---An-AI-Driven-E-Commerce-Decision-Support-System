@@ -201,3 +201,61 @@ def test_requirements_are_exactly_pinned_and_exclude_torch() -> None:
         assert line.split("==")[0].lower() != "torch"
     packages = {line.split("==")[0].lower() for line in lines}
     assert packages == {"transformers", "tokenizers", "scikit-learn", "pandas", "numpy", "pyarrow"}
+
+
+def _add_prediction_files(root: Path) -> None:
+    """Add the scoring files and the pinned requirements to a fake repository.
+
+    Args:
+        root: Fake repository root.
+    """
+    for name in (
+        "src/munasib/review_intel/sentiment/predictor.py",
+        "scripts/predict_reviews.py",
+        "scripts/ingest_predictions.py",
+        "scripts/evaluate_sentiment_checkpoints.py",
+    ):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    (root / "requirements-colab.txt").write_text(
+        "transformers==5.19.0\nnumpy==2.5.4\npandas==3.0.6\npyarrow==25.0.1\n",
+        encoding="utf-8",
+    )
+
+
+def test_with_predictions_bundles_the_scoring_path(script, tmp_path: Path) -> None:
+    """The optional flag ships the scoring code and explains the separate checkpoint."""
+    root = _fake_repo(tmp_path)
+    _add_prediction_files(root)
+    report = script.build_bundle(root, tmp_path / "bundle.zip", with_predictions=True)
+    names = {item.arcname for item in report.files}
+
+    assert {
+        "scripts/predict_reviews.py",
+        "scripts/ingest_predictions.py",
+        "src/munasib/review_intel/sentiment/predictor.py",
+    } <= names
+    assert "models/checkpoint.bin" not in names
+    assert report.prediction_note is not None
+    assert "NOT in this bundle" in report.prediction_note
+    assert "Scoring every review on Colab" in report.prediction_note
+    assert any("checkpoint" in line for line in report.lines())
+
+
+def test_with_predictions_requires_the_pinned_dependencies(script, tmp_path: Path) -> None:
+    """A bundle without the parquet pins could not reproduce the scoring columns."""
+    root = _fake_repo(tmp_path)
+    _add_prediction_files(root)
+    (root / "requirements-colab.txt").write_text("transformers==5.19.0\n", encoding="utf-8")
+    with pytest.raises(DataError, match="does not pin"):
+        script.collect_files(root, with_predictions=True)
+
+
+def test_without_predictions_leaves_no_prediction_note(script, tmp_path: Path) -> None:
+    """The flag is optional: the training-only bundle reports no scoring note."""
+    root = _fake_repo(tmp_path)
+    report = script.build_bundle(root, tmp_path / "bundle.zip")
+    assert report.prediction_note is None
+    assert all("checkpoint:" not in line for line in report.lines())
+
