@@ -1,0 +1,212 @@
+{
+  "artifact": {
+    "class_weight": "balanced",
+    "metadata": {
+      "class_weight": "balanced",
+      "converged": true,
+      "format_version": 1,
+      "label_column": "sentiment_label_weak",
+      "labels": [
+        0,
+        1,
+        2
+      ],
+      "n_iter": 151,
+      "seed": 42,
+      "text_column": "review_text_clean",
+      "train_products": 1444,
+      "train_rows": 100000,
+      "vocabulary_size": 134096
+    },
+    "path": "models\\sentiment_tfidf_logreg.joblib"
+  },
+  "config": {
+    "class_weighting": "sqrt_inverse",
+    "label_column": "sentiment_label_weak",
+    "logreg": {
+      "C": 1.0,
+      "max_iter": 1000
+    },
+    "max_length_tokens": 128,
+    "max_reviews_per_product": 50,
+    "max_train_rows": 100000,
+    "min_chars": 3,
+    "model_path": "models\\sentiment_tfidf_logreg.joblib",
+    "prediction": {
+      "batch_size": 64,
+      "checkpoint": "models\\sentiment_distilbert\\best",
+      "chunk_rows": 25000,
+      "input_path": "data\\processed\\reviews.parquet",
+      "output_path": "data\\interim\\review_predictions.parquet"
+    },
+    "rating_mapping": {
+      "negative_max": 2,
+      "neutral_val": 3,
+      "positive_min": 4
+    },
+    "report_dir": "reports\\evaluation",
+    "rnn": {
+      "bidirectional": true,
+      "cell": "gru",
+      "dropout": 0.3,
+      "embedding_dim": 128,
+      "hidden_size": 128,
+      "learning_rate": 0.001,
+      "min_freq": 2,
+      "num_layers": 1,
+      "output_dir": "models\\sentiment_rnn",
+      "vocab_size": 50000
+    },
+    "seed": 42,
+    "text_column": "review_text_clean",
+    "tfidf": {
+      "max_features": 200000,
+      "min_df": 3,
+      "ngram_range": [
+        1,
+        2
+      ],
+      "sublinear_tf": true
+    },
+    "transformer": {
+      "batch_size": 32,
+      "early_stopping_patience": 1,
+      "epochs": 3,
+      "learning_rate": 3e-05,
+      "max_grad_norm": 1.0,
+      "model_name": "distilbert-base-uncased",
+      "output_dir": "models\\sentiment_distilbert",
+      "warmup_ratio": 0.06,
+      "weight_decay": 0.01
+    }
+  },
+  "elapsed_seconds": 3.073,
+  "evaluations": {
+    "test": {
+      "rows": 59525,
+      "seconds": 3.073,
+      "split": "test",
+      "variants": {
+        "balanced": {
+          "calibration": {
+            "mae": 0.031676897884186504,
+            "mean_signed_difference": 0.02339596887473807,
+            "n_products": 312,
+            "n_reviews": 59525,
+            "note": null,
+            "pearson_r": 0.9505349184365178
+          },
+          "class_weight": "balanced",
+          "eval_seconds": 3.073,
+          "metrics": {
+            "accuracy": 0.855892482150357,
+            "binary": {
+              "accuracy": 0.9443097988571832,
+              "f1": 0.7929492238884503,
+              "n": 56527,
+              "precision": 0.7651688245747652,
+              "prevalence": 0.12960178321863888,
+              "recall": 0.8228228228228228,
+              "roc_auc": 0.9741747115631794
+            },
+            "confusion": [
+              [
+                6028,
+                966,
+                332
+              ],
+              [
+                846,
+                1523,
+                629
+              ],
+              [
+                1850,
+                3955,
+                43396
+              ]
+            ],
+            "labels": [
+              {
+                "label": 0,
+                "name": "negative"
+              },
+              {
+                "label": 1,
+                "name": "neutral"
+              },
+              {
+                "label": 2,
+                "name": "positive"
+              }
+            ],
+            "macro_f1": 0.6671450054272029,
+            "majority_baseline": {
+              "accuracy": 0.8265602687946241,
+              "label": 2,
+              "macro_f1": 0.3016819037458075,
+              "name": "positive",
+              "share": 0.8265602687946241
+            },
+            "n": 59525,
+            "per_class": [
+              {
+                "f1": 0.7511526479750779,
+                "label": 0,
+                "name": "negative",
+                "precision": 0.6909674461256304,
+                "recall": 0.8228228228228228,
+                "support": 7326
+              },
+              {
+                "f1": 0.3226011438254607,
+                "label": 1,
+                "name": "neutral",
+                "precision": 0.23634388578522655,
+                "recall": 0.5080053368912608,
+                "support": 2998
+              },
+              {
+                "f1": 0.9276812244810705,
+                "label": 2,
+                "name": "positive",
+                "precision": 0.978334873864328,
+                "recall": 0.8820145931993252,
+                "support": 49201
+              }
+            ]
+          },
+          "model": {
+            "class_weight": "balanced",
+            "converged": true,
+            "format_version": 1,
+            "label_column": "sentiment_label_weak",
+            "labels": [
+              0,
+              1,
+              2
+            ],
+            "n_iter": 151,
+            "seed": 42,
+            "text_column": "review_text_clean",
+            "train_products": 1444,
+            "train_rows": 100000,
+            "vocabulary_size": 134096
+          },
+          "soft_calibration": {
+            "mae": 0.04879581005343966,
+            "mean_signed_difference": 0.04173801972820993,
+            "n_products": 312,
+            "n_reviews": 59525,
+            "note": null,
+            "pearson_r": 0.9476661236333171
+          },
+          "train_seconds": 0.0
+        }
+      }
+    }
+  },
+  "labels": "weak supervision from star ratings (1-2 negative, 3 neutral, 4-5 positive)",
+  "limit": null,
+  "script": "scripts/evaluate_sentiment_checkpoints.py"
+}

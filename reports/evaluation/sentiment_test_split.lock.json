@@ -1,0 +1,33 @@
+{
+  "created_utc": "2026-11-12T06:37:35+00:00",
+  "limit": null,
+  "models": [
+    {
+      "checkpoint": "models\\sentiment_tfidf_logreg.joblib",
+      "model": "tfidf",
+      "model_meta_sha256": null,
+      "weights_bytes": 8614715,
+      "weights_file": "sentiment_tfidf_logreg.joblib",
+      "weights_sha256": "4266e0d3ba2e8044df36fbaaba9e376197c6491af958ed22d1b9345520bec184"
+    },
+    {
+      "checkpoint": "models\\sentiment_distilbert\\best",
+      "model": "transformer",
+      "model_meta_sha256": "ba30ca3edc5b04efea02451dcea7a4adf72b9b8223a0681099bd091d71ff1202",
+      "weights_bytes": 267835644,
+      "weights_file": "model.safetensors",
+      "weights_sha256": "962985990c4789baac650986b567323827ac15c8e703fc7c340c35bad7f68f8d"
+    },
+    {
+      "checkpoint": "models\\sentiment_rnn\\best",
+      "model": "rnn",
+      "model_meta_sha256": "d405eff144318dfbcaed39958c0afd08c71dd9239edc172be7bd2107c1c3daf6",
+      "weights_bytes": 14988297,
+      "weights_file": "model.pt",
+      "weights_sha256": "cb7d6f787697f910004b6b7dd6de492fe4edeb6c409310c9033260c1de05856b"
+    }
+  ],
+  "note": "Written before scoring the test split. A second --final run is refused unless --i-know-this-reuses-the-test-split is passed.",
+  "script": "scripts/evaluate_sentiment_checkpoints.py",
+  "split": "test"
+}
