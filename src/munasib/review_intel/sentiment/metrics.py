@@ -119,6 +119,25 @@ class ClassMetrics:
             "support": self.support,
         }
 
+    @classmethod
+    def from_dict(cls, payload: Any) -> ClassMetrics:
+        """Rebuild the per-class figures from a JSON report.
+
+        Args:
+            payload: Mapping written by :meth:`to_dict`.
+
+        Returns:
+            The same figures as a dataclass.
+        """
+        return cls(
+            label=int(payload["label"]),
+            name=str(payload["name"]),
+            precision=float(payload["precision"]),
+            recall=float(payload["recall"]),
+            f1=float(payload["f1"]),
+            support=int(payload["support"]),
+        )
+
 
 @dataclass(frozen=True)
 class MajorityBaseline:
@@ -148,6 +167,24 @@ class MajorityBaseline:
             "accuracy": self.accuracy,
             "macro_f1": self.macro_f1,
         }
+
+    @classmethod
+    def from_dict(cls, payload: Any) -> MajorityBaseline:
+        """Rebuild the majority baseline from a JSON report.
+
+        Args:
+            payload: Mapping written by :meth:`to_dict`.
+
+        Returns:
+            The same figures as a dataclass.
+        """
+        return cls(
+            label=int(payload["label"]),
+            name=str(payload["name"]),
+            share=float(payload["share"]),
+            accuracy=float(payload["accuracy"]),
+            macro_f1=float(payload["macro_f1"]),
+        )
 
 
 @dataclass(frozen=True)
@@ -187,6 +224,27 @@ class BinaryMetrics:
             "f1": self.f1,
             "roc_auc": self.roc_auc,
         }
+
+    @classmethod
+    def from_dict(cls, payload: Any) -> BinaryMetrics:
+        """Rebuild the binary metrics from a JSON report.
+
+        Args:
+            payload: Mapping written by :meth:`to_dict`.
+
+        Returns:
+            The same figures as a dataclass.
+        """
+        roc_auc = payload["roc_auc"]
+        return cls(
+            n=int(payload["n"]),
+            prevalence=float(payload["prevalence"]),
+            accuracy=float(payload["accuracy"]),
+            precision=float(payload["precision"]),
+            recall=float(payload["recall"]),
+            f1=float(payload["f1"]),
+            roc_auc=None if roc_auc is None else float(roc_auc),
+        )
 
 
 @dataclass(frozen=True)
@@ -231,6 +289,30 @@ class ClassificationMetrics:
             "binary": self.binary.to_dict(),
             "majority_baseline": self.majority.to_dict(),
         }
+
+    @classmethod
+    def from_dict(cls, payload: Any) -> ClassificationMetrics:
+        """Rebuild a three-class evaluation from a JSON report.
+
+        Args:
+            payload: Mapping written by :meth:`to_dict`.
+
+        Returns:
+            The same figures as a dataclass, including the confusion matrix and
+            the majority baseline.
+        """
+        return cls(
+            n=int(payload["n"]),
+            labels=tuple(int(entry["label"]) for entry in payload["labels"]),
+            accuracy=float(payload["accuracy"]),
+            macro_f1=float(payload["macro_f1"]),
+            per_class=tuple(ClassMetrics.from_dict(entry) for entry in payload["per_class"]),
+            confusion=tuple(
+                tuple(int(count) for count in row) for row in payload["confusion"]
+            ),
+            binary=BinaryMetrics.from_dict(payload["binary"]),
+            majority=MajorityBaseline.from_dict(payload["majority_baseline"]),
+        )
 
     def lines(self) -> list[str]:
         """Render the evaluation as aligned ``label : value`` lines.
@@ -312,6 +394,33 @@ class ProductCalibration:
             "mean_signed_difference": self.mean_signed_difference,
             "note": self.note,
         }
+
+    @classmethod
+    def from_dict(cls, payload: Any) -> ProductCalibration:
+        """Rebuild the calibration summary from a JSON report.
+
+        The per-product table is written to its own CSV and is not part of the
+        JSON, so the rebuilt instance carries an empty table. Every summary
+        statistic and the optional note round-trips exactly.
+
+        Args:
+            payload: Mapping written by :meth:`to_dict`.
+
+        Returns:
+            The same summary figures as a dataclass.
+        """
+        mae = payload["mae"]
+        pearson_r = payload["pearson_r"]
+        mean_signed = payload["mean_signed_difference"]
+        return cls(
+            n_products=int(payload["n_products"]),
+            n_reviews=int(payload["n_reviews"]),
+            mae=None if mae is None else float(mae),
+            pearson_r=None if pearson_r is None else float(pearson_r),
+            mean_signed_difference=None if mean_signed is None else float(mean_signed),
+            table=pd.DataFrame(columns=list(CALIBRATION_COLUMNS)),
+            note=None if payload["note"] is None else str(payload["note"]),
+        )
 
     def lines(self) -> list[str]:
         """Render the calibration check as aligned ``label : value`` lines.

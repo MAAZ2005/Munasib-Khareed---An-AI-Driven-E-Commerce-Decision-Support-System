@@ -492,6 +492,12 @@ Colab; see `docs/training_on_colab.md`.
 Both calibration modes are reported because class weighting can leave hard-label
 F1 healthy while shifting the probabilities the risk stage would consume.
 
+The neural reports keep **training facts** (training device, training wall clock,
+epochs, selection metric) apart from **evaluation facts** (evaluating device,
+split, rows evaluated). A checkpoint trained on Colab's CUDA GPU and evaluated on
+a CPU therefore reads `Training device: cuda`, `Evaluated on: cpu`; the wall
+clock is always the training run's, never the evaluating machine's.
+
 ---
 
 ## 12. Final model, batch scoring and the comparison table
@@ -601,6 +607,19 @@ DistilBERT, and BiGRU only if its checkpoint exists), writes
 `sentiment_<model>_final` reports and `sentiment_model_comparison_test.{md,csv}`,
 and refuses a second run unless `--i-know-this-reuses-the-test-split` is passed.
 `--limit` is recorded as a smoke slice, never as the hold-out.
+
+The final Markdown can be rebuilt without touching the hold-out:
+
+```powershell
+python scripts/evaluate_sentiment_checkpoints.py --rerender
+```
+
+`--rerender` reads `sentiment_<model>_final.json` plus the training facts in the
+matching `sentiment_<model>_val.json`. It loads no model and no review rows, never
+reads or writes `sentiment_test_split.lock.json`, and compares the rendered
+metric body with the file on disk. If a metric, epoch or table would change, it
+fails and leaves the file untouched; only the training/evaluation device labels
+and the wall-clock wording are allowed to move.
 
 ---
 

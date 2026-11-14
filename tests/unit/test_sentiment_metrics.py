@@ -26,6 +26,8 @@ from munasib.core.constants import (
 )
 from munasib.review_intel.sentiment.metrics import (
     CALIBRATION_COLUMNS,
+    ClassificationMetrics,
+    ProductCalibration,
     binary_metrics,
     classification_metrics,
     compute_product_calibration,
@@ -270,3 +272,27 @@ class TestRendering:
         assert text.startswith("# Title")
         assert text.endswith("\n")
         assert not text.endswith("\n\n")
+
+    def test_metrics_round_trip_through_their_json_shape(self) -> None:
+        """A report can rebuild every metric without recomputing it."""
+        metrics = classification_metrics(
+            Y_TRUE, Y_PRED, proba=np.eye(3, dtype="float64")[Y_PRED]
+        )
+        restored = ClassificationMetrics.from_dict(metrics.to_dict())
+        assert restored == metrics
+
+    def test_calibration_round_trips_without_the_per_product_table(self) -> None:
+        """The JSON carries the summary, not the CSV rows, and still round-trips."""
+        calibration = compute_product_calibration(
+            ["A", "A", "B"], [0, 2, 1], [0, 2, 1]
+        )
+        restored = ProductCalibration.from_dict(calibration.to_dict())
+        assert restored.n_products == calibration.n_products
+        assert restored.n_reviews == calibration.n_reviews
+        assert restored.mae == pytest.approx(calibration.mae)
+        assert restored.pearson_r == pytest.approx(calibration.pearson_r)
+        assert restored.mean_signed_difference == pytest.approx(
+            calibration.mean_signed_difference
+        )
+        assert restored.note == calibration.note
+        assert restored.table.empty

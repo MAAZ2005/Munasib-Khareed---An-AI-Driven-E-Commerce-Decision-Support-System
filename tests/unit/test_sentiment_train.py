@@ -40,6 +40,7 @@ from munasib.review_intel.sentiment.sampling import (
 )
 from munasib.review_intel.sentiment.train import (
     TrainConfig,
+    build_report_markdown,
     build_report_payload,
     class_weights,
     evaluate_predictions,
@@ -325,6 +326,13 @@ def test_train_model_writes_checkpoints_and_a_full_report(tmp_path: Path) -> Non
     assert payload["evaluated_rows"] == len(val_frame)
     assert payload["training"]["val_subset_requested"] is None
     assert payload["training"]["full_report_split"] is True
+    assert payload["training"]["device"] == "cpu"
+    assert payload["evaluation"] == {
+        "split": SPLIT_VAL,
+        "device": "cpu",
+        "rows": len(val_frame),
+    }
+    assert payload["model"]["device"] == "cpu"
     assert set(payload["calibration"]) == {"hard_predictions", "mean_negative_probability"}
 
     paths = write_reports(
@@ -337,7 +345,52 @@ def test_train_model_writes_checkpoints_and_a_full_report(tmp_path: Path) -> Non
     )
     assert all(path.is_file() for path in paths)
     assert paths[0].name == "sentiment_rnn_val.json"
-    assert "weak supervision" in paths[1].read_text(encoding="utf-8")
+    markdown = paths[1].read_text(encoding="utf-8")
+    assert "weak supervision" in markdown
+    assert "- Training device: cpu" in markdown
+    assert "- Evaluated on: cpu" in markdown
+
+
+def test_report_separates_training_and_evaluation_devices(tmp_path: Path) -> None:
+    """A CUDA-trained checkpoint evaluated on CPU must label both devices."""
+    train_frame = _frame(6)
+    val_frame = _frame(6, split=SPLIT_VAL, prefix="v")
+    settings = _settings(tmp_path, epochs=1, training_device="cuda")
+    encoder = _encoder(train_frame)
+
+    outcome = train_model(
+        model=build_rnn(_rnn_config(), vocab_size=len(encoder.vocabulary)),
+        train_dataset=frame_to_dataset(train_frame, SentimentConfig(), encoder),
+        selection_dataset=frame_to_dataset(val_frame, SentimentConfig(), encoder),
+        report_dataset=frame_to_dataset(val_frame, SentimentConfig(), encoder),
+        settings=settings,
+        vocabulary=encoder.vocabulary,
+        rnn_config=_rnn_config(),
+    )
+    payload = build_report_payload(
+        outcome=outcome,
+        settings=settings,
+        evaluation=outcome.validation,
+        train_rows=len(train_frame),
+        selection_rows=len(val_frame),
+    )
+    assert payload["training"]["device"] == "cuda"
+    assert payload["evaluation"]["device"] == "cpu"
+    assert payload["model"]["device"] == "cpu"
+
+    markdown = build_report_markdown(
+        outcome=outcome,
+        settings=settings,
+        evaluation=outcome.validation,
+        train_rows=len(train_frame),
+        selection_rows=len(val_frame),
+    )
+    text = "\n".join(markdown)
+    assert "- Training device: cuda" in text
+    assert "- Evaluated on: cpu" in text
+    wall_clock = next(line for line in markdown if line.startswith("- Training wall clock:"))
+    assert wall_clock.endswith("s")
+    assert " on " not in wall_clock
 
 
 def test_report_covers_the_full_split_when_selection_used_a_subset(tmp_path: Path) -> None:

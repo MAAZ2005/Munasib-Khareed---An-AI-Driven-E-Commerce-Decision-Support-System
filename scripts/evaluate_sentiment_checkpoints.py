@@ -1,7 +1,7 @@
 """Compare the sentiment models from their reports, and optionally score the test split.
 
-Two modes, one contract: **no number in the comparison table is computed here in
-validation mode**. Every value is read from the JSON reports written by
+Three modes, one contract: **no metric is recomputed here**. The validation table
+reads every value from the JSON reports written by
 ``scripts/train_sentiment_baseline.py`` and ``scripts/train_sentiment.py``
 (``sentiment_baseline_val.json``, ``sentiment_rnn_val.json``,
 ``sentiment_transformer_val.json``), so the table cannot drift away from the
@@ -18,12 +18,19 @@ date, the row limit and the SHA-256 of every checkpoint involved, and refuses a
 second ``--final`` run unless
 ``--i-know-this-reuses-the-test-split`` is passed explicitly.
 
+``--rerender`` rewrites the Markdown of the existing neural ``_final`` reports
+from their JSON plus the training facts in the matching ``_val`` report. It
+loads no model and no review rows, never reads or writes the lock file, and
+refuses to touch a metric: the metric body must render identically, or the run
+fails.
+
 Usage::
 
     python scripts/evaluate_sentiment_checkpoints.py            # validation table
     python scripts/evaluate_sentiment_checkpoints.py --final    # one-shot test run
     python scripts/evaluate_sentiment_checkpoints.py --final --device cpu --limit 500
     python scripts/evaluate_sentiment_checkpoints.py --final --i-know-this-reuses-the-test-split
+    python scripts/evaluate_sentiment_checkpoints.py --rerender  # Markdown labels only
 
 ``--final`` scores the test split with the checkpoint as it is on disk; it never
 trains, tunes or selects anything. ``--limit`` exists for CPU smoke runs and is
@@ -40,17 +47,17 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
-import torch
 
 from munasib.core.config import SentimentConfig, Settings, load_settings
 from munasib.core.constants import (
@@ -61,32 +68,31 @@ from munasib.core.constants import (
     SPLIT_VAL,
 )
 from munasib.core.exceptions import ConfigError, DataError
-from munasib.review_intel.sentiment.baseline import evaluate_baseline, load_baseline
-from munasib.review_intel.sentiment.data import TextEncoder
+from munasib.review_intel.sentiment.devices import DEVICE_CHOICES
 from munasib.review_intel.sentiment.metrics import (
-    compute_product_calibration,
+    ClassificationMetrics,
+    ProductCalibration,
     render_calibration_table,
     render_metrics_table,
     write_calibration_csv,
     write_evaluation_report,
 )
-from munasib.review_intel.sentiment.models import load_model
-from munasib.review_intel.sentiment.predictor import describe_checkpoint, file_sha256
-from munasib.review_intel.sentiment.sampling import PRODUCT_COLUMN, load_eval_split
-from munasib.review_intel.sentiment.train import (
-    BEST_CHECKPOINT_DIR,
-    DEVICE_CHOICES,
-    EpochRecord,
-    EvaluatedSplit,
-    TrainConfig,
-    TrainingOutcome,
-    evaluate_predictions,
-    frame_to_dataset,
-    predict,
+from munasib.review_intel.sentiment.reporting import (
+    EpochHistoryRow,
+    EvaluationFacts,
+    TrainingFacts,
+    render_report_markdown,
     report_stem,
-    resolve_device,
-    write_reports,
 )
+
+if TYPE_CHECKING:
+    import torch
+
+    from munasib.review_intel.sentiment.train import (
+        EvaluatedSplit,
+        TrainConfig,
+        TrainingOutcome,
+    )
 
 logging.basicConfig(
     level=logging.INFO,
@@ -122,6 +128,13 @@ COMPARISON_FINAL_STEM = "sentiment_model_comparison_test"
 
 #: Lock file proving ``--final`` was already used.
 LOCK_FILENAME = "sentiment_test_split.lock.json"
+
+#: Legacy header line: the old renderer put the *evaluating* machine's device on
+#: the training wall clock. ``--rerender`` recognises it so it can relabel it.
+_LEGACY_WALL_CLOCK = re.compile(r"^- Training wall clock: ([\d,]+(?:\.\d+)?)s on (\S+)$")
+
+#: Legacy header line naming the evaluated rows.
+_LEGACY_REPORTED_ROWS = re.compile(r"^- Reported rows: ([\d,]+)")
 
 #: Review table the final evaluation reads (same file the trainers use).
 REVIEWS_FILENAME = "reviews.parquet"
@@ -234,7 +247,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Build the sentiment model comparison table from the JSON reports, "
-            "or score the test split once with --final."
+            "score the test split once with --final, or re-render the final "
+            "Markdown from the existing JSON with --rerender."
         )
     )
     parser.add_argument(
@@ -248,6 +262,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Score the test split once with every available model and write "
             "sentiment_<model>_final reports plus a test comparison table."
+        ),
+    )
+    parser.add_argument(
+        "--rerender",
+        action="store_true",
+        help=(
+            "Re-render the Markdown of the existing neural _final reports from "
+            "their JSON plus the training facts in the matching _val report. "
+            "Loads no model or test data and never touches the lock file."
         ),
     )
     parser.add_argument(
@@ -314,6 +337,313 @@ def _read_optional(path: Path, notes: list[str]) -> dict[str, Any] | None:
         notes.append(f"missing report: `{path.name}` (that model is not in this table)")
         return None
     return _read_json(path)
+
+
+def _validation_training_facts(
+    payload: dict[str, Any], *, architecture: str
+) -> TrainingFacts:
+    """Read the training facts a checkpoint's validation report recorded.
+
+    Args:
+        payload: ``sentiment_<architecture>_val.json``.
+        architecture: ``"transformer"`` or ``"rnn"``.
+
+    Returns:
+        Training device, wall clock, epochs, selection metric and history.
+
+    Raises:
+        DataError: If the report records no training device.
+    """
+    model = payload["model"]
+    training = payload["training"]
+    device = training.get("device") or model.get("device")
+    if not isinstance(device, str) or not device:
+        raise DataError(
+            f"the {architecture} validation report records no training device; "
+            "the training facts cannot be reconstructed from the evaluating machine"
+        )
+    history = tuple(
+        EpochHistoryRow(
+            epoch=int(record["epoch"]),
+            train_loss=float(record["train_loss"]),
+            val_macro_f1=float(record["val_macro_f1"]),
+            val_accuracy=float(record["val_accuracy"]),
+            seconds=float(record["seconds"]),
+            rows_per_second=float(record["rows_per_second"]),
+            improved=bool(record["improved"]),
+        )
+        for record in training["history"]
+    )
+    val_subset = training["val_subset_requested"]
+    return TrainingFacts(
+        architecture=architecture,
+        class_weighting=str(model["class_weighting"]),
+        class_weights=tuple(float(weight) for weight in model["class_weights"]),
+        parameters=int(model["parameters"]),
+        train_rows=int(training["train_rows"]),
+        selection_rows=int(training["selection_rows"]),
+        val_subset=None if val_subset is None else int(val_subset),
+        best_epoch=int(training["best_epoch"]),
+        epochs_run=int(training["epochs_run"]),
+        selection_metric=str(training["selection_metric"]),
+        elapsed_seconds=float(training["elapsed_seconds"]),
+        device=device,
+        history=history,
+    )
+
+
+def _evaluation_facts(payload: dict[str, Any]) -> EvaluationFacts:
+    """Read the evaluation facts from a final report, without recomputing them.
+
+    Args:
+        payload: ``sentiment_<architecture>_final.json``.
+
+    Returns:
+        Split, evaluating device, rows and the recorded metrics/calibration.
+
+    Raises:
+        DataError: If the report is not a test-split report, names no evaluating
+            device, or its row counts disagree.
+    """
+    split = str(payload["split"])
+    if split != SPLIT_TEST:
+        raise DataError(f"not a one-shot test report: split={split!r}")
+    evaluation = payload.get("evaluation") or {}
+    device = evaluation.get("device") or payload["model"].get("device")
+    if not isinstance(device, str) or not device:
+        raise DataError("the final report records no evaluating device")
+    rows = int(payload["evaluated_rows"])
+    recorded_rows = evaluation.get("rows")
+    if recorded_rows is not None and int(recorded_rows) != rows:
+        raise DataError(
+            "the final report disagrees with itself about the evaluated rows: "
+            f"evaluation.rows={recorded_rows} evaluated_rows={rows}"
+        )
+    training = payload["training"]
+    return EvaluationFacts(
+        split=split,
+        device=device,
+        rows=rows,
+        full_split=bool(training["full_report_split"]),
+        metrics=ClassificationMetrics.from_dict(payload["metrics"]),
+        calibration_hard=ProductCalibration.from_dict(
+            payload["calibration"]["hard_predictions"]
+        ),
+        calibration_soft=ProductCalibration.from_dict(
+            payload["calibration"]["mean_negative_probability"]
+        ),
+    )
+
+
+def _check_training_facts_match(
+    training: TrainingFacts, payload: dict[str, Any]
+) -> None:
+    """Verify a final report's training block still matches the validation report.
+
+    The final report is written from the validation report, so the two must
+    agree. A mismatch means one of them was edited; re-rendering would then pick
+    a side and hide the discrepancy.
+
+    Args:
+        training: Facts read from the validation report.
+        payload: Final report of the same checkpoint.
+
+    Raises:
+        DataError: If any training fact differs.
+    """
+    model = payload["model"]
+    block = payload["training"]
+    mismatches: list[str] = []
+    checks = {
+        "parameters": (int(model["parameters"]), training.parameters),
+        "train_rows": (int(block["train_rows"]), training.train_rows),
+        "selection_rows": (int(block["selection_rows"]), training.selection_rows),
+        "best_epoch": (int(block["best_epoch"]), training.best_epoch),
+        "epochs_run": (int(block["epochs_run"]), training.epochs_run),
+    }
+    for name, (actual, expected) in checks.items():
+        if actual != expected:
+            mismatches.append(f"{name} final={actual} val={expected}")
+    if float(block["elapsed_seconds"]) != training.elapsed_seconds:
+        mismatches.append(
+            f"elapsed_seconds final={block['elapsed_seconds']} val={training.elapsed_seconds}"
+        )
+    recorded_device = block.get("device")
+    if recorded_device is not None and recorded_device != training.device:
+        mismatches.append(
+            f"training device final={recorded_device} val={training.device}"
+        )
+    expected_history = [
+        {
+            "epoch": record.epoch,
+            "train_loss": record.train_loss,
+            "val_macro_f1": record.val_macro_f1,
+            "val_accuracy": record.val_accuracy,
+            "seconds": record.seconds,
+            "rows_per_second": record.rows_per_second,
+            "improved": record.improved,
+        }
+        for record in training.history
+    ]
+    if block["history"] != expected_history:
+        mismatches.append("epoch history differs")
+    if mismatches:
+        raise DataError(
+            "refusing to re-render: the final report's training facts disagree "
+            "with the validation report (" + "; ".join(mismatches) + ")"
+        )
+
+
+def _assert_only_labels_changed(
+    old_lines: Sequence[str],
+    new_lines: Sequence[str],
+    *,
+    path: Path,
+    training: TrainingFacts,
+    evaluation: EvaluationFacts,
+) -> None:
+    """Refuse a re-render that would change any metric, epoch or number.
+
+    Args:
+        old_lines: Markdown currently on disk.
+        new_lines: Markdown rendered from the JSON reports.
+        path: Markdown path, used in error messages.
+        training: Training facts used for the new render.
+        evaluation: Evaluation facts used for the new render.
+
+    Raises:
+        DataError: If the body differs, or the old header does not hold exactly
+            the recorded wall clock, evaluating device and row count.
+    """
+    if not old_lines or old_lines[0] != new_lines[0]:
+        raise DataError(f"refusing to re-render {path.name}: the report title would change")
+    marker = "## Epoch history"
+    try:
+        old_body = old_lines.index(marker)
+        new_body = new_lines.index(marker)
+    except ValueError as exc:
+        raise DataError(
+            f"refusing to re-render {path.name}: no {marker!r} section to compare"
+        ) from exc
+    if old_lines[old_body:] != new_lines[new_body:]:
+        common = min(len(old_lines) - old_body, len(new_lines) - new_body)
+        for offset in range(common):
+            old_line = old_lines[old_body + offset]
+            new_line = new_lines[new_body + offset]
+            if old_line != new_line:
+                raise DataError(
+                    f"refusing to re-render {path.name}: a metric, epoch or table "
+                    f"would change ({old_line!r} -> {new_line!r})"
+                )
+        raise DataError(
+            f"refusing to re-render {path.name}: the metric body has a different length"
+        )
+
+    header = old_lines[:old_body]
+    wall_line = next(
+        (line for line in header if line.startswith("- Training wall clock:")), None
+    )
+    if wall_line is None:
+        raise DataError(f"refusing to re-render {path.name}: no training wall-clock line")
+    match = _LEGACY_WALL_CLOCK.match(wall_line)
+    if match is None:
+        raise DataError(
+            f"refusing to re-render {path.name}: unrecognised header line {wall_line!r}; "
+            "only 'Training wall clock: <seconds>s on <device>' can be relabelled"
+        )
+    old_seconds = float(match.group(1).replace(",", ""))
+    if f"{old_seconds:,.1f}" != f"{training.elapsed_seconds:,.1f}":
+        raise DataError(
+            f"refusing to re-render {path.name}: the wall clock {old_seconds:.1f}s "
+            f"does not match the training report's {training.elapsed_seconds:.1f}s"
+        )
+    if match.group(2) != evaluation.device:
+        raise DataError(
+            f"refusing to re-render {path.name}: expected the old label to name the "
+            f"evaluating device {evaluation.device!r}, found {match.group(2)!r}"
+        )
+
+    reported_line = next(
+        (line for line in header if line.startswith("- Reported rows:")), None
+    )
+    reported = None if reported_line is None else _LEGACY_REPORTED_ROWS.match(reported_line)
+    if reported is None:
+        raise DataError(f"refusing to re-render {path.name}: no reported-rows line")
+    if int(reported.group(1).replace(",", "")) != evaluation.rows:
+        raise DataError(
+            f"refusing to re-render {path.name}: the reported row count "
+            f"{reported.group(1)} does not match the JSON's {evaluation.rows:,}"
+        )
+
+
+def rerender_final_reports(report_dir: Path) -> list[Path]:
+    """Re-render the neural final Markdown from JSON, changing labels only.
+
+    The training facts come from each checkpoint's own validation report, never
+    from the machine running this command. No model, review row or lock file is
+    read or written. A report whose metric body would change is left untouched
+    and the run fails.
+
+    Args:
+        report_dir: Directory holding the evaluation reports.
+
+    Returns:
+        The Markdown files that are now up to date (written or already correct).
+
+    Raises:
+        DataError: If no final neural report exists, its validation report or
+            Markdown is missing, or a re-render would change a metric.
+    """
+    up_to_date: list[Path] = []
+    for architecture in NEURAL_ARCHITECTURES:
+        stem = report_stem(architecture, SPLIT_TEST)
+        final_json = report_dir / f"{stem}.json"
+        final_markdown = report_dir / f"{stem}.md"
+        if not final_json.is_file():
+            continue
+        val_json = report_dir / f"sentiment_{architecture}_val.json"
+        if not val_json.is_file():
+            raise DataError(
+                f"cannot re-render {final_json.name}: {val_json.name} is missing, "
+                "so the training device and wall clock cannot be read from the run "
+                "that produced the checkpoint"
+            )
+        if not final_markdown.is_file():
+            raise DataError(
+                f"cannot re-render {final_json.name}: {final_markdown.name} is missing"
+            )
+        training = _validation_training_facts(_read_json(val_json), architecture=architecture)
+        payload = _read_json(final_json)
+        evaluation = _evaluation_facts(payload)
+        _check_training_facts_match(training, payload)
+        new_lines = render_report_markdown(training=training, evaluation=evaluation)
+        while new_lines and not new_lines[-1]:
+            new_lines.pop()
+        old_lines = final_markdown.read_text(encoding="utf-8").rstrip("\n").splitlines()
+        if old_lines == new_lines:
+            logger.info("rerender_unchanged path=%s", final_markdown)
+            up_to_date.append(final_markdown)
+            continue
+        _assert_only_labels_changed(
+            old_lines,
+            new_lines,
+            path=final_markdown,
+            training=training,
+            evaluation=evaluation,
+        )
+        final_markdown.write_text("\n".join(new_lines).rstrip() + "\n", encoding="utf-8")
+        logger.info(
+            "rerender_written path=%s training_device=%s evaluation_device=%s",
+            final_markdown,
+            training.device,
+            evaluation.device,
+        )
+        up_to_date.append(final_markdown)
+    if not up_to_date:
+        raise DataError(
+            f"no neural _final reports found in {report_dir}; run --final first"
+        )
+    return up_to_date
 
 
 def _neutral_f1(metrics: dict[str, Any]) -> float:
@@ -749,10 +1079,21 @@ def _train_config_from_report(
 
     Returns:
         The settings the checkpoint was trained with.
+
+    Raises:
+        DataError: If the report records no training device.
     """
+    from munasib.review_intel.sentiment.train import TrainConfig
+
     model = payload["model"]
     training = payload["training"]
     val_subset = training["val_subset_requested"]
+    training_device = training.get("device") or model.get("device")
+    if not isinstance(training_device, str) or not training_device:
+        raise DataError(
+            "the validation report records no training device, so the final "
+            "report cannot label the training wall clock without guessing"
+        )
     return TrainConfig(
         architecture=architecture,
         output_dir=checkpoint_dir.parent,
@@ -771,6 +1112,7 @@ def _train_config_from_report(
         resume=False,
         val_subset=None if val_subset is None else int(val_subset),
         full_report_split=full_report_split,
+        training_device=training_device,
     )
 
 
@@ -787,6 +1129,8 @@ def _outcome_from_report(
         Outcome whose history/epochs/weights are the recorded ones and whose
         ``validation`` is the test evaluation being reported.
     """
+    from munasib.review_intel.sentiment.train import EpochRecord, TrainingOutcome
+
     model = payload["model"]
     training = payload["training"]
     history = tuple(EpochRecord(**record) for record in training["history"])
@@ -846,6 +1190,10 @@ def run_final_baseline(
     Raises:
         DataError: If the artifact or split is unusable.
     """
+    from munasib.review_intel.sentiment.baseline import evaluate_baseline, load_baseline
+    from munasib.review_intel.sentiment.metrics import compute_product_calibration
+    from munasib.review_intel.sentiment.sampling import PRODUCT_COLUMN, load_eval_split
+
     baseline = load_baseline(artifact)
     frame = load_eval_split(reviews, SPLIT_TEST, config)
     if limit is not None:
@@ -951,6 +1299,16 @@ def run_final_neural(
         DataError: If the validation report needed for training metadata is
             missing, or the checkpoint cannot be loaded.
     """
+    from munasib.review_intel.sentiment.data import TextEncoder
+    from munasib.review_intel.sentiment.models import load_model
+    from munasib.review_intel.sentiment.sampling import load_eval_split
+    from munasib.review_intel.sentiment.train import (
+        evaluate_predictions,
+        frame_to_dataset,
+        predict,
+        write_reports,
+    )
+
     val_path = report_dir / f"sentiment_{architecture}_val.json"
     if not val_path.is_file():
         raise DataError(
@@ -1017,6 +1375,15 @@ def run_final(settings: Settings, args: argparse.Namespace) -> FinalRun:
         DataError: If no model is available or a report/checkpoint is unusable.
         ValueError: On an invalid limit.
     """
+    from munasib.review_intel.sentiment.predictor import (
+        describe_checkpoint,
+        file_sha256,
+    )
+    from munasib.review_intel.sentiment.train import (
+        BEST_CHECKPOINT_DIR,
+        resolve_device,
+    )
+
     if args.limit is not None and args.limit < 1:
         raise ValueError(f"--limit must be >= 1, got {args.limit}")
     config = settings.review_intel.sentiment
@@ -1120,7 +1487,7 @@ def run_final(settings: Settings, args: argparse.Namespace) -> FinalRun:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Build the comparison table, or run the one-shot test evaluation.
+    """Build the comparison table, re-render final labels, or run the hold-out.
 
     Args:
         argv: Optional argument list (defaults to ``sys.argv[1:]``).
@@ -1129,7 +1496,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         Process exit code: 0 written, 1 failed, 2 test split already used.
     """
     args = parse_args(argv)
-    if not args.final and (
+    if args.final and args.rerender:
+        logger.error("--final and --rerender are mutually exclusive")
+        return 1
+    if args.rerender and (
+        args.limit is not None or args.device != "auto" or args.reuse_test_split
+    ):
+        logger.error(
+            "--device/--limit/--i-know-this-reuses-the-test-split only apply with "
+            "--final; --rerender only reads the JSON reports"
+        )
+        return 1
+    if not args.final and not args.rerender and (
         args.limit is not None or args.device != "auto" or args.reuse_test_split
     ):
         logger.error(
@@ -1145,6 +1523,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     try:
+        if args.rerender:
+            report_dir = Path(settings.review_intel.sentiment.report_dir)
+            paths = rerender_final_reports(report_dir)
+            print()
+            print("re-rendered reports:")
+            for path in paths:
+                print(f"  {path}")
+            return 0
         if args.final:
             final = run_final(settings, args)
             print()

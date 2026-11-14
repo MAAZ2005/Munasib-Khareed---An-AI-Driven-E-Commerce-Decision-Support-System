@@ -45,7 +45,7 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedTokenizerBase, get_linear_schedule_with_warmup
 
 from munasib.core.config import CLASS_WEIGHTING_CHOICES, RnnConfig, SentimentConfig
-from munasib.core.constants import SENTIMENT_LABELS, SPLIT_TEST
+from munasib.core.constants import SENTIMENT_LABELS
 from munasib.core.exceptions import DataError
 from munasib.review_intel.sentiment.data import (
     Batch,
@@ -54,14 +54,12 @@ from munasib.review_intel.sentiment.data import (
     TextEncoder,
     collate_batch,
 )
+from munasib.review_intel.sentiment.devices import DEVICE_CHOICES
 from munasib.review_intel.sentiment.metrics import (
     ClassificationMetrics,
     ProductCalibration,
     classification_metrics,
     compute_product_calibration,
-    render_calibration_table,
-    render_confusion_and_scores,
-    render_metrics_table,
     write_calibration_csv,
     write_evaluation_report,
 )
@@ -73,10 +71,14 @@ from munasib.review_intel.sentiment.models import (
     load_model,
     save_model,
 )
+from munasib.review_intel.sentiment.reporting import (
+    EpochHistoryRow,
+    EvaluationFacts,
+    TrainingFacts,
+    render_report_markdown,
+    report_stem,
+)
 from munasib.review_intel.sentiment.sampling import PRODUCT_COLUMN
-
-#: Devices ``--device`` accepts. ``auto`` prefers CUDA when it is available.
-DEVICE_CHOICES: tuple[str, ...] = ("auto", "cpu", "cuda")
 
 #: DataLoader process count. Kept at zero: the encoder holds a Rust tokenizer
 #: whose copy-per-epoch cost dwarfs the cost of building a batch, and a single
@@ -262,6 +264,9 @@ class TrainConfig:
             mistaken for a full-split result.
         full_report_split: Whether the reported numbers cover the whole split.
             ``False`` only for the smoke run, and stated in its report.
+        training_device: Device the checkpoint was trained on, recorded from the
+            training report when a different machine evaluates it. ``None`` means
+            the run trained and evaluated on ``device``.
     """
 
     architecture: str
@@ -281,6 +286,7 @@ class TrainConfig:
     resume: bool = False
     val_subset: int | None = None
     full_report_split: bool = True
+    training_device: str | None = None
 
 
 @dataclass(frozen=True)
@@ -886,21 +892,6 @@ def evaluate_saved_model(
     return evaluate_predictions(predictions, split=split)
 
 
-def report_stem(architecture: str, split: str) -> str:
-    """Name the evaluation report for one architecture and split.
-
-    Args:
-        architecture: ``"transformer"`` or ``"rnn"``.
-        split: ``"val"`` or ``"test"``.
-
-    Returns:
-        A file stem such as ``sentiment_transformer_val`` (``_final`` for the
-        test split, matching the ``--final`` flag).
-    """
-    suffix = "final" if split == SPLIT_TEST else split
-    return f"sentiment_{architecture}_{suffix}"
-
-
 def build_report_payload(
     *,
     outcome: TrainingOutcome,
@@ -921,6 +912,8 @@ def build_report_payload(
     Returns:
         Plain-Python, JSON-serialisable payload with every computed number.
     """
+    evaluation_device = settings.device.type
+    training_device = settings.training_device or evaluation_device
     return {
         "model": {
             "architecture": settings.architecture,
@@ -929,7 +922,9 @@ def build_report_payload(
             "class_weights": list(outcome.class_weights),
             "parameters": outcome.parameters,
             "max_length_tokens": settings.max_length,
-            "device": settings.device.type,
+            # Kept for report compatibility: the device this evaluation ran on.
+            # Training facts live under ``training.device``.
+            "device": evaluation_device,
         },
         "training": {
             "seed": settings.seed,
@@ -948,7 +943,13 @@ def build_report_payload(
             "full_report_split": settings.full_report_split,
             "train_rows": train_rows,
             "elapsed_seconds": outcome.elapsed_seconds,
+            "device": training_device,
             "history": [record.to_dict() for record in outcome.history],
+        },
+        "evaluation": {
+            "split": evaluation.split,
+            "device": evaluation_device,
+            "rows": evaluation.rows,
         },
         "split": evaluation.split,
         "evaluated_rows": evaluation.rows,
@@ -981,56 +982,42 @@ def build_report_markdown(
     Returns:
         Markdown lines.
     """
-    subset_note = (
-        "full validation split"
-        if settings.val_subset is None
-        else f"stratified subset of {settings.val_subset:,} rows"
+    training = TrainingFacts(
+        architecture=settings.architecture,
+        class_weighting=settings.class_weighting,
+        class_weights=tuple(float(weight) for weight in outcome.class_weights),
+        parameters=outcome.parameters,
+        train_rows=train_rows,
+        selection_rows=selection_rows,
+        val_subset=settings.val_subset,
+        best_epoch=outcome.best_epoch,
+        epochs_run=outcome.epochs_run,
+        selection_metric="macro_f1",
+        elapsed_seconds=outcome.elapsed_seconds,
+        device=settings.training_device or settings.device.type,
+        history=tuple(
+            EpochHistoryRow(
+                epoch=record.epoch,
+                train_loss=record.train_loss,
+                val_macro_f1=record.val_macro_f1,
+                val_accuracy=record.val_accuracy,
+                seconds=record.seconds,
+                rows_per_second=record.rows_per_second,
+                improved=record.improved,
+            )
+            for record in outcome.history
+        ),
     )
-    report_note = (
-        f"the full {evaluation.split} split"
-        if settings.full_report_split
-        else "smoke slice, not the full split"
+    facts = EvaluationFacts(
+        split=evaluation.split,
+        device=settings.device.type,
+        rows=evaluation.rows,
+        full_split=settings.full_report_split,
+        metrics=evaluation.metrics,
+        calibration_hard=evaluation.calibration_hard,
+        calibration_soft=evaluation.calibration_soft,
     )
-    lines = [
-        f"# Sentiment model report - {settings.architecture} ({evaluation.split})",
-        "",
-        "Labels are **weak supervision from star ratings** (1-2 negative, 3 neutral, "
-        "4-5 positive); every number below measures agreement with that proxy.",
-        "",
-        f"- Trainable parameters: {outcome.parameters:,}",
-        f"- Class weighting: {settings.class_weighting} "
-        f"(weights {', '.join(f'{weight:.4f}' for weight in outcome.class_weights)})",
-        f"- Training rows: {train_rows:,}",
-        f"- Per-epoch selection: {subset_note} ({selection_rows:,} rows), "
-        f"metric macro-F1, best epoch {outcome.best_epoch} of {outcome.epochs_run}",
-        f"- Reported rows: {evaluation.rows:,} ({report_note})",
-        f"- Training wall clock: {outcome.elapsed_seconds:,.1f}s on {settings.device.type}",
-        "",
-        "## Epoch history",
-        "",
-        "| Epoch | Train loss | Selection macro-F1 | Accuracy | Seconds | Rows/s | Best |",
-        "|---:|---:|---:|---:|---:|---:|:---:|",
-    ]
-    for record in outcome.history:
-        lines.append(
-            f"| {record.epoch} | {record.train_loss:.4f} | {record.val_macro_f1:.4f} | "
-            f"{record.val_accuracy:.4f} | {record.seconds:.1f} | "
-            f"{record.rows_per_second:,.0f} | {'yes' if record.improved else ''} |"
-        )
-    lines.append("")
-    lines.extend(render_metrics_table("Three-class metrics", evaluation.metrics))
-    lines.extend(render_confusion_and_scores(evaluation.metrics))
-    lines.extend(
-        render_calibration_table(
-            "Product calibration - hard predictions", evaluation.calibration_hard
-        )
-    )
-    lines.extend(
-        render_calibration_table(
-            "Product calibration - mean negative probability", evaluation.calibration_soft
-        )
-    )
-    return lines
+    return render_report_markdown(training=training, evaluation=facts)
 
 
 def write_reports(

@@ -6,8 +6,11 @@ Labels are **weak supervision from star ratings** (1-2 negative, 3 neutral, 4-5 
 - Class weighting: sqrt_inverse (weights 1.6222, 2.6143, 0.6358)
 - Training rows: 72,052
 - Per-epoch selection: full validation split (62,768 rows), metric macro-F1, best epoch 3 of 3
-- Reported rows: 59,525 (the full test split)
-- Training wall clock: 93.1s on cpu
+- Training device: cuda
+- Training wall clock: 93.1s
+- Evaluated on: cpu
+- Evaluation split: test
+- Evaluated rows: 59,525 (the full test split)
 
 ## Epoch history
 
