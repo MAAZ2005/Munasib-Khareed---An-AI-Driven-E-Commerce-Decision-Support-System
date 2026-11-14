@@ -161,11 +161,170 @@ review_intel:
       # Rows per resumable chunk; completed chunks survive a Colab disconnect.
       chunk_rows: 25000
 
-  # Aspect-based attribute extraction
+  # Aspect-based attribute extraction (see docs/aspects.md)
   aspects:
+    # spaCy noun-chunk extractor. The extractor needs the tagger, parser,
+    # attribute ruler and lemmatizer; only NER is disabled (never used).
     spacy_model: "en_core_web_sm"
-    min_aspect_frequency: 3
+    spacy_disable_components: ["ner"]
+    n_process: 1
+    batch_size: 128
+    # Longest review prefix handed to spaCy; the rest is not analysed.
+    max_text_chars: 5000
+    # Shortest lemma (characters) that may enter an aspect phrase.
+    min_token_chars: 2
+    # Maximum nominal words in an aspect phrase (1 or 2).
+    max_aspect_tokens: 2
+    # Generic nouns that are never aspects. Person words, review-meta words and
+    # vague nouns are excluded; service aspects (delivery, shipping, seller,
+    # packaging, box) are deliberately kept.
+    generic_nouns:
+      - "adult"
+      - "advise"
+      - "amazon"
+      - "anyone"
+      - "anything"
+      - "baby"
+      - "bit"
+      - "bits"
+      - "boss"
+      - "boyfriend"
+      - "brother"
+      - "buy"
+      - "buyer"
+      - "buyers"
+      - "buying"
+      - "child"
+      - "claim"
+      - "co"
+      - "customer"
+      - "customers"
+      - "dad"
+      - "dads"
+      - "daughter"
+      - "daughters"
+      - "day"
+      - "days"
+      - "dec"
+      - "describe"
+      - "described"
+      - "description"
+      - "everyone"
+      - "everything"
+      - "families"
+      - "family"
+      - "father"
+      - "feb"
+      - "feedback"
+      - "fiance"
+      - "following"
+      - "friend"
+      - "friends"
+      - "girlfriend"
+      - "husband"
+      - "husbands"
+      - "issue"
+      - "issues"
+      - "item"
+      - "items"
+      - "jan"
+      - "kid"
+      - "kind"
+      - "kinds"
+      - "listing"
+      - "lot"
+      - "lots"
+      - "may"
+      - "mine"
+      - "mom"
+      - "moms"
+      - "money"
+      - "month"
+      - "months"
+      - "mother"
+      - "neighbor"
+      - "none"
+      - "nothing"
+      - "nov"
+      - "one"
+      - "ones"
+      - "order"
+      - "orders"
+      - "other"
+      - "owner"
+      - "people"
+      - "person"
+      - "persons"
+      - "phillip"
+      - "place"
+      - "places"
+      - "poster"
+      - "product"
+      - "products"
+      - "purchase"
+      - "purchaser"
+      - "purchases"
+      - "rating"
+      - "ratings"
+      - "recommend"
+      - "review"
+      - "reviewer"
+      - "reviews"
+      - "roommate"
+      - "sister"
+      - "someone"
+      - "something"
+      - "son"
+      - "sons"
+      - "sort"
+      - "sorts"
+      - "star"
+      - "stars"
+      - "stuff"
+      - "teenager"
+      - "thank"
+      - "thing"
+      - "things"
+      - "time"
+      - "times"
+      - "user"
+      - "way"
+      - "ways"
+      - "week"
+      - "weeks"
+      - "wife"
+      - "wives"
+      - "woman"
+      - "year"
+      - "years"
+
+    # Category-level vocabulary: an aspect must appear in at least this many
+    # REVIEWS (not occurrences) before the aggregation stage may use it.
+    min_review_count: 50
     top_k_aspects: 10
+    vocabulary_path: "data/interim/aspect_vocabulary.parquet"
+    vocabulary_csv_path: "reports/aspect_vocabulary.csv"
+
+    # Cached candidate extraction and per-review output.
+    review_aspects_path: "data/interim/review_aspects.parquet"
+    candidate_parts_dir: "data/interim/aspect_candidates.parts"
+    chunk_rows: 10000
+    speed_sample_size: 2000
+
+    # Product aggregation thresholds (all four pain-point conditions must hold).
+    min_mentions: 5
+    lift_smoothing: 5.0
+    pain_point_min_lift: 1.5
+    pain_point_min_negative_mentions: 3
+    pain_point_min_negative_share: 0.25
+    strength_min_positive_share: 0.75
+    strength_max_negative_lift: 0.75
+    max_examples: 3
+    example_max_chars: 240
+
+    # Manual audit sample (long format, blank annotations until a human fills it).
+    audit_sample_size: 100
+    audit_sample_path: "reports/aspect_audit_sample.csv"
 
   # Evidence-strength indicators
   evidence:

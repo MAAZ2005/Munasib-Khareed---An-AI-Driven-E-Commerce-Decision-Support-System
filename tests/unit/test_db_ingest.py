@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -25,8 +26,13 @@ from munasib.core.constants import (
     SENTIMENT_LABEL_POSITIVE,
 )
 from munasib.core.exceptions import DataError
-from munasib.db.models import Product, Review
-from munasib.db.session import create_engine_from_settings, init_db
+from munasib.db.models import Product, ProductAspect, Review
+from munasib.db.session import (
+    create_engine_from_settings,
+    create_session_factory,
+    init_db,
+    session_scope,
+)
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "ingest_db.py"
 
@@ -232,6 +238,7 @@ def _counts(db_path: Path) -> dict[str, int]:
                     "related_products",
                     "review_features",
                     "product_features",
+                    "product_aspects",
                     "analysis_results",
                 )
             }
@@ -302,6 +309,7 @@ def test_ingest_loads_every_table(workspace: dict[str, Path]) -> None:
     assert counts["related_products"] == 3
     assert counts["review_features"] == 0  # filled by later prompts
     assert counts["product_features"] == 0
+    assert counts["product_aspects"] == 0
     assert counts["analysis_results"] == 0
 
 
@@ -478,6 +486,54 @@ def test_force_rebuild_keeps_the_cached_flags(workspace: dict[str, Path]) -> Non
     drifted.to_parquet(workspace["processed"] / "products.parquet", index=False)
     assert module.main(["--config", str(workspace["config"])]) == 0
     assert _flags(workspace["db"])["B000000003"] is True
+
+
+def test_reload_warns_before_deleting_product_aspects(
+    workspace: dict[str, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A cache reload names the aspect recompute commands before deleting rows."""
+    module = _load_module()
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    engine = create_engine_from_settings(db_url=f"sqlite:///{workspace['db']}")
+    try:
+        with session_scope(create_session_factory(engine)) as session:
+            session.add(
+                ProductAspect(
+                    asin="B000000001",
+                    aspect="filter",
+                    mention_count=5,
+                    negative_count=3,
+                    neutral_count=1,
+                    positive_count=1,
+                    negative_share=0.6,
+                    neutral_share=0.2,
+                    positive_share=0.2,
+                    net_sentiment=-0.4,
+                    product_labeled_reviews=10,
+                    product_negative_share=0.3,
+                    negativity_lift=1.8,
+                    classification="pain_point",
+                    examples=["bad filter"],
+                    computed_at=datetime(2018, 1, 1),
+                )
+            )
+    finally:
+        engine.dispose()
+    # Force the reload path by changing the stored split distribution.
+    engine = create_engine_from_settings(db_url=f"sqlite:///{workspace['db']}")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "UPDATE products SET split='test' WHERE asin='B000000001'"
+            )
+    finally:
+        engine.dispose()
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    output = capsys.readouterr().out
+    assert "product_aspects will be deleted" in output
+    assert "compute_aspects.py --reviews" in output
+    assert "compute_aspects.py --aggregate" in output
+    assert _counts(workspace["db"])["product_aspects"] == 0
 
 
 def test_verify_fails_when_a_flagged_file_disappeared(workspace: dict[str, Path]) -> None:

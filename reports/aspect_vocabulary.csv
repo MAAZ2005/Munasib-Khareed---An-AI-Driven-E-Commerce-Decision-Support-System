@@ -1,0 +1,2704 @@
+rank,aspect,review_count,product_count
+1,price,45242,2026
+2,filter,42179,796
+3,water,35750,1243
+4,part,27980,1795
+5,work,23459,1982
+6,problem,20994,1933
+7,replacement,18989,1822
+8,dryer,17773,554
+9,fit,16554,1737
+10,fridge,13600,801
+11,washer,13019,705
+12,ice,12814,548
+13,quality,11891,1793
+14,job,11070,1741
+15,refrigerator,11023,804
+16,unit,10635,1428
+17,minute,10155,1390
+18,shipping,9388,1769
+19,machine,9081,872
+20,dishwasher,7701,368
+21,stove,7298,365
+22,ice maker,7287,398
+23,delivery,7253,1592
+24,instruction,7153,1218
+25,installation,7089,1287
+26,brand,6601,1263
+27,clothe,6483,458
+28,use,6371,1411
+29,size,6301,1210
+30,cost,6128,1386
+31,side,6070,1312
+32,service,5945,1475
+33,water filter,5635,435
+34,piece,5601,1390
+35,taste,5482,420
+36,door,5314,963
+37,hour,5129,1009
+38,house,5084,1152
+39,humidifier,4981,169
+40,model,4973,1383
+41,box,4842,1163
+42,leak,4842,655
+43,install,4669,1105
+44,store,4623,1130
+45,freezer,4579,369
+46,difference,4551,1100
+47,load,4545,565
+48,top,4423,1148
+49,couple,4421,1290
+50,value,4375,1099
+51,washing machine,4216,378
+52,deal,4090,1248
+53,oem,4056,1017
+54,seller,4050,1299
+55,bottom,3728,965
+56,company,3712,1104
+57,kitchen,3670,643
+58,room,3623,685
+59,plastic,3481,979
+60,ge,3457,369
+61,video,3429,723
+62,kit,3426,360
+63,replacement part,3419,1043
+64,hose,3346,374
+65,noise,3343,653
+66,hand,3298,1042
+67,light,3261,553
+68,air,3260,733
+69,screw,3254,772
+70,repair,3242,832
+71,complaint,3237,1100
+72,space,3192,656
+73,replacement filter,3177,486
+74,hole,3127,861
+75,pack,3115,606
+76,fan,3093,461
+77,reason,3090,1157
+78,whirlpool,3068,640
+79,amount,3025,909
+80,end,3023,1052
+81,home,2995,925
+82,charm,2962,1057
+83,set,2943,809
+84,line,2922,989
+85,picture,2903,1073
+86,vent,2888,307
+87,manufacturer,2876,1092
+88,samsung,2842,188
+89,design,2841,925
+90,lint,2820,261
+91,case,2816,1083
+92,gallon,2787,482
+93,temperature,2744,395
+94,fix,2736,848
+95,back,2735,910
+96,direction,2651,825
+97,burner,2556,233
+98,oven,2533,233
+99,range,2490,463
+100,need,2488,986
+101,original,2481,907
+102,bag,2429,462
+103,laundry,2423,356
+104,package,2421,1016
+105,sears,2397,682
+106,life,2355,946
+107,knob,2354,219
+108,floor,2347,641
+109,youtube,2298,581
+110,cycle,2248,557
+111,appliance,2239,869
+112,humidity,2237,186
+113,fact,2233,923
+114,hood,2223,122
+115,motor,2211,464
+116,pump,2179,265
+117,warranty,2175,537
+118,color,2132,612
+119,heat,2122,563
+120,wall,2115,542
+121,youtube video,2068,526
+122,apartment,2059,311
+123,food,2051,435
+124,counter,2050,280
+125,dish,2045,216
+126,degree,2019,404
+127,match,1980,876
+128,basket,1958,211
+129,number,1944,861
+130,option,1942,831
+131,condition,1929,875
+132,idea,1927,796
+133,rack,1920,232
+134,sink,1917,308
+135,dollar,1907,865
+136,while,1902,867
+137,ice cube,1895,331
+138,packaging,1894,838
+139,switch,1893,374
+140,fraction,1861,649
+141,wire,1858,533
+142,area,1856,768
+143,element,1848,302
+144,samsung filter,1845,68
+145,cover,1841,574
+146,kenmore,1841,592
+147,point,1827,837
+148,shelf,1802,410
+149,water flow,1801,363
+150,glass,1800,536
+151,tool,1799,551
+152,pan,1795,236
+153,experience,1757,849
+154,front,1747,670
+155,metal,1738,657
+156,ge filter,1727,83
+157,temp,1717,270
+158,result,1715,730
+159,water taste,1715,288
+160,hair,1707,156
+161,handle,1707,261
+162,oem filter,1698,331
+163,home depot,1689,590
+164,trouble,1676,813
+165,brand filter,1666,323
+166,lg,1665,242
+167,type,1659,829
+168,name brand,1652,396
+169,waste,1643,685
+170,look,1623,573
+171,part number,1615,704
+172,belt,1601,159
+173,buck,1596,740
+174,cube,1587,181
+175,samsung refrigerator,1558,110
+176,smell,1551,546
+177,half,1543,705
+178,setting,1542,382
+179,material,1540,678
+180,icemaker,1527,223
+181,oem part,1505,627
+182,flow,1503,399
+183,future,1496,710
+184,min,1491,622
+185,junk,1477,643
+186,seal,1475,488
+187,research,1458,708
+188,shape,1451,724
+189,solution,1439,612
+190,wash,1420,304
+191,wheel,1406,205
+192,update,1404,647
+193,chance,1399,741
+194,expectation,1390,721
+195,range hood,1381,95
+196,alternative,1380,565
+197,ton,1366,632
+198,trick,1353,729
+199,maytag,1344,343
+200,drip pan,1342,91
+201,drink,1340,170
+202,heating element,1337,282
+203,dryer vent,1335,104
+204,refund,1332,650
+205,inch,1328,583
+206,system,1322,561
+207,repairman,1319,536
+208,help,1305,636
+209,tray,1300,353
+210,second,1293,562
+211,foot,1281,310
+212,valve,1281,245
+213,connection,1273,536
+214,length,1273,438
+215,device,1265,401
+216,sensor,1259,272
+217,purpose,1255,593
+218,process,1246,628
+219,pair,1239,436
+220,spin cycle,1237,159
+221,damage,1235,552
+222,gap,1235,249
+223,fuse,1229,150
+224,edge,1228,522
+225,version,1217,586
+226,dent,1203,194
+227,brush,1191,51
+228,towel,1186,255
+229,ring,1178,393
+230,winter,1174,281
+231,model number,1171,635
+232,power,1171,448
+233,vendor,1168,636
+234,performance,1164,592
+235,beer,1158,116
+236,drain,1153,267
+237,plug,1145,448
+238,pressure,1144,431
+239,business,1138,643
+240,past,1136,518
+241,inside,1133,580
+242,cabinet,1128,328
+243,thermostat,1125,205
+244,lid,1122,254
+245,factory,1114,641
+246,tap water,1114,303
+247,bottle,1112,232
+248,photo,1111,661
+249,function,1107,660
+250,tube,1093,470
+251,plenty,1084,505
+252,choice,1079,605
+253,spot,1078,568
+254,water dispenser,1076,277
+255,box store,1068,431
+256,service call,1044,455
+257,try,1044,561
+258,corner,1043,401
+259,site,1042,606
+260,connector,1040,423
+261,tub,1040,255
+262,battery,1039,82
+263,hardware store,1038,493
+264,lowe,1036,428
+265,samsung fridge,1034,95
+266,pain,1032,560
+267,course,1025,587
+268,frig,1023,408
+269,great,1021,628
+270,guy,1014,567
+271,button,1013,374
+272,panel,1007,454
+273,magnet,1003,116
+274,manual,999,421
+275,bracket,992,287
+276,odor,991,403
+277,laundromat,988,127
+278,return,987,522
+279,thermometer,983,122
+280,level,979,432
+281,washing,978,288
+282,change,977,513
+283,mess,969,450
+284,water pressure,967,278
+285,bulb,965,122
+286,shipment,960,595
+287,disposal,952,47
+288,cup,949,373
+289,screen,947,245
+290,sound,944,416
+291,name,943,462
+292,gift,942,274
+293,coil,940,248
+294,weight,940,432
+295,hassle,933,527
+296,manner,933,575
+297,step,930,465
+298,saving,928,434
+299,cleaning,927,363
+300,feature,925,387
+301,love,921,428
+302,fine,916,575
+303,mind,912,461
+304,luck,905,544
+305,duct,892,149
+306,bucket,890,204
+307,clip,879,341
+308,rest,876,513
+309,steel,875,293
+310,champ,871,492
+311,drum,869,256
+312,water line,866,311
+313,tip,863,464
+314,faucet,849,190
+315,timer,846,265
+316,bin,844,211
+317,frigidaire,843,221
+318,cord,837,181
+319,tap,837,268
+320,opinion,833,510
+321,addition,832,448
+322,night,826,371
+323,china,816,417
+324,internet,816,460
+325,batch,815,261
+326,word,814,516
+327,ge refrigerator,813,104
+328,care,811,477
+329,fault,809,544
+330,good,806,530
+331,detergent,805,140
+332,note,804,517
+333,speed,801,284
+334,website,801,505
+335,operation,792,475
+336,finish,787,386
+337,garbage,784,407
+338,control,782,361
+339,middle,779,418
+340,outside,777,344
+341,opening,772,401
+342,ease,769,466
+343,reading,768,159
+344,information,765,483
+345,spin dryer,763,43
+346,mistake,762,468
+347,spring,756,227
+348,date,755,459
+349,stove top,755,175
+350,dispenser,754,269
+351,garage,754,276
+352,cap,749,233
+353,surface,749,350
+354,comment,745,469
+355,glove,745,482
+356,spin,744,137
+357,repair man,741,383
+358,adapter,739,210
+359,display,738,184
+360,position,738,440
+361,prime,738,468
+362,soap,737,188
+363,lg refrigerator,731,124
+364,perfect,731,524
+365,effort,728,450
+366,bunch,724,477
+367,liner,719,62
+368,pot,717,201
+369,mold,716,259
+370,run,715,381
+371,breeze,711,420
+372,compressor,707,133
+373,drill,707,98
+374,shirt,707,92
+375,assembly,706,341
+376,bearing,705,146
+377,ice machine,705,142
+378,question,700,443
+379,tank,700,185
+380,basement,696,282
+381,jean,696,91
+382,maker,695,237
+383,spinner,695,49
+384,trip,691,314
+385,tape,690,306
+386,quieter,688,272
+387,clothing,687,131
+388,brand name,684,311
+389,water quality,681,216
+390,lowes,680,310
+391,supplier,679,446
+392,tab,679,359
+393,improvement,678,399
+394,agitator,677,65
+395,summer,677,275
+396,ice tray,676,166
+397,error,675,350
+398,pipe,674,224
+399,chlorine,668,217
+400,roller,667,93
+401,ge fridge,664,111
+402,start,663,404
+403,arm,658,265
+404,dust,654,289
+405,stock,654,438
+406,office,653,159
+407,hundred,651,357
+408,equipment,642,428
+409,market,640,395
+410,gasket,639,229
+411,cartridge,637,220
+412,drawer,634,252
+413,grease,633,195
+414,plate,633,263
+415,cooler,632,110
+416,party,627,198
+417,email,626,327
+418,appliance store,623,420
+419,concern,623,398
+420,pad,623,144
+421,rv,623,144
+422,slot,612,358
+423,finger,607,392
+424,sense,607,404
+425,sheet,607,179
+426,rubber,605,220
+427,screwdriver,602,321
+428,silverware,602,57
+429,right,599,411
+430,bill,597,359
+431,hope,597,406
+432,dog,596,195
+433,response,595,388
+434,rod,595,57
+435,clamp,594,159
+436,drip,594,249
+437,support,593,348
+438,crap,586,368
+439,awesome,585,446
+440,location,584,347
+441,window,584,245
+442,style,583,331
+443,beverage,579,99
+444,ge brand,574,83
+445,gas,572,219
+446,label,570,314
+447,wash cycle,570,178
+448,construction,566,364
+449,crack,566,270
+450,base,564,302
+451,outlet,564,265
+452,frame,563,312
+453,section,563,284
+454,us,562,342
+455,fire,559,254
+456,working,554,355
+457,con,551,308
+458,capacity,550,228
+459,board,549,196
+460,shaft,546,201
+461,spare,544,346
+462,attention,541,385
+463,cooktop,540,118
+464,eye,540,316
+465,advice,539,349
+466,source,538,382
+467,head,534,293
+468,application,533,353
+469,diameter,532,279
+470,period,531,341
+471,component,529,325
+472,lg filter,526,90
+473,vibration,524,151
+474,bathroom,523,116
+475,can,523,87
+476,container,523,260
+477,housing,523,308
+478,alot,522,351
+479,drain hose,522,111
+480,sock,520,117
+481,matter,518,368
+482,rinse,517,156
+483,center,516,317
+484,wiring,516,248
+485,plier,513,275
+486,dimension,510,340
+487,bar,508,169
+488,compactor,508,12
+489,drop,508,322
+490,ship,507,386
+491,kenmore refrigerator,506,196
+492,lint trap,506,108
+493,easy,505,334
+494,usa,505,246
+495,failure,504,351
+496,keg,504,16
+497,pricing,504,315
+498,thought,503,357
+499,fitting,500,256
+500,leaking,491,250
+501,mat,489,107
+502,surprise,489,357
+503,test,487,339
+504,moisture,485,214
+505,trash,481,273
+506,soda,477,135
+507,bargain,475,333
+508,sale,474,302
+509,kitchenaid,472,160
+510,oem replacement,469,312
+511,mail,468,323
+512,spill,467,103
+513,part store,466,277
+514,investment,463,253
+515,strip,463,152
+516,situation,461,288
+517,setup,460,228
+518,town,458,305
+519,samsung brand,456,61
+520,duty,455,261
+521,plus,450,314
+522,modification,449,273
+523,man,447,283
+524,usage,446,304
+525,countertop,445,123
+526,microwave,445,140
+527,pro,445,287
+528,touch,445,254
+529,latch,444,112
+530,snap,444,306
+531,kenmore dryer,441,128
+532,info,440,313
+533,chemical,438,212
+534,morning,436,221
+535,access,434,291
+536,difficulty,433,325
+537,sticker,433,240
+538,kegerator,432,28
+539,water supply,432,226
+540,adjustment,431,242
+541,garbage disposal,431,36
+542,lint filter,431,101
+543,cloth,430,203
+544,drinking water,429,190
+545,labor,428,257
+546,whirlpool refrigerator,428,138
+547,ability,427,306
+548,rust,426,128
+549,christmas,425,208
+550,wick,425,68
+551,sign,423,298
+552,contact,422,302
+553,flow rate,422,176
+554,charcoal,420,189
+555,factory filter,418,190
+556,installation instruction,418,268
+557,arrival,417,291
+558,discount,416,247
+559,lg fridge,416,98
+560,camper,414,195
+561,turn,413,232
+562,error code,412,117
+563,whirlpool dryer,412,118
+564,height,411,223
+565,search,411,320
+566,suggestion,410,273
+567,shop,409,210
+568,dealer,406,274
+569,mwf filter,405,39
+570,clean,404,175
+571,filter replacement,404,210
+572,lack,403,311
+573,gas dryer,400,130
+574,factory part,397,273
+575,cooking,395,187
+576,counter top,395,109
+577,appearance,394,272
+578,folk,394,293
+579,rate,392,290
+580,force,391,261
+581,call,390,269
+582,glue,389,174
+583,manufacture,389,283
+584,transaction,389,293
+585,igniter,388,42
+586,project,388,260
+587,walmart,388,194
+588,measurement,387,231
+589,removal,387,258
+590,scratch,387,188
+591,dish washer,386,157
+592,wiring harness,386,98
+593,attempt,385,273
+594,phone,385,235
+595,splash guard,384,21
+596,beginning,383,255
+597,chlorine taste,383,159
+598,wish,383,279
+599,energy,381,190
+600,kenmore fridge,379,184
+601,post,379,280
+602,season,378,124
+603,whirlpool part,378,198
+604,angle,377,240
+605,hardware,377,251
+606,spec,376,278
+607,lol,374,278
+608,bolt,373,191
+609,household,373,234
+610,lint screen,373,64
+611,washer dryer,371,133
+612,accuracy,370,63
+613,bonus,370,269
+614,filter light,370,140
+615,particle,370,208
+616,crumb,368,42
+617,retailer,368,259
+618,decision,367,258
+619,world,367,284
+620,electricity,366,186
+621,exchange,366,217
+622,paper,366,191
+623,extension,365,108
+624,law,365,261
+625,air filter,363,103
+626,refrigerator filter,363,161
+627,detail,362,279
+628,leg,362,223
+629,mark,362,269
+630,broan,361,60
+631,dirt,361,217
+632,technician,361,240
+633,rinse cycle,360,113
+634,track,360,180
+635,leakage,359,211
+636,ref,359,266
+637,face,358,184
+638,improvement store,358,213
+639,drain pump,357,95
+640,name filter,357,187
+641,longevity,354,258
+642,lighting,353,92
+643,our,353,270
+644,smoke,353,126
+645,bedroom,352,146
+646,downside,352,247
+647,cause,349,260
+648,self,347,257
+649,term,347,253
+650,control panel,346,193
+651,lock,346,131
+652,meter,346,130
+653,wine,346,68
+654,socket,345,211
+655,kenmore elite,344,156
+656,answer,343,271
+657,convenience,342,202
+658,thread,341,194
+659,drier,340,175
+660,plumber,340,188
+661,volume,340,162
+662,price point,338,246
+663,warning,338,229
+664,weather,337,152
+665,kenmore filter,336,95
+666,cat,335,160
+667,quarter,335,199
+668,storage,335,175
+669,basis,334,236
+670,schedule,334,264
+671,supply,333,229
+672,shame,331,236
+673,cable,330,143
+674,silverware basket,330,38
+675,water valve,330,130
+676,oil,329,197
+677,stovetop,329,118
+678,expense,327,244
+679,car,326,178
+680,filtration,326,163
+681,link,326,230
+682,vinegar,325,156
+683,control board,324,114
+684,insert,324,206
+685,page,324,260
+686,recommendation,324,234
+687,key,323,134
+688,exhaust,322,134
+689,story,322,256
+690,body,321,197
+691,grate,321,112
+692,humidity level,321,73
+693,trickle,321,133
+694,bowl,320,146
+695,whirlpool washer,320,108
+696,pitcher,319,146
+697,flavor,318,160
+698,shot,317,240
+699,stain,317,122
+700,bathtub,316,39
+701,reservoir,316,100
+702,fun,315,168
+703,notch,315,195
+704,substitute,314,210
+705,total,314,226
+706,tube video,313,184
+707,heater,312,153
+708,load washer,312,110
+709,pic,312,245
+710,web,312,223
+711,attachment,311,153
+712,nut,311,169
+713,water level,311,110
+714,worth,311,193
+715,balance,310,115
+716,lesson,310,253
+717,maintenance,310,213
+718,comparison,309,226
+719,heating,309,162
+720,it,309,236
+721,tubing,309,138
+722,worked,306,253
+723,yay,306,250
+724,panda,305,35
+725,consumer,304,227
+726,dial,304,126
+727,layer,303,178
+728,risk,303,235
+729,carbon,302,175
+730,code,302,143
+731,fashion,302,253
+732,paint,301,141
+733,residue,301,200
+734,gas range,300,107
+735,june,300,196
+736,march,299,204
+737,off,299,199
+738,standard,299,204
+739,task,299,226
+740,blade,298,120
+741,moment,298,226
+742,super,296,231
+743,tear,296,173
+744,favor,295,231
+745,god,295,243
+746,charge,294,210
+747,disappointment,294,227
+748,debris,293,174
+749,design flaw,293,182
+750,kenmore washer,293,114
+751,loader,293,117
+752,closet,291,131
+753,hook,291,161
+754,pulley,291,66
+755,city water,290,154
+756,silicone,290,70
+757,white,290,149
+758,july,289,203
+759,repair guy,289,204
+760,water pump,289,121
+761,coating,288,128
+762,sear,288,190
+763,doubt,287,236
+764,stick,287,179
+765,duct tape,286,109
+766,mineral,286,150
+767,diy,285,200
+768,ok,285,227
+769,age,284,214
+770,hubby,284,220
+771,nsf,283,123
+772,whirlpool fridge,282,115
+773,durability,281,215
+774,seam,281,141
+775,aluminum,280,143
+776,block,280,190
+777,left,280,219
+778,peace,280,159
+779,portion,280,219
+780,roof,280,79
+781,stopper,280,35
+782,tech,280,197
+783,wrench,280,131
+784,black,279,119
+785,contractor,279,133
+786,door refrigerator,279,134
+787,lead,279,178
+788,compartment,278,149
+789,flap,278,103
+790,joke,277,184
+791,contaminant,276,133
+792,ignitor,276,33
+793,example,274,207
+794,hinge,274,108
+795,screw driver,274,191
+796,best,273,172
+797,boy,273,197
+798,rear,273,192
+799,camping,272,69
+800,kitchenaid dishwasher,272,52
+801,skin,272,86
+802,hygrometer,271,39
+803,underwear,271,56
+804,bed,270,166
+805,wear,270,204
+806,defect,269,213
+807,prong,269,144
+808,dream,268,208
+809,lg washer,268,50
+810,power cord,268,131
+811,weekend,268,195
+812,knife,267,111
+813,today,267,212
+814,adhesive,266,62
+815,knock off,266,136
+816,maytag dryer,266,78
+817,functionality,264,205
+818,parent,264,197
+819,pound,264,117
+820,yr,264,187
+821,refrigerator door,263,118
+822,april,262,193
+823,gas stove,262,103
+824,vent pipe,262,64
+825,wood,262,157
+826,confidence,261,212
+827,goodness,261,219
+828,regulator,261,31
+829,baffle,260,38
+830,return policy,260,195
+831,break,259,200
+832,filtering,259,142
+833,thumb,259,214
+834,water bottle,259,130
+835,beat,258,209
+836,blanket,258,76
+837,looking,257,166
+838,web site,256,207
+839,kitchen sink,255,100
+840,air flow,254,123
+841,bend,254,110
+842,pur filter,254,47
+843,dry,253,110
+844,flaw,253,195
+845,refrig,253,170
+846,shower,253,83
+847,cook,252,109
+848,ice bin,252,103
+849,indicator,252,161
+850,lip,251,161
+851,worry,251,197
+852,quality part,250,176
+853,pin,249,172
+854,success,249,199
+855,upgrade,249,155
+856,form,248,208
+857,honeywell,248,41
+858,quality filter,248,152
+859,backup,247,196
+860,table,247,114
+861,ad,246,204
+862,ground,246,162
+863,fridge filter,245,117
+864,january,245,182
+865,headache,244,198
+866,method,244,179
+867,ceiling,243,99
+868,dryer duct,243,31
+869,list,243,207
+870,mechanism,243,162
+871,action,242,189
+872,benefit,242,181
+873,aprilaire,241,17
+874,dp,241,182
+875,harness,241,95
+876,liquid,241,137
+877,compactor bag,240,10
+878,coupler,240,51
+879,humidity reading,239,35
+880,knockoff,239,144
+881,mesh,239,117
+882,solenoid,239,85
+883,bundle,238,191
+884,culprit,238,165
+885,december,238,177
+886,ge stove,238,48
+887,relay,238,65
+888,aftermarket,237,160
+889,clock,237,80
+890,ice bucket,237,83
+891,pant,237,62
+892,drawback,236,178
+893,interior,236,158
+894,patience,236,170
+895,state,236,188
+896,lid switch,235,31
+897,rubber hose,235,45
+898,danby,233,24
+899,frustration,233,188
+900,toy,233,79
+901,august,232,169
+902,fabric,232,103
+903,gauge,232,118
+904,steam,232,110
+905,burner cover,231,25
+906,dishwasher rack,231,39
+907,hair dryer,231,60
+908,protection,231,166
+909,go,230,176
+910,knock,230,149
+911,trash compactor,230,18
+912,mount,229,156
+913,sediment,229,135
+914,kenmore dishwasher,228,68
+915,cube tray,227,74
+916,holder,227,172
+917,must,227,166
+918,refridgerator,227,149
+919,distance,226,138
+920,challenge,225,177
+921,humidifier filter,225,72
+922,image,225,175
+923,quantity,225,152
+924,tooth,225,98
+925,excellent,224,188
+926,water leak,224,143
+927,guest,223,137
+928,thickness,223,150
+929,venting,223,92
+930,coat,222,59
+931,flame,222,80
+932,re,222,189
+933,effect,221,159
+934,foam,221,103
+935,furnace,221,79
+936,google,220,166
+937,perfect fit,220,193
+938,wonder,220,130
+939,bacteria,219,80
+940,stream,219,133
+941,factory replacement,218,167
+942,hold,217,148
+943,width,217,156
+944,bristle,216,12
+945,whirlpool dishwasher,216,73
+946,concept,215,133
+947,grill,215,112
+948,inspection,215,178
+949,loss,215,181
+950,maytag refrigerator,215,64
+951,variety,215,169
+952,meat,214,75
+953,fridge door,213,99
+954,led light,213,60
+955,member,213,160
+956,message,213,152
+957,repair shop,213,161
+958,return window,213,150
+959,feeling,212,167
+960,manufacturer filter,212,119
+961,chest freezer,211,46
+962,oem version,211,148
+963,replacement unit,211,130
+964,vent hood,211,77
+965,well,211,164
+966,amana,209,113
+967,bleach,209,116
+968,environment,209,140
+969,installer,209,128
+970,max,209,114
+971,quality control,209,173
+972,utensil,209,73
+973,cake,208,172
+974,trap,208,89
+975,budget,207,158
+976,ft,207,96
+977,ice taste,207,125
+978,led,207,86
+979,lg dryer,207,35
+980,waste king,207,6
+981,alarm,206,84
+982,kitchen aid,206,94
+983,puddle,206,133
+984,play,205,151
+985,snug,205,154
+986,strength,205,145
+987,bubble,204,111
+988,negative,204,162
+989,stand,204,80
+990,caution,203,162
+991,credit,203,170
+992,guard,203,57
+993,november,203,155
+994,repeat,203,148
+995,probe,202,45
+996,bellow,201,16
+997,water system,201,129
+998,bosch,200,62
+999,fabric softener,200,59
+1000,living room,200,120
+1001,brainer,199,163
+1002,circuit board,199,100
+1003,granite,199,27
+1004,ice dispenser,199,97
+1005,twist,199,121
+1006,cut,198,139
+1007,guide,198,143
+1008,igloo,198,34
+1009,jenn air,198,61
+1010,lbs,198,97
+1011,film,197,107
+1012,hose clamp,197,83
+1013,pur,197,44
+1014,safety,197,160
+1015,glad,196,169
+1016,coffee,195,128
+1017,elbow,195,57
+1018,lg brand,195,67
+1019,ducting,194,68
+1020,road,194,138
+1021,hookup,193,107
+1022,resistance,193,136
+1023,series,193,142
+1024,sun,193,76
+1025,exception,192,155
+1026,fahrenheit,192,47
+1027,february,192,141
+1028,fill,192,122
+1029,gadget,192,103
+1030,reference,192,171
+1031,slide,192,118
+1032,suction,192,75
+1033,country,191,147
+1034,refrigerator freezer,191,134
+1035,disposer,190,15
+1036,freezer door,190,84
+1037,condo,189,122
+1038,electrician,189,106
+1039,foil,189,66
+1040,check,188,161
+1041,plan,188,151
+1042,refill,188,113
+1043,round,188,133
+1044,september,188,142
+1045,water hose,188,106
+1046,charcoal filter,187,87
+1047,combination,187,143
+1048,front loader,187,91
+1049,gunk,187,119
+1050,mildew,187,102
+1051,screw hole,187,115
+1052,ups,187,107
+1053,building,186,88
+1054,clothe dryer,186,106
+1055,repair bill,186,144
+1056,replace,186,155
+1057,vacuum,186,62
+1058,zip tie,186,75
+1059,blower,185,76
+1060,dishwasher door,185,48
+1061,regret,185,145
+1062,accessory,184,115
+1063,ebay,184,145
+1064,occasion,184,138
+1065,refrigerator model,184,123
+1066,boot,183,123
+1067,stair,183,82
+1068,wire nut,183,50
+1069,book,182,158
+1070,saver,182,139
+1071,fire hazard,181,89
+1072,lifesaver,181,146
+1073,monday,181,145
+1074,nightmare,181,145
+1075,ge part,180,99
+1076,handyman,180,143
+1077,satisfaction,180,155
+1078,shipper,180,158
+1079,content,179,137
+1080,gear,179,80
+1081,october,179,141
+1082,pop,179,138
+1083,speed queen,179,15
+1084,filter housing,178,101
+1085,groove,178,134
+1086,wonder washer,178,9
+1087,electrolux,177,74
+1088,girl,177,109
+1089,iron,177,84
+1090,kitchen floor,177,108
+1091,maytag washer,177,72
+1092,ding,176,89
+1093,tv,176,117
+1094,whirlpool filter,176,54
+1095,chip,175,76
+1096,city,175,137
+1097,compliment,175,77
+1098,great price,175,148
+1099,heck,175,147
+1100,packing,175,140
+1101,demand,174,87
+1102,fee,174,152
+1103,mean,174,155
+1104,target,174,77
+1105,electronic,173,117
+1106,factor,173,147
+1107,ge range,173,44
+1108,maytag dishwasher,173,41
+1109,repair kit,173,48
+1110,collar,172,83
+1111,reed,172,4
+1112,gap cover,171,13
+1113,hrs,171,122
+1114,loading washer,171,82
+1115,ordering,171,147
+1116,barrel,170,48
+1117,dryer door,170,46
+1118,fortune,170,146
+1119,impeller,170,55
+1120,samsung dryer,170,24
+1121,avail,169,140
+1122,chunk,169,125
+1123,ge dryer,169,59
+1124,honeywell humidifier,169,33
+1125,procedure,169,143
+1126,specification,169,151
+1127,stop,169,142
+1128,swap,169,137
+1129,beverage cooler,168,18
+1130,chrome,168,56
+1131,clockwise,168,81
+1132,cold,168,92
+1133,computer,168,113
+1134,property,168,130
+1135,wow,168,140
+1136,breaker,167,110
+1137,exhaust fan,167,78
+1138,fast shipping,167,148
+1139,health,167,120
+1140,hint,167,139
+1141,insulation,167,118
+1142,joint,167,69
+1143,lemon,167,123
+1144,make,167,152
+1145,mode,167,106
+1146,thinking,167,146
+1147,drinking,166,101
+1148,monitor,166,29
+1149,pocket,166,124
+1150,symptom,166,119
+1151,underside,166,97
+1152,approx,165,135
+1153,filter water,165,96
+1154,guess,165,139
+1155,tax,165,133
+1156,terminal,165,107
+1157,configuration,164,129
+1158,efficiency,164,123
+1159,freezer compartment,164,69
+1160,haier,164,51
+1161,hammer,164,97
+1162,placement,164,136
+1163,tenant,164,126
+1164,cash,163,139
+1165,door fridge,163,103
+1166,replacement knob,163,58
+1167,build,162,124
+1168,desk,162,55
+1169,maytag filter,162,32
+1170,news,162,143
+1171,chemical taste,161,89
+1172,fan motor,161,69
+1173,output,161,122
+1174,plumbing,161,123
+1175,rental,161,115
+1176,spinning,161,67
+1177,bird,160,53
+1178,bulk,160,114
+1179,edgestar,160,27
+1180,generic,160,94
+1181,hurry,160,137
+1182,ice melt,160,50
+1183,letter,160,114
+1184,pile,160,92
+1185,purchasing,160,142
+1186,rip,160,117
+1187,vent hose,160,58
+1188,dryer model,159,97
+1189,fan blade,159,52
+1190,fyi,159,139
+1191,inconvenience,159,135
+1192,insinkerator,159,15
+1193,noise level,159,96
+1194,door switch,158,47
+1195,florida,158,115
+1196,ge model,158,84
+1197,knowledge,158,131
+1198,met,158,134
+1199,opportunity,158,144
+1200,receipt,158,132
+1201,shipping cost,158,140
+1202,delivery date,157,136
+1203,whirlpool stove,157,40
+1204,ge profile,156,83
+1205,move,156,129
+1206,silver,156,91
+1207,spoon,156,61
+1208,tasting,156,93
+1209,advantage,155,138
+1210,bath towel,155,54
+1211,clearance,155,113
+1212,comforter,155,54
+1213,holiday,155,116
+1214,inlet valve,155,62
+1215,really,155,133
+1216,sunday,155,128
+1217,impurity,154,88
+1218,medium,154,103
+1219,record,154,128
+1220,stainless,154,93
+1221,supco,154,56
+1222,title,154,136
+1223,movement,153,110
+1224,room temperature,153,77
+1225,skill,153,125
+1226,stress,153,128
+1227,up,153,126
+1228,wonderwash,153,4
+1229,works,153,131
+1230,find,152,137
+1231,meal,152,100
+1232,paper towel,152,112
+1233,rim,152,97
+1234,voila,152,132
+1235,water reservoir,152,57
+1236,dinner,151,113
+1237,extension kit,151,7
+1238,friday,151,121
+1239,milk,151,86
+1240,print,151,111
+1241,rock,151,121
+1242,testing,151,136
+1243,drying,150,81
+1244,instruction manual,150,99
+1245,side refrigerator,150,106
+1246,advertising,149,130
+1247,celsius,149,27
+1248,frost,149,55
+1249,marking,149,118
+1250,plant,149,104
+1251,porch,149,93
+1252,profile,149,107
+1253,reorder,149,110
+1254,fridge water,148,94
+1255,ill,148,123
+1256,lady,148,126
+1257,red,148,69
+1258,filter fit,147,103
+1259,kitchen counter,147,75
+1260,profile refrigerator,147,56
+1261,temperature reading,147,37
+1262,ball,146,95
+1263,birthday,146,71
+1264,bullet,146,100
+1265,egg,146,82
+1266,nice,146,129
+1267,saturday,146,123
+1268,christmas gift,145,78
+1269,conclusion,145,131
+1270,diagram,145,102
+1271,google search,145,119
+1272,pool,145,106
+1273,trial,145,115
+1274,circuit,144,111
+1275,clutch,144,19
+1276,door seal,144,77
+1277,duet washer,144,40
+1278,grip,144,101
+1279,hell,144,122
+1280,landlord,144,88
+1281,reply,144,114
+1282,tower,144,23
+1283,curve,143,76
+1284,delicate,143,43
+1285,fear,143,124
+1286,mexico,143,82
+1287,mini,143,69
+1288,requirement,143,121
+1289,aid dishwasher,142,41
+1290,competitor,142,123
+1291,drain tube,142,48
+1292,gripe,142,117
+1293,aftertaste,141,100
+1294,boat,141,72
+1295,cost saving,141,114
+1296,idler pulley,141,37
+1297,manufacturing,141,122
+1298,minute job,141,108
+1299,much,141,125
+1300,arrow,140,69
+1301,article,140,100
+1302,duct work,140,58
+1303,engineer,140,111
+1304,game,140,86
+1305,indication,140,122
+1306,neck,140,113
+1307,scissor,140,65
+1308,tasting water,140,88
+1309,visit,140,114
+1310,bummer,139,122
+1311,impression,139,125
+1312,repair service,139,116
+1313,vacation,139,111
+1314,waterdrop,139,50
+1315,hang,138,57
+1316,relief,138,124
+1317,shock,138,80
+1318,acurite,137,13
+1319,replacement kit,137,61
+1320,circle,136,112
+1321,click,136,116
+1322,clog,136,62
+1323,frigidaire refrigerator,136,61
+1324,measure,136,119
+1325,minimum,136,126
+1326,penny,136,122
+1327,troubleshooting,136,106
+1328,water panel,136,13
+1329,clue,135,127
+1330,condensation,135,79
+1331,feel,135,110
+1332,hand washing,135,45
+1333,indoor,135,65
+1334,whirlpool duet,135,56
+1335,broiler pan,134,6
+1336,carbon filter,134,95
+1337,event,134,102
+1338,particulate,134,91
+1339,card,133,52
+1340,cardboard,133,100
+1341,extra,133,108
+1342,water tank,133,73
+1343,weather station,133,19
+1344,agitation,132,45
+1345,blow dryer,132,16
+1346,cube size,132,43
+1347,delay,132,111
+1348,hook up,132,78
+1349,kitchenaid refrigerator,132,72
+1350,push,132,101
+1351,receptacle,132,82
+1352,row,132,104
+1353,stem,132,75
+1354,tea,132,91
+1355,waterdrop filter,132,43
+1356,cfm,131,41
+1357,fast,131,121
+1358,filter change,131,92
+1359,flange,131,84
+1360,humidor,131,22
+1361,wrinkle,131,58
+1362,adjuster,130,16
+1363,cleanup,130,70
+1364,filter system,130,82
+1365,mist humidifier,130,42
+1366,repair company,130,113
+1367,rubber foot,130,32
+1368,filter work,129,87
+1369,hesitation,129,116
+1370,ice water,129,79
+1371,kenmore brand,129,64
+1372,reminder,129,95
+1373,splash,129,72
+1374,wine cooler,129,22
+1375,wire harness,129,68
+1376,continuity,128,73
+1377,treatment,128,62
+1378,water treatment,128,44
+1379,aid,127,91
+1380,bang,127,94
+1381,beep,127,59
+1382,heater element,127,64
+1383,kenmore model,127,96
+1384,necessity,127,95
+1385,supply line,127,92
+1386,aftermarket filter,126,75
+1387,canada,126,101
+1388,cleaner,126,77
+1389,copy,126,103
+1390,excelent,126,105
+1391,hitch,126,116
+1392,proof,126,101
+1393,air bubble,125,75
+1394,cabrio washer,125,17
+1395,curl,125,8
+1396,evening,125,103
+1397,holmes,125,27
+1398,hub,125,62
+1399,metal insert,125,37
+1400,price difference,125,97
+1401,quart,125,96
+1402,replacement cartridge,125,77
+1403,steel appliance,125,52
+1404,wind,125,49
+1405,assistance,124,105
+1406,broiler,124,39
+1407,capacitor,124,27
+1408,cent,124,105
+1409,easy install,124,111
+1410,gem,124,98
+1411,lint catcher,124,54
+1412,mouth,124,92
+1413,sponge,124,74
+1414,filtration system,123,75
+1415,gal,123,99
+1416,wet,123,78
+1417,doctor,122,112
+1418,lifetime,122,99
+1419,limit,122,93
+1420,practice,122,82
+1421,water inlet,122,70
+1422,agitator dog,121,11
+1423,flood,121,91
+1424,installation video,121,90
+1425,instrument,121,34
+1426,my,121,109
+1427,nose plier,121,89
+1428,reliability,121,94
+1429,shower head,121,26
+1430,watt,121,67
+1431,account,120,99
+1432,chore,120,95
+1433,counter space,120,48
+1434,damper,120,59
+1435,draft,120,32
+1436,dryer hose,120,38
+1437,elite refrigerator,120,62
+1438,flush,120,104
+1439,plastic piece,120,87
+1440,return shipping,120,109
+1441,spout,120,72
+1442,toddler,120,72
+1443,ventilation,120,80
+1444,water sentinel,120,30
+1445,appliance part,119,104
+1446,gravity,119,61
+1447,house humidifier,119,49
+1448,hum,119,85
+1449,img url,119,88
+1450,inlet,119,91
+1451,love love,119,82
+1452,mixer,119,18
+1453,multimeter,119,74
+1454,quality material,119,98
+1455,scale,119,87
+1456,washer machine,119,78
+1457,wood floor,119,75
+1458,blower wheel,118,24
+1459,catch,118,80
+1460,couple dollar,118,101
+1461,filer,118,88
+1462,filter cartridge,118,71
+1463,rubber gasket,118,83
+1464,service tech,118,98
+1465,sheet metal,118,74
+1466,buildup,117,84
+1467,cook top,117,64
+1468,couple hour,117,93
+1469,dehumidifier,117,55
+1470,exterior,117,86
+1471,lever,117,72
+1472,net,117,99
+1473,range top,117,74
+1474,app,116,42
+1475,dozen,116,103
+1476,duet dryer,116,41
+1477,effectiveness,116,99
+1478,low,116,59
+1479,newair,116,11
+1480,oem quality,116,97
+1481,prime shipping,116,100
+1482,sight,116,93
+1483,simple,116,101
+1484,squeak,116,49
+1485,technology,116,83
+1486,thanksgiving,116,81
+1487,cart,115,70
+1488,costco,115,62
+1489,garment,115,41
+1490,hd,115,94
+1491,hotpoint,115,42
+1492,object,115,93
+1493,repair part,115,99
+1494,tie,115,58
+1495,view,115,97
+1496,beware,114,102
+1497,cabrio,114,24
+1498,controller,114,44
+1499,dryer belt,114,36
+1500,flexibility,114,70
+1501,insurance,114,82
+1502,sleeve,114,89
+1503,texture,114,67
+1504,tine,114,44
+1505,worked great,114,101
+1506,ac,113,53
+1507,calibration,113,37
+1508,electric,113,82
+1509,error message,113,68
+1510,ge dishwasher,113,36
+1511,kitchen remodel,113,65
+1512,out,113,87
+1513,brita,112,45
+1514,build quality,112,94
+1515,certification,112,73
+1516,edit,112,98
+1517,metal part,112,71
+1518,nut driver,112,75
+1519,production,112,85
+1520,signal,112,43
+1521,blockage,111,53
+1522,cupboard,111,64
+1523,fall,111,95
+1524,fan speed,111,50
+1525,increase,111,97
+1526,kenmore stove,111,35
+1527,majority,111,93
+1528,refrigerator water,111,69
+1529,sud,111,50
+1530,water heater,111,44
+1531,accident,110,94
+1532,appliance repair,110,92
+1533,climate,110,74
+1534,decade,110,99
+1535,ge mwf,110,24
+1536,instruction sheet,110,74
+1537,mwf,110,24
+1538,regard,110,97
+1539,rubber seal,110,81
+1540,tutorial,110,90
+1541,bell,109,67
+1542,depth,109,89
+1543,door bin,109,24
+1544,door latch,109,45
+1545,elite,109,78
+1546,envelope,109,93
+1547,excelente,109,88
+1548,honeywell filter,109,19
+1549,phone number,109,86
+1550,thermistor,109,43
+1551,documentation,108,94
+1552,dryer cord,108,7
+1553,dud,108,88
+1554,facility,108,42
+1555,retail,108,90
+1556,transmission,108,38
+1557,travel trailer,108,61
+1558,water source,108,90
+1559,wipe,108,60
+1560,aspect,107,96
+1561,build up,107,80
+1562,camping trip,107,44
+1563,distributor,107,98
+1564,homeowner,107,84
+1565,replacement basket,107,20
+1566,school,107,80
+1567,size washer,107,51
+1568,toilet,107,59
+1569,transmitter,107,15
+1570,aluminum foil,106,49
+1571,attic,106,42
+1572,beverage center,106,13
+1573,drain pipe,106,50
+1574,driver,106,80
+1575,dryer work,106,74
+1576,fitment,106,89
+1577,garden hose,106,72
+1578,hanger,106,46
+1579,heating coil,106,67
+1580,maytag fridge,106,43
+1581,plastic taste,106,63
+1582,price range,106,81
+1583,rain,106,61
+1584,thousand,106,92
+1585,glance,105,69
+1586,invention,105,61
+1587,life span,105,85
+1588,panda washer,105,24
+1589,produce,105,84
+1590,washing clothe,105,56
+1591,water damage,105,71
+1592,whirlpool cabrio,105,34
+1593,whirpool,105,84
+1594,advance,104,95
+1595,bug,104,57
+1596,drain plug,104,45
+1597,glass door,104,30
+1598,reduction,104,75
+1599,route,104,97
+1600,samsung model,104,47
+1601,selection,104,95
+1602,adaptor,103,61
+1603,cabin,103,77
+1604,fluke,103,94
+1605,fridge freezer,103,78
+1606,handling,103,93
+1607,par,103,90
+1608,pedestal,103,35
+1609,pm,103,83
+1610,request,103,93
+1611,roll,103,78
+1612,shop vac,103,17
+1613,suspension rod,103,9
+1614,treat,103,35
+1615,college,102,69
+1616,depot,102,77
+1617,dish rack,102,37
+1618,fuss,102,89
+1619,ice cream,102,45
+1620,nozzle,102,82
+1621,perfectly,102,95
+1622,store price,102,81
+1623,carpet,101,51
+1624,hit,101,73
+1625,nature,101,89
+1626,pattern,101,72
+1627,powder,101,67
+1628,chimney,100,23
+1629,confusion,100,85
+1630,cooling,100,54
+1631,coupling,100,48
+1632,datum,100,43
+1633,english,100,63
+1634,gallon bucket,100,37
+1635,ice production,100,59
+1636,mfg,100,91
+1637,nose,100,79
+1638,pinch,100,74
+1639,receiver,100,36
+1640,repair cost,100,86
+1641,softener,100,55
+1642,whistle,100,63
+1643,wrong,100,92
+1644,yesterday,100,84
+1645,communication,99,85
+1646,crud,99,75
+1647,decor,99,36
+1648,door handle,99,25
+1649,dryer combo,99,52
+1650,extender,99,24
+1651,gamble,99,90
+1652,grey,99,75
+1653,holmes humidifier,99,18
+1654,marker,99,42
+1655,oem unit,99,81
+1656,percent,99,71
+1657,possibility,99,87
+1658,pricy,99,70
+1659,rotation,99,50
+1660,stock filter,99,75
+1661,warehouse,99,89
+1662,whirlpool brand,99,71
+1663,aprilaire humidifier,98,15
+1664,cloth diaper,98,34
+1665,discoloration,98,78
+1666,drip tray,98,46
+1667,figure,98,77
+1668,freezer space,98,38
+1669,omg,98,74
+1670,shipping charge,98,88
+1671,sweater,98,38
+1672,temperature control,98,50
+1673,transit,98,87
+1674,truck,98,73
+1675,vent cover,98,35
+1676,voltage,98,66
+1677,wash machine,98,78
+1678,washer door,98,43
+1679,appliance repairman,97,79
+1680,fume,97,59
+1681,furniture,97,51
+1682,kenmore side,97,66
+1683,king disposal,97,8
+1684,recall,97,57
+1685,replacement piece,97,83
+1686,reverse,97,47
+1687,winner,97,86
+1688,battery life,96,27
+1689,drain hole,96,50
+1690,epoxy,96,55
+1691,footprint,96,72
+1692,ge washer,96,45
+1693,mouse,96,50
+1694,pet,96,72
+1695,quality hose,96,26
+1696,shipping box,96,77
+1697,shoulder,96,39
+1698,stay,96,74
+1699,whirlpool range,96,36
+1700,winter season,96,53
+1701,axle,95,36
+1702,band,95,77
+1703,engineering,95,84
+1704,felt,95,28
+1705,ge version,95,36
+1706,history,95,85
+1707,online,95,77
+1708,pleasure,95,90
+1709,readout,95,46
+1710,side note,95,85
+1711,slit,95,51
+1712,spray arm,95,28
+1713,styrofoam,95,53
+1714,usps,95,89
+1715,aftermarket part,94,69
+1716,alert,94,50
+1717,america,94,76
+1718,disaster,94,86
+1719,ice basket,94,31
+1720,instance,94,84
+1721,kink,94,65
+1722,lifespan,94,79
+1723,linteater,94,4
+1724,minute install,94,75
+1725,new,94,82
+1726,notice,94,87
+1727,prefect,94,90
+1728,squeaking,94,46
+1729,ul,94,20
+1730,apt,93,52
+1731,blue,93,66
+1732,conversation,93,64
+1733,drainage,93,53
+1734,indicator light,93,64
+1735,leaf blower,93,13
+1736,let,93,85
+1737,life saver,93,73
+1738,magic,93,79
+1739,save,93,72
+1740,short,93,48
+1741,tho,93,87
+1742,deposit,92,69
+1743,flashlight,92,77
+1744,ge side,92,44
+1745,grocery store,92,56
+1746,motion,92,55
+1747,non,92,85
+1748,rubber washer,92,56
+1749,series dryer,92,50
+1750,stud,92,52
+1751,timing,92,84
+1752,trash bag,92,17
+1753,whirlpool model,92,71
+1754,chef,91,54
+1755,ear,91,70
+1756,grid,91,55
+1757,head screwdriver,91,71
+1758,oz,91,70
+1759,rep,91,75
+1760,shopping,91,88
+1761,stove burner,91,43
+1762,sunlight,91,36
+1763,tablespoon,91,43
+1764,water softener,91,72
+1765,whole,91,82
+1766,wonder wash,91,7
+1767,beer fridge,90,27
+1768,granddaughter,90,41
+1769,grandson,90,48
+1770,module,90,48
+1771,motor shaft,90,43
+1772,postage,90,83
+1773,rail,90,43
+1774,rinse aid,90,28
+1775,slack,90,68
+1776,animal,89,35
+1777,length hair,89,2
+1778,meantime,89,81
+1779,multi,89,68
+1780,oe,89,78
+1781,scoop,89,38
+1782,shut,89,74
+1783,sub,89,49
+1784,water stream,89,49
+1785,butt,88,75
+1786,explanation,88,84
+1787,faith,88,82
+1788,genius,88,74
+1789,grade,88,80
+1790,humidifer,88,50
+1791,ounce,88,81
+1792,ppm,88,54
+1793,professional,88,70
+1794,pump motor,88,44
+1795,reality,88,80
+1796,series washer,88,45
+1797,strap,88,56
+1798,suction cup,88,17
+1799,comfort,87,57
+1800,cons,87,80
+1801,exhaust vent,87,50
+1802,fixture,87,72
+1803,installing,87,82
+1804,party filter,87,53
+1805,pos,87,81
+1806,pros,87,71
+1807,psi,87,35
+1808,replacement pump,87,36
+1809,scam,87,74
+1810,side fridge,87,65
+1811,truth,87,79
+1812,aggravation,86,76
+1813,casing,86,76
+1814,excuse,86,77
+1815,fantastic,86,75
+1816,fit perfect,86,78
+1817,frigidaire dishwasher,86,33
+1818,frigidaire stove,86,27
+1819,gold,86,72
+1820,incident,86,83
+1821,kenmore range,86,35
+1822,manufacturer part,86,74
+1823,merchant,86,76
+1824,pole,86,23
+1825,price tag,86,75
+1826,reset,86,53
+1827,spacer,86,60
+1828,string,86,45
+1829,sucker,86,73
+1830,tendency,86,71
+1831,win,86,83
+1832,wire connector,86,70
+1833,calcium,85,66
+1834,canister,85,66
+1835,contrast,85,60
+1836,draw,85,74
+1837,duet,85,36
+1838,fill hose,85,32
+1839,filling,85,67
+1840,guarantee,85,74
+1841,kenmore series,85,47
+1842,pizza,85,43
+1843,rinse water,85,35
+1844,samsung frig,85,42
+1845,substance,85,78
+1846,vicks humidifier,85,18
+1847,annoyance,84,79
+1848,big,84,72
+1849,cam,84,18
+1850,fish,84,65
+1851,high,84,43
+1852,mile,84,72
+1853,motorhome,84,52
+1854,novice,84,74
+1855,quit,84,59
+1856,rescue,84,76
+1857,return process,84,77
+1858,shade,84,49
+1859,tile,84,52
+1860,writing,84,71
+1861,cheaply,83,75
+1862,conjunction,83,62
+1863,consideration,83,76
+1864,critter,83,26
+1865,everydrop,83,22
+1866,freeze,83,56
+1867,fridge model,83,71
+1868,handful,83,67
+1869,magic chef,83,44
+1870,malfunction,83,73
+1871,metal piece,83,70
+1872,metal ring,83,44
+1873,mortar store,83,61
+1874,nail,83,59
+1875,remote,83,22
+1876,sears store,83,52
+1877,supply store,83,70
+1878,tension,83,46
+1879,vent line,83,29
+1880,volt,83,59
+1881,bank,82,75
+1882,cylinder,82,60
+1883,deck,82,52
+1884,estimate,82,72
+1885,griddle,82,24
+1886,guitar,82,23
+1887,hr,82,76
+1888,imitation,82,61
+1889,mineral deposit,82,56
+1890,paperwork,82,81
+1891,pie,82,59
+1892,price shipping,82,74
+1893,resolution,82,75
+1894,rinsing,82,43
+1895,rug,82,50
+1896,travel,82,57
+1897,wok,82,59
+1898,yrs,82,75
+1899,allergy,81,50
+1900,california,81,64
+1901,couple minute,81,75
+1902,drum roller,81,29
+1903,expert,81,78
+1904,fail,81,72
+1905,lamp,81,39
+1906,outcome,81,77
+1907,patio,81,55
+1908,plastic part,81,45
+1909,trim,81,60
+1910,velcro,81,26
+1911,vornado,81,7
+1912,your,81,76
+1913,bump,80,64
+1914,capful,80,18
+1915,clump,80,43
+1916,dark,80,58
+1917,deg,80,55
+1918,diy project,80,69
+1919,fsp,80,50
+1920,mention,80,71
+1921,model refrigerator,80,64
+1922,perfection,80,77
+1923,read,80,40
+1924,replacement fit,80,74
+1925,rubber ring,80,54
+1926,sample,80,52
+1927,samsung washer,80,35
+1928,square,80,65
+1929,steal,80,73
+1930,temperature setting,80,46
+1931,undie,80,31
+1932,warning light,80,49
+1933,win win,80,74
+1934,aid refrigerator,79,45
+1935,brick,79,55
+1936,burner element,79,30
+1937,class,79,65
+1938,compatibility,79,69
+1939,deal breaker,79,71
+1940,dryer hookup,79,37
+1941,dryer set,79,51
+1942,female,79,68
+1943,filter material,79,66
+1944,forum,79,63
+1945,group,79,65
+1946,manufacturer brand,79,61
+1947,mo,79,69
+1948,overflow,79,60
+1949,porcelain,79,16
+1950,return period,79,68
+1951,size sheet,79,34
+1952,status,79,59
+1953,temperature sensor,79,48
+1954,thru,79,71
+1955,vent tube,79,37
+1956,wash load,79,47
+1957,washer hose,79,25
+1958,actuator,78,24
+1959,boil,78,34
+1960,clarity,78,69
+1961,diaper,78,30
+1962,elite dishwasher,78,31
+1963,fast delivery,78,73
+1964,gas valve,78,36
+1965,ice making,78,49
+1966,idiot,78,72
+1967,jam,78,44
+1968,kenmore humidifier,78,19
+1969,kudo,78,75
+1970,racket,78,68
+1971,rattle,78,58
+1972,samsung version,78,27
+1973,spring water,78,55
+1974,styling,78,21
+1975,water tube,78,50
+1976,address,77,74
+1977,advertisement,77,71
+1978,beauty,77,70
+1979,blow,77,29
+1980,bread,77,60
+1981,chinese,77,68
+1982,chlorine smell,77,55
+1983,circuit breaker,77,66
+1984,control knob,77,52
+1985,della,77,15
+1986,dp ref,77,70
+1987,dyer,77,62
+1988,extension cord,77,40
+1989,food particle,77,40
+1990,lunch,77,52
+1991,merchandise,77,70
+1992,miracle,77,61
+1993,panda dryer,77,18
+1994,pour,77,25
+1995,service technician,77,74
+1996,summary,77,69
+1997,washing cycle,77,55
+1998,add,76,72
+1999,brand replacement,76,63
+2000,channel,76,51
+2001,cool,76,46
+2002,craigslist,76,64
+2003,degree bend,76,24
+2004,diagnosis,76,61
+2005,dot,76,36
+2006,dryer problem,76,41
+2007,dw,76,56
+2008,filter company,76,26
+2009,happy,76,71
+2010,jar,76,54
+2011,kinda,76,69
+2012,market filter,76,53
+2013,mechanic,76,68
+2014,peasy,76,73
+2015,policy,76,72
+2016,press,76,56
+2017,profile fridge,76,42
+2018,protector,76,29
+2019,rag,76,64
+2020,report,76,64
+2021,sears part,76,62
+2022,service rep,76,62
+2023,size cube,76,28
+2024,water light,76,21
+2025,apartment complex,75,50
+2026,basin,75,53
+2027,builder,75,50
+2028,burn,75,49
+2029,bushing,75,46
+2030,capability,75,65
+2031,cheer,75,62
+2032,chicken,75,52
+2033,clothe washer,75,54
+2034,couple buck,75,70
+2035,cutout,75,52
+2036,death,75,66
+2037,great deal,75,72
+2038,habit,75,63
+2039,humidity sensor,75,30
+2040,met expectation,75,64
+2041,part website,75,67
+2042,profit,75,63
+2043,quality replacement,75,70
+2044,replacement element,75,42
+2045,rust spot,75,19
+2046,scent,75,45
+2047,spite,75,69
+2048,struggle,75,69
+2049,tag,75,58
+2050,wallet,75,70
+2051,ansi,74,51
+2052,average,74,68
+2053,bead,74,33
+2054,cooker,74,22
+2055,elite fridge,74,48
+2056,emergency,74,49
+2057,enamel,74,36
+2058,freezer section,74,42
+2059,friction,74,59
+2060,highly,74,64
+2061,induction,74,8
+2062,kitchen faucet,74,40
+2063,orientation,74,64
+2064,service man,74,66
+2065,sink stopper,74,9
+2066,thermofuse,74,9
+2067,torque,74,39
+2068,wait,74,71
+2069,crawl space,73,29
+2070,drain line,73,50
+2071,dryer part,73,54
+2072,elbow grease,73,62
+2073,filter price,73,57
+2074,fruit,73,41
+2075,halogen bulb,73,23
+2076,homework,73,71
+2077,hood vent,73,39
+2078,joy,73,67
+2079,machine hose,73,27
+2080,mix,73,65
+2081,observation,73,67
+2082,pillow case,73,36
+2083,plastic housing,73,60
+2084,replacement motor,73,44
+2085,ridge,73,58
+2086,simplicity,73,57
+2087,styler,73,2
+2088,subscription,73,29
+2089,wednesday,73,68
+2090,wick filter,73,35
+2091,abuse,72,62
+2092,afternoon,72,64
+2093,algae,72,29
+2094,bake element,72,23
+2095,combo,72,52
+2096,dice,72,67
+2097,ecoaqua,72,21
+2098,filter holder,72,55
+2099,fork,72,40
+2100,ge replacement,72,34
+2101,granite countertop,72,17
+2102,greasy,72,49
+2103,juice,72,48
+2104,lubricant,72,45
+2105,metal bracket,72,49
+2106,mos,72,63
+2107,phone call,72,62
+2108,power button,72,46
+2109,representative,72,66
+2110,respect,72,69
+2111,solid,72,59
+2112,warranty period,72,54
+2113,wash tub,72,31
+2114,whirlpool side,72,35
+2115,wine bottle,72,18
+2116,yuck,72,63
+2117,air conditioner,71,53
+2118,alignment,71,62
+2119,backsplash,71,28
+2120,breath,71,68
+2121,dishwasher basket,71,23
+2122,dorm room,71,29
+2123,foil tape,71,28
+2124,halogen,71,26
+2125,kitchen appliance,71,59
+2126,load size,71,35
+2127,packet,71,54
+2128,pantry,71,43
+2129,preference,71,61
+2130,rh,71,26
+2131,tune,71,59
+2132,variation,71,57
+2133,background,70,53
+2134,btw,70,66
+2135,door shelf,70,35
+2136,fill line,70,40
+2137,glass shelf,70,36
+2138,great value,70,64
+2139,heart,70,63
+2140,heating season,70,39
+2141,living,70,60
+2142,melt,70,39
+2143,pricey,70,56
+2144,reservation,70,64
+2145,salt,70,60
+2146,size load,70,35
+2147,speed fan,70,25
+2148,video instruction,70,58
+2149,am,69,52
+2150,backing,69,36
+2151,caster,69,31
+2152,corrosion,69,59
+2153,cutting,69,47
+2154,dorm,69,37
+2155,draining,69,41
+2156,lg dishwasher,69,22
+2157,repair video,69,57
+2158,sand,69,41
+2159,shine,69,29
+2160,spray,69,57
+2161,sturdy,69,63
+2162,tuesday,69,62
+2163,vornado humidifier,69,6
+2164,water leakage,69,52
+2165,wrap,69,60
+2166,arizona,68,54
+2167,at,68,65
+2168,blend,68,29
+2169,caveat,68,55
+2170,competition,68,58
+2171,couple gallon,68,57
+2172,ductwork,68,40
+2173,freezer bag,68,29
+2174,getting,68,45
+2175,grime,68,53
+2176,growth,68,34
+2177,humidity meter,68,25
+2178,ingredient,68,29
+2179,latch assembly,68,18
+2180,oem brand,68,55
+2181,plastic bag,68,32
+2182,room temp,68,47
+2183,roomy,68,41
+2184,sink faucet,68,42
+2185,snip,68,31
+2186,ugh,68,64
+2187,vent duct,68,26
+2188,vent system,68,33
+2189,wine fridge,68,19
+2190,awful,67,58
+2191,bath,67,45
+2192,brand version,67,53
+2193,cardboard box,67,58
+2194,christmas present,67,46
+2195,crystal,67,55
+2196,department store,67,61
+2197,dryer drum,67,46
+2198,exact,67,62
+2199,factory unit,67,53
+2200,gap seal,67,1
+2201,good price,67,58
+2202,hand tool,67,61
+2203,hotpoint stove,67,25
+2204,hvac,67,46
+2205,jenn,67,32
+2206,king,67,32
+2207,math,67,59
+2208,part replacement,67,61
+2209,price delivery,67,64
+2210,putty knife,67,42
+2211,scrub,67,33
+2212,shield,67,47
+2213,size dryer,67,22
+2214,slime,67,28
+2215,subscribe,67,29
+2216,tds,67,53
+2217,theory,67,60
+2218,thx,67,65
+2219,waterfall,67,24
+2220,yep,67,60
+2221,amana refrigerator,66,34
+2222,amp,66,50
+2223,bc,66,60
+2224,bear,66,53
+2225,blender,66,22
+2226,cheese,66,43
+2227,conversion,66,35
+2228,delivery service,66,56
+2229,dishwasher model,66,49
+2230,door gasket,66,35
+2231,door lock,66,22
+2232,dryer exhaust,66,32
+2233,fence,66,54
+2234,ge website,66,39
+2235,helper,66,49
+2236,humidity monitor,66,18
+2237,integrity,66,60
+2238,kegorator,66,10
+2239,knobs,66,31
+2240,layout,66,43
+2241,loading,66,47
+2242,model fridge,66,55
+2243,pace,66,57
+2244,part supplier,66,59
+2245,ps,66,61
+2246,relative,66,59
+2247,renter,66,61
+2248,roper dryer,66,27
+2249,spring clamp,66,33
+2250,air humidifier,65,24
+2251,alcohol,65,28
+2252,american,65,54
+2253,brand dryer,65,43
+2254,broan hood,65,30
+2255,cigar,65,20
+2256,end result,65,49
+2257,ferret,65,7
+2258,flight,65,41
+2259,granule,65,11
+2260,investigation,65,62
+2261,landfill,65,58
+2262,lb,65,40
+2263,lining,65,44
+2264,mercury,65,48
+2265,minute fix,65,56
+2266,part house,65,57
+2267,promise,65,62
+2268,refer,65,62
+2269,remodel,65,46
+2270,return date,65,49
+2271,stainless steel,65,48
+2272,start button,65,45
+2273,statement,65,60
+2274,suck,65,60
+2275,veggie,65,41
+2276,vicks,65,18
+2277,vinyl,65,28
+2278,apartment building,64,38
+2279,bath tub,64,27
+2280,beast,64,56
+2281,cleaning system,64,7
+2282,coin,64,46
+2283,condenser,64,46
+2284,cookware,64,20
+2285,dollar store,64,39
+2286,dryer lint,64,31
+2287,dryer unit,64,49
+2288,ecoaqua filter,64,20
+2289,employee,64,54
+2290,equivalent,64,58
+2291,evidence,64,59
+2292,extras,64,58
+2293,green,64,56
+2294,gun,64,32
+2295,hand towel,64,32
+2296,logo,64,46
+2297,mid,64,58
+2298,night light,64,34
+2299,no brainer,64,55
+2300,outfit,64,42
+2301,peg,64,52
+2302,prob,64,59
+2303,replacement light,64,45
+2304,samsung part,64,38
+2305,samsung side,64,28
+2306,sentinel filter,64,20
+2307,service company,64,55
+2308,trailer,64,43
+2309,ul code,64,6
+2310,ansi standard,63,45
+2311,bacon,63,41
+2312,bam,63,62
+2313,consistency,63,47
+2314,crevice,63,41
+2315,dont,63,56
+2316,dryer knob,63,20
+2317,duplicate,63,59
+2318,fill tube,63,30
+2319,gap cap,63,8
+2320,gas burner,63,35
+2321,haier washer,63,18
+2322,halogen light,63,23
+2323,home store,63,58
+2324,hose connection,63,46
+2325,ice chest,63,31
+2326,install instruction,63,59
+2327,laundry alternative,63,13
+2328,on,63,58
+2329,quick,63,60
+2330,replica,63,62
+2331,rerack,63,3
+2332,rpm,63,34
+2333,silent feet,63,3
+2334,spin side,63,13
+2335,thursday,63,53
+2336,vegetable,63,41
+2337,water spout,63,53
+2338,workmanship,63,50
+2339,bet,62,60
+2340,brita filter,62,32
+2341,connect,62,49
+2342,copper,62,31
+2343,degree angle,62,40
+2344,flapper,62,26
+2345,frequency,62,46
+2346,heaven,62,57
+2347,liter,62,48
+2348,metal mesh,62,35
+2349,muscle,62,45
+2350,offer,62,58
+2351,orifice,62,25
+2352,ownership,62,52
+2353,pass,62,36
+2354,puppy,62,53
+2355,quote,62,51
+2356,rack adjuster,62,9
+2357,squeal,62,48
+2358,taste difference,62,48
+2359,tensioner,62,22
+2360,timer knob,62,27
+2361,trade,62,56
+2362,washer model,62,49
+2363,worker,62,56
+2364,bestair,61,27
+2365,beverage fridge,61,17
+2366,cheaper,61,46
+2367,cleaning kit,61,15
+2368,complain,61,55
+2369,crease,61,40
+2370,date sticker,61,44
+2371,defrost,61,36
+2372,doorstep,61,59
+2373,dump,61,51
+2374,exhaust pipe,61,40
+2375,filter model,61,51
+2376,fingerprint,61,36
+2377,fir,61,57
+2378,flake,61,49
+2379,frige,61,42
+2380,gut,61,56
+2381,he washer,61,40
+2382,hero,61,56
+2383,homedepot,61,48
+2384,humidifier pad,61,19
+2385,jet,61,44
+2386,metal screw,61,53
+2387,service guy,61,53
+2388,step instruction,61,48
+2389,tile floor,61,29
+2390,toaster,61,25
+2391,wattage,61,34
+2392,auto,60,51
+2393,availability,60,57
+2394,backside,60,53
+2395,base unit,60,17
+2396,boom,60,56
+2397,bosch dishwasher,60,26
+2398,couch,60,17
+2399,disposal unit,60,13
+2400,dryer element,60,24
+2401,earth,60,56
+2402,fedex,60,50
+2403,inlet hose,60,32
+2404,leaks,60,53
+2405,loop,60,47
+2406,mesh bag,60,20
+2407,oem model,60,50
+2408,part site,60,56
+2409,program,60,50
+2410,repair call,60,51
+2411,stage,60,44
+2412,street,60,54
+2413,structure,60,47
+2414,ticket,60,58
+2415,vent closure,60,2
+2416,agent,59,50
+2417,beach,59,42
+2418,blessing,59,53
+2419,bubble wrap,59,52
+2420,bypass,59,32
+2421,everydrop filter,59,16
+2422,fan setting,59,29
+2423,frigidaire dryer,59,19
+2424,grocery,59,51
+2425,incubator,59,16
+2426,lg model,59,43
+2427,maytag brand,59,33
+2428,model dryer,59,50
+2429,motor home,59,40
+2430,oz glass,59,39
+2431,port,59,50
+2432,repair job,59,52
+2433,roper,59,47
+2434,sears filter,59,36
+2435,teaspoon,59,39
+2436,temperature gauge,59,31
+2437,aluminum tape,58,16
+2438,apartment dweller,58,30
+2439,bacteriostat,58,20
+2440,beer line,58,10
+2441,conair,58,1
+2442,dryer filter,58,30
+2443,dryer sheet,58,36
+2444,filter life,58,41
+2445,freezing,58,42
+2446,gas line,58,35
+2447,glass top,58,30
+2448,impact,58,52
+2449,internet search,58,55
+2450,jug,58,49
+2451,manufacturer website,58,56
+2452,peel,58,26
+2453,precaution,58,50
+2454,refresh,58,22
+2455,sauce,58,44
+2456,soapy water,58,46
+2457,stove hood,58,34
+2458,straw,58,47
+2459,surface area,58,46
+2460,whim,58,54
+2461,zone,58,26
+2462,adjuster kit,57,7
+2463,bar area,57,24
+2464,closing,57,50
+2465,coffee maker,57,45
+2466,cyst,57,49
+2467,downfall,57,49
+2468,fake,57,26
+2469,heater coil,57,33
+2470,humidistat,57,20
+2471,installation process,57,51
+2472,jet engine,57,32
+2473,kitchenaid fridge,57,45
+2474,lake,57,52
+2475,led bulb,57,26
+2476,lent,57,28
+2477,manufacturer replacement,57,48
+2478,metal plate,57,45
+2479,mist,57,34
+2480,nsf standard,57,39
+2481,nylon,57,44
+2482,padding,57,50
+2483,paper bag,57,12
+2484,power outage,57,37
+2485,replacement process,57,53
+2486,reputation,57,51
+2487,sec,57,52
+2488,serviceman,57,53
+2489,studio apartment,57,33
+2490,thermador,57,27
+2491,tolerance,57,53
+2492,trimming,57,38
+2493,water ice,57,49
+2494,advertise,56,53
+2495,ass,56,53
+2496,auger,56,16
+2497,bat,56,50
+2498,bottle water,56,41
+2499,brand unit,56,53
+2500,brush head,56,6
+2501,chair,56,44
+2502,cinch,56,51
+2503,convection,56,20
+2504,digit,56,38
+2505,doa,56,46
+2506,extension rod,56,2
+2507,factory original,56,51
+2508,fan noise,56,40
+2509,ice problem,56,43
+2510,locking mechanism,56,45
+2511,motherboard,56,35
+2512,mountain,56,45
+2513,odd,56,48
+2514,patch,56,23
+2515,resource,56,51
+2516,spin basket,56,15
+2517,texas,56,45
+2518,thermopro,56,2
+2519,trigger,56,47
+2520,vacuum attachment,56,5
+2521,waterfall filter,56,7
+2522,arthritis,55,29
+2523,bed sheet,55,27
+2524,brain,55,51
+2525,breakage,55,42
+2526,cabrio dryer,55,25
+2527,circumstance,55,53
+2528,cost alternative,55,48
+2529,cost replacement,55,48
+2530,crank,55,16
+2531,custom,55,46
+2532,diagnostic,55,40
+2533,fin,55,44
+2534,frigidaire model,55,44
+2535,hawaii,55,51
+2536,hood filter,55,19
+2537,hooray,55,54
+2538,induction cooktop,55,9
+2539,laundrymat,55,30
+2540,nope,55,53
+2541,plunger,55,27
+2542,portable,55,41
+2543,power drill,55,7
+2544,provider,55,48
+2545,reach,55,43
+2546,replacement icemaker,55,19
+2547,shell,55,50
+2548,spindle,55,47
+2549,steak,55,33
+2550,type filter,55,43
+2551,vent kit,55,15
+2552,whisper,55,47
+2553,appliance dealer,54,45
+2554,brand part,54,45
+2555,center hole,54,33
+2556,countertop dishwasher,54,14
+2557,duration,54,50
+2558,file,54,42
+2559,greenhouse,54,16
+2560,knot,54,29
+2561,limitation,54,45
+2562,mm,54,43
+2563,model filter,54,42
+2564,nsf certification,54,45
+2565,obstruction,54,41
+2566,plastic cover,54,47
+2567,premium,54,50
+2568,present,54,46
+2569,quality plastic,54,45
+2570,sears brand,54,34
+2571,show,54,54
+2572,soup,54,30
+2573,stack,54,44
+2574,steel dishwasher,54,20
+2575,surge protector,54,18
+2576,teflon tape,54,33
+2577,wave,54,22
+2578,chamber,53,48
+2579,cocktail,53,24
+2580,door hinge,53,39
+2581,emerson,53,19
+2582,exactly,53,51
+2583,filter assembly,53,41
+2584,filter screen,53,37
+2585,generator,53,34
+2586,guidance,53,49
+2587,hat,53,33
+2588,motor assembly,53,34
+2589,ohm,53,45
+2590,potty,53,5
+2591,propane,53,24
+2592,replacment,53,52
+2593,responsibility,53,44
+2594,rocket science,53,51
+2595,samsung replacement,53,25
+2596,sears website,53,46
+2597,siding,53,11
+2598,suspension,53,8
+2599,tech support,53,36
+2600,template,53,30
+2601,turkey,53,38
+2602,vender,53,52
+2603,wall vent,53,19
+2604,wiring diagram,53,31
+2605,air range,52,17
+2606,akdy,52,10
+2607,burner pan,52,24
+2608,ca,52,44
+2609,compact,52,40
+2610,contaminate,52,39
+2611,contraption,52,37
+2612,coverage,52,38
+2613,disassembly,52,44
+2614,everytime,52,50
+2615,gas cooktop,52,28
+2616,gathering,52,28
+2617,ge appliance,52,30
+2618,goal,52,47
+2619,hazard,52,42
+2620,heat setting,52,27
+2621,holmes filter,52,12
+2622,interest,52,47
+2623,peice,52,47
+2624,plastic tab,52,43
+2625,repair tech,52,48
+2626,rotor,52,28
+2627,rpwfe,52,9
+2628,size dishwasher,52,18
+2629,storage space,52,42
+2630,strainer,52,29
+2631,vacation home,52,44
+2632,washing dish,52,29
+2633,wire mesh,52,38
+2634,yard,52,38
+2635,appliance shop,51,46
+2636,art,51,37
+2637,avanti,51,17
+2638,bypass plug,51,33
+2639,clicking noise,51,40
+2640,compression,51,32
+2641,criticism,51,50
+2642,equipment filter,51,43
+2643,faucet adapter,51,22
+2644,filter brand,51,41
+2645,filter medium,51,46
+2646,ge frig,51,36
+2647,hood fan,51,29
+2648,ice size,51,25
+2649,kitchen cabinet,51,40
+2650,lens,51,12
+2651,lo,51,46
+2652,metal bar,51,34
+2653,metal clip,51,45
+2654,mod,51,44
+2655,neighborhood,51,47
+2656,portability,51,38
+2657,remedy,51,48
+2658,replacement handle,51,15
+2659,return label,51,47
+2660,running,51,49
+2661,score,51,47
+2662,shipping label,51,44
+2663,twisting,51,44
+2664,warrantee,51,44
+2665,water test,51,43
+2666,ac unit,50,31
+2667,asap,50,46
+2668,bra,50,26
+2669,brand washer,50,44
+2670,community,50,47
+2671,condiment,50,26
+2672,cube maker,50,41
+2673,dinner plate,50,23
+2674,door panel,50,36
+2675,dremel,50,34
+2676,dryer repair,50,35
+2677,drywall,50,39
+2678,filter indicator,50,36
+2679,idler,50,22
+2680,input,50,47
+2681,language,50,45
+2682,light bulb,50,31
+2683,luxury,50,44
+2684,matching dryer,50,28
+2685,meh,50,44
+2686,mounting,50,45
+2687,nyc,50,41
+2688,oe filter,50,42
+2689,phillips screwdriver,50,39
+2690,replacement bulb,50,20
+2691,rivet,50,34
+2692,rush,50,47
+2693,seat,50,35
+2694,service department,50,44
+2695,sharpie,50,45
+2696,snack,50,27
+2697,snow,50,36
+2698,squealing,50,33
+2699,text,50,33
+2700,vacuum cleaner,50,26
+2701,viking,50,30
+2702,wal,50,43
+2703,water pad,50,12

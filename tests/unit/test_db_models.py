@@ -22,6 +22,7 @@ from munasib.core.constants import SPLIT_TRAIN
 from munasib.db.models import (
     AnalysisResult,
     Product,
+    ProductAspect,
     RelatedProduct,
     Review,
     ReviewFeature,
@@ -40,6 +41,7 @@ ALL_TABLES = {
     "related_products",
     "review_features",
     "product_features",
+    "product_aspects",
     "analysis_results",
 }
 
@@ -122,8 +124,8 @@ def session(engine: Engine) -> Iterator[Session]:
 # ------------------------------------------------------------------------------
 
 
-def test_init_db_creates_all_six_tables(engine) -> None:
-    """create_all builds exactly the six declared tables."""
+def test_init_db_creates_all_seven_tables(engine) -> None:
+    """create_all builds exactly the seven declared tables."""
     with engine.connect() as connection:
         names = set(
             connection.scalars(
@@ -134,9 +136,14 @@ def test_init_db_creates_all_six_tables(engine) -> None:
 
 
 def test_pipeline_owned_tables_start_empty(engine) -> None:
-    """The three cache tables load later; feature/analysis tables start empty."""
+    """The cache tables load later; feature/aspect/analysis tables start empty."""
     with engine.connect() as connection:
-        for name in ("review_features", "product_features", "analysis_results"):
+        for name in (
+            "review_features",
+            "product_features",
+            "product_aspects",
+            "analysis_results",
+        ):
             total = connection.scalar(text(f"SELECT COUNT(*) FROM {name}"))
             assert total == 0
 
@@ -362,6 +369,13 @@ def test_review_features_keyed_by_review_id() -> None:
     assert table.c.review_id.foreign_keys, "review_id must be a foreign key"
 
 
+def test_product_aspects_composite_key() -> None:
+    """product_aspects is keyed by (asin, aspect) and references products."""
+    table = ProductAspect.__table__
+    assert [column.name for column in table.primary_key.columns] == ["asin", "aspect"]
+    assert table.c.asin.foreign_keys
+
+
 def test_indexes_exist_for_api_queries(engine) -> None:
     """The indexes backing the API's queries were created."""
     with engine.connect() as connection:
@@ -378,6 +392,8 @@ def test_indexes_exist_for_api_queries(engine) -> None:
         "ix_reviews_split",
         "ix_related_products_asin",
         "ix_related_products_asin_in_subset",
+        "ix_product_aspects_aspect",
+        "ix_product_aspects_asin_classification",
     } <= names
 
 

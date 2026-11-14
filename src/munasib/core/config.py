@@ -481,12 +481,306 @@ class SentimentConfig(BaseModel):
         return self
 
 
-class AspectsConfig(BaseModel):
-    """Aspect-based attribute extraction configuration."""
+#: spaCy components the aspect extractor cannot run without. ``parser`` provides
+#: noun chunks and dependency labels, ``tagger`` the POS tags, and
+#: ``attribute_ruler``/``lemmatizer`` the lemmas joined into aspect phrases.
+ASPECT_REQUIRED_SPACY_COMPONENTS: frozenset[str] = frozenset(
+    {"tok2vec", "tagger", "parser", "attribute_ruler", "lemmatizer"}
+)
 
+#: Generic nouns dropped from aspect candidates unless the shipped config says
+#: otherwise. Kept as a module constant so the config default, the validator and
+#: the tests agree on one list.
+DEFAULT_GENERIC_NOUNS: tuple[str, ...] = (
+    "adult",
+    "advise",
+    "amazon",
+    "anyone",
+    "anything",
+    "baby",
+    "bit",
+    "bits",
+    "boss",
+    "boyfriend",
+    "brother",
+    "buy",
+    "buyer",
+    "buyers",
+    "buying",
+    "child",
+    "claim",
+    "co",
+    "customer",
+    "customers",
+    "dad",
+    "dads",
+    "daughter",
+    "daughters",
+    "day",
+    "days",
+    "dec",
+    "describe",
+    "described",
+    "description",
+    "everyone",
+    "everything",
+    "families",
+    "family",
+    "father",
+    "feb",
+    "feedback",
+    "fiance",
+    "following",
+    "friend",
+    "friends",
+    "girlfriend",
+    "husband",
+    "husbands",
+    "issue",
+    "issues",
+    "item",
+    "items",
+    "jan",
+    "kid",
+    "kind",
+    "kinds",
+    "listing",
+    "lot",
+    "lots",
+    "may",
+    "mine",
+    "mom",
+    "moms",
+    "money",
+    "month",
+    "months",
+    "mother",
+    "neighbor",
+    "none",
+    "nothing",
+    "nov",
+    "one",
+    "ones",
+    "order",
+    "orders",
+    "other",
+    "owner",
+    "people",
+    "person",
+    "persons",
+    "phillip",
+    "place",
+    "places",
+    "poster",
+    "product",
+    "products",
+    "purchase",
+    "purchaser",
+    "purchases",
+    "rating",
+    "ratings",
+    "recommend",
+    "review",
+    "reviewer",
+    "reviews",
+    "roommate",
+    "sister",
+    "someone",
+    "something",
+    "son",
+    "sons",
+    "sort",
+    "sorts",
+    "star",
+    "stars",
+    "stuff",
+    "teenager",
+    "thank",
+    "thing",
+    "things",
+    "time",
+    "times",
+    "user",
+    "way",
+    "ways",
+    "week",
+    "weeks",
+    "wife",
+    "wives",
+    "woman",
+    "year",
+    "years",
+)
+
+
+class AspectsConfig(BaseModel):
+    """Aspect extraction, vocabulary, aggregation and audit settings.
+
+    The spaCy settings control the extraction pass. Vocabulary and aggregation
+    settings are thresholds, never hardcoded in the modules. Paths are declared
+    here because every artifact location follows the project's config rule.
+    """
+
+    # --- spaCy extraction ----------------------------------------------------
     spacy_model: str = "en_core_web_sm"
-    min_aspect_frequency: int = 3
+    #: Components to disable. ``ner`` is the only one that is never needed;
+    #: the validator rejects disabling a component the extractor depends on.
+    spacy_disable_components: list[str] = Field(default_factory=lambda: ["ner"])
+    n_process: int = 1
+    batch_size: int = 128
+    #: Longest prefix of a review text handed to spaCy (characters).
+    max_text_chars: int = 5_000
+    #: Shortest token, in characters, that may enter an aspect phrase.
+    min_token_chars: int = 2
+    #: Maximum nominal tokens in an aspect phrase (1 or 2).
+    max_aspect_tokens: int = 2
+    #: Generic nouns (lowercase lemmas) that never become aspects.
+    generic_nouns: list[str] = Field(default_factory=lambda: list(DEFAULT_GENERIC_NOUNS))
+
+    # --- Category-level vocabulary ------------------------------------------
+    #: An aspect must appear in at least this many REVIEWS to enter the vocabulary.
+    min_review_count: int = 50
     top_k_aspects: int = 10
+    vocabulary_path: Path = Path("data/interim/aspect_vocabulary.parquet")
+    vocabulary_csv_path: Path = Path("reports/aspect_vocabulary.csv")
+
+    # --- Per-review extraction ----------------------------------------------
+    review_aspects_path: Path = Path("data/interim/review_aspects.parquet")
+    candidate_parts_dir: Path = Path("data/interim/aspect_candidates.parts")
+    chunk_rows: int = 10_000
+    speed_sample_size: int = 2_000
+
+    # --- Product aggregation -----------------------------------------------
+    min_mentions: int = 5
+    #: Pseudo-count at the product's own negative-share baseline.
+    lift_smoothing: float = 5.0
+    pain_point_min_lift: float = 1.5
+    pain_point_min_negative_mentions: int = 3
+    pain_point_min_negative_share: float = 0.25
+    strength_min_positive_share: float = 0.75
+    strength_max_negative_lift: float = 0.75
+    max_examples: int = 3
+    example_max_chars: int = 240
+
+    # --- Manual audit -------------------------------------------------------
+    audit_sample_size: int = 100
+    audit_sample_path: Path = Path("reports/aspect_audit_sample.csv")
+
+    @model_validator(mode="after")
+    def _check_aspects_values(self) -> "AspectsConfig":
+        """Validate every extraction, vocabulary and aggregation threshold.
+
+        Returns:
+            The validated configuration with normalised component and stoplist
+            entries.
+
+        Raises:
+            ValueError: When a count is not positive, a share/lift bound is
+                invalid, a path is empty, or a required spaCy component would be
+                disabled.
+        """
+        if not self.spacy_model.strip():
+            raise ValueError("review_intel.aspects.spacy_model must not be empty")
+
+        components: list[str] = []
+        seen_components: set[str] = set()
+        for raw in self.spacy_disable_components:
+            component = raw.strip().lower()
+            if not component:
+                raise ValueError(
+                    "review_intel.aspects.spacy_disable_components must not contain "
+                    "an empty component"
+                )
+            if component in ASPECT_REQUIRED_SPACY_COMPONENTS:
+                raise ValueError(
+                    "review_intel.aspects.spacy_disable_components cannot disable "
+                    f"{component!r}; the extractor needs {sorted(ASPECT_REQUIRED_SPACY_COMPONENTS)}"
+                )
+            if component in seen_components:
+                raise ValueError(
+                    "review_intel.aspects.spacy_disable_components must not repeat "
+                    f"{component!r}"
+                )
+            seen_components.add(component)
+            components.append(component)
+        self.spacy_disable_components = components
+
+        stoplist: list[str] = []
+        seen_nouns: set[str] = set()
+        for raw in self.generic_nouns:
+            noun = raw.strip().lower()
+            if not noun:
+                raise ValueError(
+                    "review_intel.aspects.generic_nouns must not contain an empty entry"
+                )
+            if noun in seen_nouns:
+                raise ValueError(
+                    f"review_intel.aspects.generic_nouns must not repeat {noun!r}"
+                )
+            seen_nouns.add(noun)
+            stoplist.append(noun)
+        self.generic_nouns = stoplist
+
+        for name, value in (
+            ("n_process", self.n_process),
+            ("batch_size", self.batch_size),
+            ("max_text_chars", self.max_text_chars),
+            ("min_token_chars", self.min_token_chars),
+            ("min_review_count", self.min_review_count),
+            ("top_k_aspects", self.top_k_aspects),
+            ("chunk_rows", self.chunk_rows),
+            ("speed_sample_size", self.speed_sample_size),
+            ("min_mentions", self.min_mentions),
+            ("pain_point_min_negative_mentions", self.pain_point_min_negative_mentions),
+            ("max_examples", self.max_examples),
+            ("example_max_chars", self.example_max_chars),
+            ("audit_sample_size", self.audit_sample_size),
+        ):
+            if value < 1:
+                raise ValueError(f"review_intel.aspects.{name} must be >= 1, got {value}")
+        if self.max_aspect_tokens not in (1, 2):
+            raise ValueError(
+                "review_intel.aspects.max_aspect_tokens must be 1 or 2, got "
+                f"{self.max_aspect_tokens}"
+            )
+        if self.lift_smoothing <= 0.0:
+            raise ValueError(
+                "review_intel.aspects.lift_smoothing must be > 0, got "
+                f"{self.lift_smoothing}"
+            )
+        if self.pain_point_min_lift <= 0.0:
+            raise ValueError(
+                "review_intel.aspects.pain_point_min_lift must be > 0, got "
+                f"{self.pain_point_min_lift}"
+            )
+        for share_name, share_value in (
+            ("pain_point_min_negative_share", self.pain_point_min_negative_share),
+            ("strength_min_positive_share", self.strength_min_positive_share),
+        ):
+            if not 0.0 <= share_value <= 1.0:
+                raise ValueError(
+                    f"review_intel.aspects.{share_name} must be in [0, 1], got {share_value}"
+                )
+        if self.strength_max_negative_lift < 0.0:
+            raise ValueError(
+                "review_intel.aspects.strength_max_negative_lift must be >= 0, got "
+                f"{self.strength_max_negative_lift}"
+            )
+        if self.strength_max_negative_lift >= self.pain_point_min_lift:
+            raise ValueError(
+                "review_intel.aspects.strength_max_negative_lift must be below "
+                "pain_point_min_lift so the two rules cannot overlap"
+            )
+        for name, path in (
+            ("vocabulary_path", self.vocabulary_path),
+            ("vocabulary_csv_path", self.vocabulary_csv_path),
+            ("review_aspects_path", self.review_aspects_path),
+            ("candidate_parts_dir", self.candidate_parts_dir),
+            ("audit_sample_path", self.audit_sample_path),
+        ):
+            if not str(path).strip():
+                raise ValueError(f"review_intel.aspects.{name} must not be empty")
+        return self
 
 
 class EvidenceWeightsConfig(BaseModel):

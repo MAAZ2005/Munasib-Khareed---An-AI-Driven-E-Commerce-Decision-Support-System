@@ -61,6 +61,7 @@ from munasib.db.models import (
     AnalysisResult,
     Base,
     Product,
+    ProductAspect,
     ProductFeature,
     RelatedProduct,
     Review,
@@ -134,7 +135,12 @@ VERIFIED_PRODUCT_COLUMNS = (
 #: Tables loaded from parquet, children before parents for clearing.
 CACHE_TABLES = ("reviews", "related_products", "products")
 #: Tables filled by later pipeline stages; reported but never loaded here.
-EMPTY_TABLES = ("review_features", "product_features", "analysis_results")
+EMPTY_TABLES = (
+    "review_features",
+    "product_features",
+    "product_aspects",
+    "analysis_results",
+)
 CLEAR_ORDER = (*EMPTY_TABLES, "related_products", "reviews", "products")
 
 _TABLE_MODELS = {
@@ -143,6 +149,7 @@ _TABLE_MODELS = {
     "related_products": RelatedProduct,
     "review_features": ReviewFeature,
     "product_features": ProductFeature,
+    "product_aspects": ProductAspect,
     "analysis_results": AnalysisResult,
 }
 
@@ -409,6 +416,52 @@ def warn_predictions_will_be_deleted(engine: Engine, *, reason: str) -> int:
         )
         print(f"WARNING: {message}")
         logger.warning("review_features_wiped rows=%d reason=%s", stored, reason)
+    return stored
+
+
+def count_product_aspects(engine: Engine) -> int:
+    """Count rows in ``product_aspects`` (0 when the table does not exist yet).
+
+    Args:
+        engine: Target engine.
+
+    Returns:
+        Stored product-aspect row count.
+    """
+    if not inspect(engine).has_table("product_aspects"):
+        return 0
+    with engine.connect() as connection:
+        value = connection.execute(
+            select(func.count()).select_from(ProductAspect)
+        ).scalar_one()
+    return int(value or 0)
+
+
+def warn_aspects_will_be_deleted(engine: Engine, *, reason: str) -> int:
+    """Warn loudly that a rebuild is about to delete product aspect statistics.
+
+    ``product_aspects`` is derived data, but it represents the expensive aspect
+    extraction and aggregation pass. The warning prints the exact recompute
+    commands instead of letting the table disappear silently.
+
+    Args:
+        engine: Target engine.
+        reason: What is about to happen (``"--force rebuild"``/``"cache reload"``).
+
+    Returns:
+        Number of product-aspect rows that will be deleted.
+    """
+    stored = count_product_aspects(engine)
+    if stored:
+        message = (
+            f"{stored:,} row(s) in product_aspects will be deleted by this {reason}. "
+            "Recompute after the reload with:\n"
+            "  python scripts/ingest_predictions.py\n"
+            "  python scripts/compute_aspects.py --reviews\n"
+            "  python scripts/compute_aspects.py --aggregate"
+        )
+        print(f"WARNING: {message}")
+        logger.warning("product_aspects_wiped rows=%d reason=%s", stored, reason)
     return stored
 
 
@@ -761,6 +814,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.force:
             warn_predictions_will_be_deleted(engine, reason="--force rebuild")
+            warn_aspects_will_be_deleted(engine, reason="--force rebuild")
             Base.metadata.drop_all(engine)
             logger.info("schema_dropped detail=--force rebuild")
             init_db(engine)
@@ -787,6 +841,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 warn_predictions_will_be_deleted(engine, reason="cache reload")
+                warn_aspects_will_be_deleted(engine, reason="cache reload")
                 clear_cache_tables(engine)
                 loaded = ingest_parquet(engine, processed_dir, args.batch_size)
                 logger.info(

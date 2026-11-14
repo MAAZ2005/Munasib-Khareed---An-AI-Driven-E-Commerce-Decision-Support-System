@@ -28,11 +28,18 @@ from munasib.core.constants import (
     SPLIT_VAL,
 )
 from munasib.core.exceptions import ProductNotFoundError
-from munasib.db.models import AnalysisResult, Product, RelatedProduct, Review
+from munasib.db.models import (
+    AnalysisResult,
+    Product,
+    RelatedProduct,
+    Review,
+)
 from munasib.db.repositories import (
     AnalysisRepository,
+    ProductAspectRepository,
     ProductRepository,
     RelatedRepository,
+    ReviewFeatureRepository,
     ReviewRepository,
 )
 from munasib.db.session import (
@@ -433,3 +440,129 @@ def test_upsert_analysis_unknown_product_raises(session: Session) -> None:
     """A foreign-key violation surfaces for an unknown product."""
     with pytest.raises(IntegrityError):
         AnalysisRepository(session).upsert_analysis("MISSING1", "v1", 1.0, 1.0, "CONSIDER", {}, None)
+
+
+# ------------------------------------------------------------------------------
+# ReviewFeatureRepository aspect methods
+# ------------------------------------------------------------------------------
+
+
+def test_upsert_aspects_preserves_predictions(session: Session) -> None:
+    """The aspect upsert writes only ``aspects_json``."""
+    repository = ReviewFeatureRepository(session)
+    repository.upsert_predictions(
+        [
+            {
+                "review_id": "00000000000000a1",
+                "predicted_label": SENTIMENT_LABEL_POSITIVE,
+                "prob_negative": 0.1,
+                "prob_neutral": 0.2,
+                "prob_positive": 0.7,
+            }
+        ]
+    )
+    repository.upsert_aspects(
+        [{"review_id": "00000000000000a1", "aspects_json": ["filter"]}]
+    )
+    stored = repository.get_feature("00000000000000a1")
+    assert stored is not None
+    assert stored.aspects_json == ["filter"]
+    assert stored.predicted_label == SENTIMENT_LABEL_POSITIVE
+
+
+def test_clear_aspects_returns_previous_count_and_keeps_predictions(
+    session: Session,
+) -> None:
+    """Clearing aspect payloads leaves model predictions untouched."""
+    repository = ReviewFeatureRepository(session)
+    repository.upsert_aspects(
+        [
+            {"review_id": "00000000000000a1", "aspects_json": ["filter"]},
+            {"review_id": "00000000000000a2", "aspects_json": []},
+        ]
+    )
+    assert repository.count_aspect_rows() == 2
+    assert repository.clear_aspects() == 2
+    assert repository.count_aspect_rows() == 0
+
+
+def test_count_text_reviews_without_aspects(session: Session) -> None:
+    """Only usable-text reviews are counted as uncovered."""
+    repository = ReviewFeatureRepository(session)
+    assert repository.count_text_reviews_without_aspects() == 4
+    repository.upsert_aspects(
+        [
+            {"review_id": "00000000000000a1", "aspects_json": ["filter"]},
+            {"review_id": "00000000000000a2", "aspects_json": []},
+            {"review_id": "00000000000000a3", "aspects_json": ["motor"]},
+            {"review_id": "00000000000000b1", "aspects_json": ["noise"]},
+        ]
+    )
+    assert repository.count_text_reviews_without_aspects() == 0
+    assert repository.count_reviews_with_aspects() == 3
+
+
+# ------------------------------------------------------------------------------
+# ProductAspectRepository
+# ------------------------------------------------------------------------------
+
+ASPECT_ROWS = [
+    {
+        "asin": "B000000001",
+        "aspect": "filter",
+        "mention_count": 10,
+        "negative_count": 5,
+        "neutral_count": 2,
+        "positive_count": 3,
+        "negative_share": 0.5,
+        "neutral_share": 0.2,
+        "positive_share": 0.3,
+        "net_sentiment": -0.2,
+        "product_labeled_reviews": 50,
+        "product_negative_share": 0.2,
+        "negativity_lift": 2.0,
+        "classification": "pain_point",
+        "examples": ["bad filter"],
+        "computed_at": datetime(2018, 10, 4),
+    },
+    {
+        "asin": "B000000001",
+        "aspect": "motor",
+        "mention_count": 20,
+        "negative_count": 1,
+        "neutral_count": 2,
+        "positive_count": 17,
+        "negative_share": 0.05,
+        "neutral_share": 0.1,
+        "positive_share": 0.85,
+        "net_sentiment": 0.8,
+        "product_labeled_reviews": 50,
+        "product_negative_share": 0.2,
+        "negativity_lift": 0.5,
+        "classification": "strength",
+        "examples": ["great motor"],
+        "computed_at": datetime(2018, 10, 4),
+    },
+]
+
+
+def test_product_aspects_replace_and_read_order(session: Session) -> None:
+    """Replacement is atomic from the caller's perspective; reads sort by mentions."""
+    repository = ProductAspectRepository(session)
+    assert repository.replace_all(ASPECT_ROWS) == 2
+    assert repository.count_rows() == 2
+    assert repository.count_products() == 1
+    assert repository.count_by_classification() == {"pain_point": 1, "strength": 1}
+    assert [row.aspect for row in repository.get_aspects("B000000001")] == [
+        "motor",
+        "filter",
+    ]
+    assert repository.replace_all(ASPECT_ROWS[:1]) == 1
+    assert repository.count_rows() == 1
+
+
+def test_product_aspects_unknown_product_raises(session: Session) -> None:
+    """The product foreign key prevents orphaned statistics."""
+    row = {**ASPECT_ROWS[0], "asin": "MISSING1"}
+    with pytest.raises(IntegrityError):
+        ProductAspectRepository(session).replace_all([row])

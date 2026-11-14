@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Generic, TypeVar
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, delete, func, insert, null, or_, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
@@ -35,6 +35,7 @@ from munasib.db.models import (
     RELATION_ALSO_VIEWED,
     AnalysisResult,
     Product,
+    ProductAspect,
     RelatedProduct,
     Review,
     ReviewFeature,
@@ -629,6 +630,108 @@ class ReviewFeatureRepository:
         self._session.flush()
         return len(materialised)
 
+    def clear_aspects(self) -> int:
+        """Clear every stored aspect list (used before a full re-filter).
+
+        Prediction columns are untouched, so re-running the aspect stage never
+        requires re-scoring the reviews.
+
+        Returns:
+            Number of rows whose ``aspects_json`` was non-NULL before clearing.
+        """
+        existing = self.count_aspect_rows()
+        # ``values(aspects_json=None)`` would serialise JSON null as the text
+        # 'null' because SQLAlchemy's JSON type defaults to none_as_null=False.
+        # Coverage checks need a real SQL NULL, so bind SQL null() explicitly.
+        self._session.execute(
+            update(ReviewFeature).values({ReviewFeature.aspects_json: null()})
+        )
+        self._session.flush()
+        return existing
+
+    def upsert_aspects(
+        self, rows: Sequence[Mapping[str, object]], *, batch_size: int = 1000
+    ) -> int:
+        """Insert or update only the ``aspects_json`` column of many reviews.
+
+        The sentiment prediction columns are deliberately not in the conflict
+        update, so this stage cannot overwrite model output.
+
+        Args:
+            rows: Mappings with ``review_id`` and ``aspects_json``.
+            batch_size: Rows per statement.
+
+        Returns:
+            Number of input rows written.
+
+        Raises:
+            ValueError: If a row lacks one of the two required keys.
+        """
+        materialised = list(rows)
+        required = {"review_id", "aspects_json"}
+        for row in materialised:
+            missing = required - set(row)
+            if missing:
+                raise ValueError(f"aspect row lacks key(s) {sorted(missing)}")
+        for start in range(0, len(materialised), batch_size):
+            chunk = materialised[start : start + batch_size]
+            statement = sqlite_insert(ReviewFeature).values(chunk)
+            statement = statement.on_conflict_do_update(
+                index_elements=[ReviewFeature.review_id],
+                set_={"aspects_json": statement.excluded.aspects_json},
+            )
+            self._session.execute(statement)
+        self._session.flush()
+        return len(materialised)
+
+    def count_aspect_rows(self) -> int:
+        """Count reviews that carry an aspect payload (including empty lists).
+
+        Returns:
+            Rows with ``aspects_json IS NOT NULL``.
+        """
+        total = self._session.scalar(
+            select(func.count())
+            .select_from(ReviewFeature)
+            .where(ReviewFeature.aspects_json.is_not(None))
+        )
+        return int(total or 0)
+
+    def count_reviews_with_aspects(self) -> int:
+        """Count reviews whose aspect payload is a non-empty list.
+
+        Returns:
+            Reviews with at least one extracted aspect.
+        """
+        rows = self._session.scalars(
+            select(ReviewFeature.aspects_json).where(
+                ReviewFeature.aspects_json.is_not(None)
+            )
+        )
+        return sum(1 for value in rows if isinstance(value, list) and value)
+
+    def count_text_reviews_without_aspects(self) -> int:
+        """Count usable-text reviews that the aspect stage has not processed.
+
+        Returns:
+            Text reviews whose ``aspects_json`` is NULL or whose feature row is
+            missing.
+        """
+        total = self._session.scalar(
+            select(func.count())
+            .select_from(Review)
+            .outerjoin(ReviewFeature, ReviewFeature.review_id == Review.review_id)
+            .where(
+                Review.review_text_clean.is_not(None),
+                func.trim(Review.review_text_clean) != "",
+                or_(
+                    ReviewFeature.review_id.is_(None),
+                    ReviewFeature.aspects_json.is_(None),
+                ),
+            )
+        )
+        return int(total or 0)
+
     def count_text_reviews_without_predictions(self) -> int:
         """Count reviews with usable text that have no predicted label.
 
@@ -708,9 +811,119 @@ class ReviewFeatureRepository:
         return int(violations or 0)
 
 
+class ProductAspectRepository:
+    """Per-product aspect statistics keyed by ``(asin, aspect)``."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_aspects(self, asin: str) -> list[ProductAspect]:
+        """Fetch one product's aspect rows, most-mentioned first.
+
+        Args:
+            asin: Product ASIN.
+
+        Returns:
+            Rows ordered by mention count descending then aspect (stable).
+        """
+        return list(
+            self._session.scalars(
+                select(ProductAspect)
+                .where(ProductAspect.asin == asin)
+                .order_by(ProductAspect.mention_count.desc(), ProductAspect.aspect)
+            )
+        )
+
+    def count_rows(self) -> int:
+        """Count stored product-aspect rows.
+
+        Returns:
+            Row count.
+        """
+        total = self._session.scalar(select(func.count()).select_from(ProductAspect))
+        return int(total or 0)
+
+    def count_products(self) -> int:
+        """Count products that have at least one stored aspect row.
+
+        Returns:
+            Distinct ASIN count.
+        """
+        total = self._session.scalar(
+            select(func.count(func.distinct(ProductAspect.asin)))
+        )
+        return int(total or 0)
+
+    def count_by_classification(self) -> dict[str, int]:
+        """Count rows per stored classification.
+
+        Returns:
+            Mapping ``classification -> row count`` (absent classes omitted).
+        """
+        return {
+            str(classification): int(total)
+            for classification, total in self._session.execute(
+                select(ProductAspect.classification, func.count())
+                .group_by(ProductAspect.classification)
+                .order_by(ProductAspect.classification)
+            )
+        }
+
+    def replace_all(
+        self, rows: Sequence[Mapping[str, object]], *, batch_size: int = 1000
+    ) -> int:
+        """Delete every row and insert the new aggregation in batches.
+
+        The delete and inserts share the caller's transaction, so a failure
+        rolls the whole replacement back instead of leaving an empty table.
+
+        Args:
+            rows: Complete ``product_aspects`` payloads, including
+                ``computed_at``.
+            batch_size: Rows per insert statement.
+
+        Returns:
+            Number of rows written.
+
+        Raises:
+            ValueError: If a row lacks a required column.
+        """
+        materialised = list(rows)
+        required = {
+            "asin",
+            "aspect",
+            "mention_count",
+            "negative_count",
+            "neutral_count",
+            "positive_count",
+            "negative_share",
+            "neutral_share",
+            "positive_share",
+            "net_sentiment",
+            "product_labeled_reviews",
+            "product_negative_share",
+            "negativity_lift",
+            "classification",
+            "examples",
+            "computed_at",
+        }
+        for row in materialised:
+            missing = required - set(row)
+            if missing:
+                raise ValueError(f"product aspect row lacks column(s) {sorted(missing)}")
+        self._session.execute(delete(ProductAspect))
+        for start in range(0, len(materialised), batch_size):
+            self._session.execute(
+                insert(ProductAspect), materialised[start : start + batch_size]
+            )
+        self._session.flush()
+        return len(materialised)
+
+
 __all__ = [
     "AnalysisRepository",
     "Page",
+    "ProductAspectRepository",
     "ProductRepository",
     "RelatedCounts",
     "RelatedRepository",

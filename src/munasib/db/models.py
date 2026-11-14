@@ -58,6 +58,18 @@ RELATION_ALSO_BOUGHT = "also_bought"
 RELATION_ALSO_VIEWED = "also_viewed"
 RELATION_TYPES = (RELATION_ALSO_BOUGHT, RELATION_ALSO_VIEWED)
 
+#: Stored aspect classifications (see docs/aspects.md). A pain point satisfies
+#: every configured negativity rule; a strength is the mutually exclusive
+#: positive rule; everything else is neutral and is still stored.
+ASPECT_CLASSIFICATION_PAIN_POINT = "pain_point"
+ASPECT_CLASSIFICATION_STRENGTH = "strength"
+ASPECT_CLASSIFICATION_NEUTRAL = "neutral"
+ASPECT_CLASSIFICATIONS = (
+    ASPECT_CLASSIFICATION_PAIN_POINT,
+    ASPECT_CLASSIFICATION_STRENGTH,
+    ASPECT_CLASSIFICATION_NEUTRAL,
+)
+
 
 class Base(DeclarativeBase):
     """Declarative base carrying the shared ``metadata`` for all tables."""
@@ -197,7 +209,7 @@ class ReviewFeature(Base):
     prob_negative: Mapped[float | None] = mapped_column(Float)
     prob_neutral: Mapped[float | None] = mapped_column(Float)
     prob_positive: Mapped[float | None] = mapped_column(Float)
-    aspects_json: Mapped[list | None] = mapped_column(JSON)
+    aspects_json: Mapped[list | None] = mapped_column(JSON(none_as_null=True))
 
 
 class ProductFeature(Base):
@@ -209,6 +221,57 @@ class ProductFeature(Base):
     indicators: Mapped[dict | None] = mapped_column(JSON)
     #: When the indicators were computed (pipeline-set; never read from data).
     computed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class ProductAspect(Base):
+    """Per-product aspect statistics (filled by ``scripts/compute_aspects.py``).
+
+    The composite key ``(asin, aspect)`` makes the aggregation idempotent. Every
+    count is a number of **reviews** that mention the aspect; the three label
+    counts sum to ``mention_count``. ``negativity_lift`` is ``NULL`` when the
+    product has no predicted-negative reviews (undefined baseline), never zero.
+
+    Polarity is review-level, not sentence-level: a review's single predicted
+    label is applied to every aspect it mentions. The audit CSV exists so this
+    limitation can be measured by a human before any precision is reported.
+    """
+
+    __tablename__ = "product_aspects"
+
+    asin: Mapped[str] = mapped_column(ForeignKey("products.asin"), primary_key=True)
+    aspect: Mapped[str] = mapped_column(String, primary_key=True)
+    mention_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    negative_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    neutral_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    positive_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    negative_share: Mapped[float] = mapped_column(Float, nullable=False)
+    neutral_share: Mapped[float] = mapped_column(Float, nullable=False)
+    positive_share: Mapped[float] = mapped_column(Float, nullable=False)
+    #: ``(positive - negative) / mention_count`` in [-1, 1].
+    net_sentiment: Mapped[float] = mapped_column(Float, nullable=False)
+    #: Predicted reviews of the product that supplied the baseline.
+    product_labeled_reviews: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Negative predicted reviews / ``product_labeled_reviews``.
+    product_negative_share: Mapped[float] = mapped_column(Float, nullable=False)
+    #: Smoothed negativity lift; NULL when the product baseline is zero.
+    negativity_lift: Mapped[float | None] = mapped_column(Float)
+    classification: Mapped[str] = mapped_column(String, nullable=False)
+    #: Selected verbatim excerpts (exact prefixes, no added ellipsis).
+    examples: Mapped[list | None] = mapped_column(JSON)
+    #: Dataset build timestamp (``meta.json`` ``built_at``), naive UTC.
+    computed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "classification IN "
+            f"('{ASPECT_CLASSIFICATION_PAIN_POINT}', "
+            f"'{ASPECT_CLASSIFICATION_STRENGTH}', "
+            f"'{ASPECT_CLASSIFICATION_NEUTRAL}')",
+            name="ck_product_aspects_classification",
+        ),
+        Index("ix_product_aspects_aspect", "aspect"),
+        Index("ix_product_aspects_asin_classification", "asin", "classification"),
+    )
 
 
 class AnalysisResult(Base):
