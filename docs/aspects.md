@@ -26,6 +26,9 @@ product_aspects  (counts, shares, lift, classification, examples)
 
 The expensive spaCy pass is cached. Extending the generic-noun stoplist only
 rebuilds the vocabulary and per-review filter; it does not re-run spaCy.
+Aggregation additionally drops self-reference rows (see *Self-reference
+exclusion* below): only `product_aspects` is filtered, never
+`review_features.aspects_json`.
 
 ## Commands
 
@@ -204,6 +207,46 @@ Examples follow the classification:
 Helpfulness is `helpful_votes` descending, then `review_id` ascending. Each
 example is an **exact prefix** of at most `example_max_chars` (default 240)
 characters. No ellipsis is appended. `max_examples` defaults to 3.
+
+### Self-reference exclusion
+
+Aspects that merely restate the product itself are not features: reviewers
+name the product when they complain, so `filter` and `mwf filter` for a
+water-filter product correlate with complaints without describing anything
+about them. When `review_intel.aspects.exclude_self_reference` is `true`
+(the default), an aspect is dropped from **that product's**
+`product_aspects` rows when **every** token of the aspect appears in the
+product's self-reference token set:
+
+1. `title_clean`, `brand` and `category_leaf` are lemmatized with the same
+   spaCy pipeline and `token.lemma_` the extractor uses; lowercase
+   alphabetic lemmas of at least `min_token_chars` form the set.
+2. The aspect is excluded only if all of its tokens are in that set.
+
+Example: a product titled `...Refrigerator Water Filter` yields the set
+`{refrigerator, water, filter, ...}` (plus `ge` from the brand and the
+category leaf tokens), so `filter`, `water filter` and `mwf filter` are
+excluded while `water flow` (`flow` is not in the set) and `fit` are kept.
+
+The lemmatized sets are cached in
+`review_intel.aspects.self_reference_cache_path`
+(`data/interim/product_self_tokens.json`) under a fingerprint of the
+lemmatizer settings and a hash of the product metadata; a re-run reads the
+cache instead of loading spaCy. The `--aggregate` report prints whether the
+exclusion is on, how many rows it removed, the top 20 excluded aspects, and
+before/after counts of pain points, strengths, neutral rows and products
+with at least one pain point.
+
+**Limits** - the rule is a token-set test, not semantic understanding:
+
+* A feature word that also occurs in the title is hidden for that product
+  (a blender titled `Whisper Quiet Blender` loses `quiet`).
+* Brand tokens drop brand discussion (`ge` for GE products); category
+  tokens drop category-generic words for products whose category names
+  them.
+* Only stored product rows are filtered. `review_features.aspects_json`
+  and the candidate cache are never modified, so setting the flag to
+  `false` and re-running `--aggregate` restores every row.
 
 ## Storage
 

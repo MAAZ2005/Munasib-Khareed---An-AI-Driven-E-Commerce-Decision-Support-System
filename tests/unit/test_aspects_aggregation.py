@@ -13,6 +13,7 @@ from munasib.core.config import AspectsConfig
 from munasib.review_intel.aspects.aggregation import (
     AspectPredictionRow,
     aggregate_product,
+    classification_counts,
     classify_aspect,
     negativity_lift,
 )
@@ -263,3 +264,44 @@ def test_example_sort_key_uses_helpfulness_then_review_id() -> None:
     low = AspectExample("b", 0, 1, "x")
     high = AspectExample("a", 0, 1, "y")
     assert sorted([low, high], key=lambda example: example.sort_key()) == [high, low]
+
+
+def test_classification_counts_summarise_rows_for_the_before_after_report() -> None:
+    """The counter reports rows, products and pain-point products exactly."""
+    config = AspectsConfig()
+    pain_rows = product_with_baseline(
+        negative=1, positive=9, aspect_negative=4, aspect_positive=1
+    )
+    strength_rows = [row(f"m{index}", 2, ["motor"], asin="A2") for index in range(6)]
+    neutral_rows = [
+        row(f"n{index}", 0, ["box"], asin="A3") for index in range(2)
+    ] + [row(f"p{index}", 2, ["box"], asin="A3") for index in range(3)]
+    stats = (
+        list(aggregate_product("A1", pain_rows, config))
+        + list(aggregate_product("A2", strength_rows, config))
+        + list(aggregate_product("A3", neutral_rows, config))
+    )
+    assert [stat.classification for stat in stats] == [
+        ASPECT_PAIN_POINT,
+        ASPECT_STRENGTH,
+        ASPECT_NEUTRAL,
+    ]
+
+    before = classification_counts(stats)
+    assert before.rows == 3
+    assert before.products == 3
+    assert before.pain_points == 1
+    assert before.strengths == 1
+    assert before.neutral == 1
+    assert before.products_with_pain_point == 1
+
+    # Excluding the pain row shrinks the table the way the report shows it.
+    after = classification_counts(
+        [stat for stat in stats if not (stat.asin == "A1")]
+    )
+    assert after.rows == 2
+    assert after.products == 2
+    assert after.pain_points == 0
+    assert after.products_with_pain_point == 0
+    assert after.strengths == 1
+    assert after.neutral == 1

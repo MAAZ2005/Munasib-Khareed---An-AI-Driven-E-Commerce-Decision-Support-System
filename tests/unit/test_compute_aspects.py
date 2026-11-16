@@ -199,6 +199,7 @@ review_intel:
     vocabulary_csv_path: "{(aspects / 'vocabulary.csv').as_posix()}"
     review_aspects_path: "{(aspects / 'review_aspects.parquet').as_posix()}"
     audit_sample_path: "{(aspects / 'audit.csv').as_posix()}"
+    self_reference_cache_path: "{(aspects / 'self_tokens.json').as_posix()}"
 """,
         encoding="utf-8",
     )
@@ -232,6 +233,13 @@ def fake_extraction(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(module, "load_nlp", lambda config: object())
     monkeypatch.setattr(module, "iter_extracted_aspects", fake_iter)
+    # Title lemmatization: a deterministic whitespace lemmatizer stands in
+    # for spaCy's so the self-reference exclusion runs end to end too.
+    monkeypatch.setattr(
+        module,
+        "spacy_batch_lemmatizer",
+        lambda nlp: (lambda texts: [text.lower().split() for text in texts]),
+    )
     monkeypatch.setattr(
         module,
         "measure_extraction_speed",
@@ -370,3 +378,144 @@ def test_stored_product_aspects_have_the_build_timestamp(
     aspects, _ = _stored(workspace)
     assert aspects
     assert all(row.computed_at == datetime(2026, 10, 24, 6, 15, 6) for row in aspects)
+
+
+def _set_title(workspace: dict[str, Path], asin: str, title: str) -> None:
+    """Set a product's title fields (the self-reference input).
+
+    Args:
+        workspace: Fixture paths.
+        asin: Product to update.
+        title: New title and cleaned title.
+    """
+    engine = create_engine_from_settings(db_url=f"sqlite:///{workspace['db']}")
+    try:
+        with session_scope(create_session_factory(engine)) as session:
+            product = session.get(Product, asin)
+            assert product is not None
+            product.title = title
+            product.title_clean = title
+    finally:
+        engine.dispose()
+
+
+def _snapshot(rows: list[ProductAspect]) -> list[tuple]:
+    """Reduce stored rows to comparable scalar tuples (determinism check).
+
+    Args:
+        rows: Stored product-aspect rows.
+
+    Returns:
+        One tuple of every column per row, in input order.
+    """
+    return [
+        (
+            row.asin,
+            row.aspect,
+            row.mention_count,
+            row.negative_count,
+            row.neutral_count,
+            row.positive_count,
+            row.negative_share,
+            row.neutral_share,
+            row.positive_share,
+            row.net_sentiment,
+            row.product_labeled_reviews,
+            row.product_negative_share,
+            row.negativity_lift,
+            row.classification,
+            row.examples,
+            row.computed_at,
+        )
+        for row in rows
+    ]
+
+
+def test_self_reference_exclusion_drops_title_restating_rows(
+    workspace: dict[str, Path],
+    fake_extraction: None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A title-restating aspect leaves the product rows, not the review cache."""
+    _set_title(workspace, "B0000000A1", "Filter Unit Product")
+    module = _load_module()
+    assert module.main(["--config", str(workspace["config"]), "--all"]) == 0
+    out = capsys.readouterr().out
+
+    aspects, features = _stored(workspace)
+    by_key = {(row.asin, row.aspect): row for row in aspects}
+    assert ("B0000000A1", "filter") not in by_key
+    assert by_key[("B0000000B1", "motor")].classification == "strength"
+
+    # The cached per-review aspects are never deleted by the exclusion.
+    product_a_ids = {f"a{index:02d}" for index in range(16)}
+    filter_payloads = [
+        feature.aspects_json
+        for feature in features
+        if feature.review_id in product_a_ids and feature.aspects_json
+    ]
+    assert any("filter" in payload for payload in filter_payloads)
+
+    # Report: state, excluded rows, top excluded aspect and before/after.
+    assert "self-reference exclusion    : on" in out
+    assert "excluded product-aspect rows: 1" in out
+    assert "- filter: rows=1, mentions=6" in out
+    assert "before -> after self-reference exclusion:" in out
+    assert "1 -> 0" in out  # pain points and pain-point products: 1 -> 0
+    assert "Example products:" in out
+    assert "Example products after self-reference exclusion:" in out
+    # The same products are shown in both sections.
+    assert out.count("B0000000A1 | Filter Unit Product") == 2
+    assert workspace["aspects"].joinpath("self_tokens.json").exists()
+
+
+def test_exclude_self_reference_off_keeps_title_matching_rows(
+    workspace: dict[str, Path],
+    fake_extraction: None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """With the flag off every row is kept, self-reference or not."""
+    config_text = workspace["config"].read_text(encoding="utf-8")
+    workspace["config"].write_text(
+        config_text.replace(
+            "    min_review_count: 2",
+            "    min_review_count: 2\n    exclude_self_reference: false",
+        ),
+        encoding="utf-8",
+    )
+    _set_title(workspace, "B0000000A1", "Filter Unit Product")
+    module = _load_module()
+    assert module.main(["--config", str(workspace["config"]), "--all"]) == 0
+    out = capsys.readouterr().out
+
+    aspects, _ = _stored(workspace)
+    by_key = {(row.asin, row.aspect): row for row in aspects}
+    assert by_key[("B0000000A1", "filter")].classification == "pain_point"
+    assert "self-reference exclusion    : off (exclude_self_reference: false)" in out
+    assert "excluded product-aspect rows: 0" in out
+    assert "Example products after self-reference exclusion:" not in out
+
+
+def test_aggregate_reuses_the_self_reference_cache_and_is_idempotent(
+    workspace: dict[str, Path],
+    fake_extraction: None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A second aggregate reads the cache and rewrites identical rows."""
+    module = _load_module()
+    assert module.main(["--config", str(workspace["config"]), "--all"]) == 0
+    first, _ = _stored(workspace)
+    capsys.readouterr()
+
+    def exploding(*args, **kwargs):
+        raise AssertionError("the lemmatizer must not run when the cache matches")
+
+    monkeypatch.setattr(module, "spacy_batch_lemmatizer", exploding)
+    assert module.main(["--config", str(workspace["config"]), "--aggregate"]) == 0
+    out = capsys.readouterr().out
+
+    second, _ = _stored(workspace)
+    assert _snapshot(second) == _snapshot(first)
+    assert "self-reference exclusion    : on" in out
+    assert "excluded product-aspect rows: 0" in out

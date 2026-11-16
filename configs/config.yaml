@@ -322,6 +322,12 @@ review_intel:
     max_examples: 3
     example_max_chars: 240
 
+    # Drop product-aspects rows whose aspect tokens ALL appear in the product's
+    # lemmatized title_clean/brand/category_leaf tokens (see docs/aspects.md).
+    # Cached per-review aspects are never touched; set false to keep every row.
+    exclude_self_reference: true
+    self_reference_cache_path: "data/interim/product_self_tokens.json"
+
     # Manual audit sample (long format, blank annotations until a human fills it).
     audit_sample_size: 100
     audit_sample_path: "reports/aspect_audit_sample.csv"

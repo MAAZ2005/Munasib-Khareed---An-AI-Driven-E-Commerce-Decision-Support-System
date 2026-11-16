@@ -175,3 +175,20 @@ def test_paths_must_not_be_empty() -> None:
 def test_settings_default_has_the_new_cutoff() -> None:
     """A Settings object without YAML uses the same validated defaults."""
     assert Settings().review_intel.aspects.min_review_count == 50
+
+
+def test_self_reference_exclusion_defaults_to_on() -> None:
+    """The shipped config keeps the rule enabled and caches its token sets."""
+    aspects = load_settings(str(REPO_CONFIG)).review_intel.aspects
+    assert aspects.exclude_self_reference is True
+    assert aspects.self_reference_cache_path == Path("data/interim/product_self_tokens.json")
+    assert "exclude_self_reference: true" in REPO_CONFIG.read_text(encoding="utf-8")
+    assert AspectsConfig().exclude_self_reference is True
+
+
+def test_self_reference_cache_path_must_not_be_empty() -> None:
+    """An empty cache path would silently write to the working directory."""
+    with pytest.raises(
+        ValidationError, match="self_reference_cache_path must not be empty"
+    ):
+        AspectsConfig(self_reference_cache_path=Path("   "))

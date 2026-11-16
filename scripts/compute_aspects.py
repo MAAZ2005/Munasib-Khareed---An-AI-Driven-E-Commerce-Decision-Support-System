@@ -17,7 +17,9 @@ after an interruption:
 ``--aggregate``
     Read the database only and replace ``product_aspects`` with the per-product
     counts, shares, smoothed lift, classification and examples. Requires a
-    complete per-review aspect pass.
+    complete per-review aspect pass. Aspects that only restate the product
+    itself (``exclude_self_reference``) are excluded here and reported with
+    before/after counts; the cached per-review aspects are never modified.
 
 ``--all``
     Run vocabulary, reviews and aggregation in that order without repeating the
@@ -55,7 +57,11 @@ from munasib.db.session import (
     session_scope,
 )
 from munasib.product_intel.features import read_build_timestamp
-from munasib.review_intel.aspects.aggregation import iter_product_aspects
+from munasib.review_intel.aspects.aggregation import (
+    ClassificationCounts,
+    classification_counts,
+    iter_product_aspects,
+)
 from munasib.review_intel.aspects.cache import (
     AspectCacheIncomplete,
     AspectCacheMismatch,
@@ -70,6 +76,18 @@ from munasib.review_intel.aspects.extraction import (
     load_nlp,
     measure_extraction_speed,
 )
+from munasib.review_intel.aspects.self_reference import (
+    ExcludedAspectSummary,
+    ProductIdentity,
+    SelfTokenSets,
+    build_self_token_sets,
+    excluded_aspect_summary,
+    filter_self_reference,
+    load_self_token_cache,
+    save_self_token_cache,
+    self_reference_fingerprint,
+    spacy_batch_lemmatizer,
+)
 from munasib.review_intel.aspects.storage import (
     ReviewAspectWriter,
     count_text_reviews,
@@ -77,7 +95,6 @@ from munasib.review_intel.aspects.storage import (
     iter_text_reviews,
 )
 from munasib.review_intel.aspects.types import (
-    ASPECT_NEUTRAL,
     ASPECT_PAIN_POINT,
     ASPECT_STRENGTH,
     ProductAspectStats,
@@ -102,6 +119,8 @@ EXIT_CACHE_CONFLICT = 2
 DB_BATCH_SIZE = 1000
 #: Products whose pain points/strengths are printed after aggregation.
 DEFAULT_EXAMPLE_PRODUCTS = 3
+#: Excluded aspects listed in the aggregate report.
+EXCLUDED_TOP_LIMIT = 20
 
 
 @dataclass(frozen=True)
@@ -127,14 +146,25 @@ class ReviewRun:
 
 @dataclass(frozen=True)
 class AggregateRun:
-    """Summary of the product aggregation stage."""
+    """Summary of the product aggregation stage.
 
-    rows: int
-    products: int
-    pain_points: int
-    strengths: int
-    neutral: int
+    Attributes:
+        before: Classification counts of the aggregation without the
+            self-reference exclusion.
+        after: Classification counts of the rows actually written.
+        examples: Rendered example sections (before, plus after when the
+            exclusion is on).
+        exclusion_enabled: Value of ``exclude_self_reference``.
+        excluded_rows: Product-aspect rows dropped by the exclusion.
+        excluded_top: Top excluded aspects for the report.
+    """
+
+    before: ClassificationCounts
+    after: ClassificationCounts
     examples: list[str]
+    exclusion_enabled: bool
+    excluded_rows: int
+    excluded_top: list[ExcludedAspectSummary]
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -509,21 +539,21 @@ def run_reviews(settings: Settings, *, limit: int | None) -> ReviewRun:
         engine.dispose()
 
 
-def _render_product_examples(
+def _select_example_asins(
     rows: Sequence[ProductAspectStats],
-    titles: dict[str, str],
     limit: int,
 ) -> list[str]:
-    """Render pain points and strengths for a few products.
+    """Choose whose pain points/strengths the report prints.
 
     Args:
-        rows: All aggregated product-aspect statistics.
-        titles: Product ASIN -> title.
+        rows: Aggregated statistics **before** the self-reference exclusion,
+            so the selection matches the pre-exclusion ranking and the same
+            products appear in both report sections.
         limit: Number of products to print.
 
     Returns:
-        Lines ready to print. Products are chosen by total mentions of their
-        non-neutral aspects, then ASIN, so a run is reproducible.
+        ASINs ordered by total mentions of their non-neutral aspects
+        descending, then ASIN ascending, so a run is reproducible.
     """
     by_asin: defaultdict[str, list[ProductAspectStats]] = defaultdict(list)
     for row in rows:
@@ -546,8 +576,31 @@ def _render_product_examples(
             item[0],
         )
     )
+    return [asin for asin, _stats in candidates[:limit]]
+
+
+def _render_products(
+    rows: Sequence[ProductAspectStats],
+    titles: dict[str, str],
+    asins: Sequence[str],
+) -> list[str]:
+    """Render pain points and strengths for the given products.
+
+    Args:
+        rows: Aggregated statistics of one view (before or after exclusion).
+        titles: Product ASIN -> title.
+        asins: Products to render, in selection order.
+
+    Returns:
+        Lines ready to print. A product that lost every row renders
+        ``none`` for both headings.
+    """
+    by_asin: defaultdict[str, list[ProductAspectStats]] = defaultdict(list)
+    for row in rows:
+        by_asin[row.asin].append(row)
     lines: list[str] = []
-    for asin, stats in candidates[:limit]:
+    for asin in asins:
+        stats = by_asin.get(asin, [])
         title = titles.get(asin) or "(title not available)"
         lines.append(f"{asin} | {title}")
         for classification, heading in (
@@ -576,17 +629,96 @@ def _render_product_examples(
     return lines
 
 
+def _render_example_sections(
+    before: Sequence[ProductAspectStats],
+    after: Sequence[ProductAspectStats],
+    titles: dict[str, str],
+    limit: int,
+    *,
+    exclusion_enabled: bool,
+) -> list[str]:
+    """Render the example section(s) of the aggregate report.
+
+    The same products are shown before and after the exclusion so the reader
+    can diff them directly. With the flag off there is a single section,
+    because ``before`` and ``after`` are identical.
+
+    Args:
+        before: Aggregated statistics before exclusion.
+        after: Aggregated statistics after exclusion.
+        titles: Product ASIN -> title.
+        limit: Number of products.
+        exclusion_enabled: Whether the second (after) section is printed.
+
+    Returns:
+        Lines ready to print, starting with the ``Example products:`` header.
+    """
+    asins = _select_example_asins(before, limit)
+    lines = ["Example products:"]
+    lines.extend(_render_products(before, titles, asins))
+    if exclusion_enabled:
+        lines.append("Example products after self-reference exclusion:")
+        lines.extend(_render_products(after, titles, asins))
+    return lines
+
+
+def _self_token_sets(
+    identities: Sequence[ProductIdentity],
+    config: AspectsConfig,
+) -> SelfTokenSets:
+    """Load the self-reference token-set cache, building it with spaCy on a miss.
+
+    Args:
+        identities: Metadata of every product.
+        config: Aspect configuration.
+
+    Returns:
+        Token sets keyed by ASIN; an empty mapping when the exclusion flag is
+        off (then nothing is loaded or built).
+    """
+    if not config.exclude_self_reference:
+        return {}
+    fingerprint = self_reference_fingerprint(config, identities)
+    cached = load_self_token_cache(config.self_reference_cache_path, fingerprint)
+    if cached is not None:
+        logger.info(
+            "self_reference_cache hit path=%s products=%d",
+            config.self_reference_cache_path,
+            len(cached),
+        )
+        return cached
+    logger.info(
+        "self_reference_cache miss path=%s lemmatizing products=%d",
+        config.self_reference_cache_path,
+        len(identities),
+    )
+    token_sets = build_self_token_sets(
+        identities,
+        config,
+        spacy_batch_lemmatizer(load_nlp(config)),
+    )
+    save_self_token_cache(config.self_reference_cache_path, token_sets, fingerprint)
+    return token_sets
+
+
 def run_aggregate(settings: Settings, *, examples: int) -> AggregateRun:
     """Aggregate stored per-review aspects into ``product_aspects``.
+
+    Reads the database only; reviews are never re-parsed. When
+    ``exclude_self_reference`` is on, rows whose aspect tokens all restate the
+    product (its lemmatized title, brand and category) are dropped from the
+    written table, while ``review_features.aspects_json`` stays untouched.
+    The summary carries both the before and the after classification counts.
 
     Args:
         settings: Loaded project settings.
         examples: Number of products whose pain points/strengths are printed.
 
     Returns:
-        Aggregation summary.
+        Aggregation summary (before/after counts, exclusion report, examples).
 
     Raises:
+        ValueError: If ``examples`` is below 1.
         DataError: If aspect coverage is incomplete or there is nothing to
             aggregate.
     """
@@ -611,30 +743,53 @@ def run_aggregate(settings: Settings, *, examples: int) -> AggregateRun:
                     "no stored aspect payloads; run "
                     "'python scripts/compute_aspects.py --reviews' first"
                 )
-            stats = list(iter_product_aspects(iter_prediction_rows(session), config))
-            payloads = [stat.to_row(computed_at) for stat in stats]
-            repository = ProductAspectRepository(session)
-            written = repository.replace_all(payloads)
-            counts = repository.count_by_classification()
-            products = repository.count_products()
-            asins = sorted({stat.asin for stat in stats})
-            titles = {
-                product.asin: product.title or ""
-                for product in ProductRepository(session).get_products(asins)
-            }
+            stats_before = list(iter_product_aspects(iter_prediction_rows(session), config))
+            products = ProductRepository(session).list_all_products()
+            identities = [
+                ProductIdentity(
+                    asin=product.asin,
+                    title_clean=product.title_clean,
+                    brand=product.brand,
+                    category_leaf=product.category_leaf,
+                )
+                for product in products
+            ]
+            titles = {product.asin: product.title or "" for product in products}
+        # Outside the read transaction: the lemmatizer/cache work does not
+        # hold a database lock, and the stats above are plain value objects.
+        token_sets = _self_token_sets(identities, config)
+        filtered = filter_self_reference(
+            stats_before,
+            token_sets,
+            enabled=config.exclude_self_reference,
+        )
+        before = classification_counts(stats_before)
+        after = classification_counts(filtered.kept)
+        payloads = [stat.to_row(computed_at) for stat in filtered.kept]
+        with session_scope(factory) as session:
+            written = ProductAspectRepository(session).replace_all(payloads)
         logger.info(
-            "aggregate_written rows=%d products=%d computed_at=%s",
+            "aggregate_written rows=%d products=%d excluded=%d "
+            "self_reference=%s computed_at=%s",
             written,
-            products,
+            after.products,
+            len(filtered.excluded),
+            config.exclude_self_reference,
             computed_at.isoformat(),
         )
         return AggregateRun(
-            rows=written,
-            products=products,
-            pain_points=counts.get(ASPECT_PAIN_POINT, 0),
-            strengths=counts.get(ASPECT_STRENGTH, 0),
-            neutral=counts.get(ASPECT_NEUTRAL, 0),
-            examples=_render_product_examples(stats, titles, examples),
+            before=before,
+            after=after,
+            examples=_render_example_sections(
+                stats_before,
+                filtered.kept,
+                titles,
+                examples,
+                exclusion_enabled=config.exclude_self_reference,
+            ),
+            exclusion_enabled=config.exclude_self_reference,
+            excluded_rows=len(filtered.excluded),
+            excluded_top=excluded_aspect_summary(filtered.excluded, EXCLUDED_TOP_LIMIT),
         )
     finally:
         engine.dispose()
@@ -668,19 +823,41 @@ def _print_review_summary(summary: ReviewRun) -> None:
 
 
 def _print_aggregate_summary(summary: AggregateRun) -> None:
-    """Print the aggregation-stage summary and example products.
+    """Print the aggregation summary, exclusion report and example products.
 
     Args:
         summary: Stage summary.
     """
     print()
-    print(f"product-aspect rows         : {summary.rows:,}")
-    print(f"products with aspects       : {summary.products:,}")
-    print(f"pain points                 : {summary.pain_points:,}")
-    print(f"strengths                   : {summary.strengths:,}")
-    print(f"neutral aspects             : {summary.neutral:,}")
+    print(f"product-aspect rows         : {summary.after.rows:,}")
+    print(f"products with aspects       : {summary.after.products:,}")
+    print(f"pain points                 : {summary.after.pain_points:,}")
+    print(f"strengths                   : {summary.after.strengths:,}")
+    print(f"neutral aspects             : {summary.after.neutral:,}")
     print()
-    print("Example products:")
+    state = "on" if summary.exclusion_enabled else "off (exclude_self_reference: false)"
+    print(f"self-reference exclusion    : {state}")
+    print(f"excluded product-aspect rows: {summary.excluded_rows:,}")
+    if summary.excluded_top:
+        print("top excluded aspects (by product rows):")
+        for entry in summary.excluded_top:
+            print(f"    - {entry.aspect}: rows={entry.rows}, mentions={entry.mentions:,}")
+    print()
+    print("before -> after self-reference exclusion:")
+    for label, before_value, after_value in (
+        ("rows", summary.before.rows, summary.after.rows),
+        ("products", summary.before.products, summary.after.products),
+        ("pain points", summary.before.pain_points, summary.after.pain_points),
+        ("strengths", summary.before.strengths, summary.after.strengths),
+        ("neutral aspects", summary.before.neutral, summary.after.neutral),
+        (
+            "products with >=1 pain point",
+            summary.before.products_with_pain_point,
+            summary.after.products_with_pain_point,
+        ),
+    ):
+        print(f"    {label:<31}: {before_value:,} -> {after_value:,}")
+    print()
     for line in summary.examples:
         print(line)
 

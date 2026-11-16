@@ -34,6 +34,10 @@ the dominant label (ties resolve negative, neutral, positive). Helpfulness
 descending then ``review_id`` ascending makes selection deterministic. Text is
 an exact prefix of at most ``example_max_chars`` characters, with no added
 ellipsis.
+
+:func:`classification_counts` summarises a row set for the self-reference
+before/after report; the exclusion rule itself lives in
+:mod:`munasib.review_intel.aspects.self_reference`.
 """
 
 from __future__ import annotations
@@ -275,9 +279,72 @@ def iter_product_aspects(
         yield from aggregate_product(asin, group, config)
 
 
+@dataclass(frozen=True)
+class ClassificationCounts:
+    """Row counts per classification plus the pain-point product count.
+
+    Used for the self-reference before/after report: the same counter runs
+    over the aggregation with and without exclusion.
+
+    Attributes:
+        rows: Total product-aspect rows.
+        products: Distinct ASINs with at least one row.
+        pain_points: Rows classified ``pain_point``.
+        strengths: Rows classified ``strength``.
+        neutral: Rows classified ``neutral``.
+        products_with_pain_point: Distinct ASINs with at least one pain point.
+    """
+
+    rows: int
+    products: int
+    pain_points: int
+    strengths: int
+    neutral: int
+    products_with_pain_point: int
+
+
+def classification_counts(stats: Iterable[ProductAspectStats]) -> ClassificationCounts:
+    """Count aggregated rows per classification for a before/after report.
+
+    Args:
+        stats: In-memory product-aspect rows (before or after exclusion).
+
+    Returns:
+        Counts derived only from the given rows; a row whose classification
+        is not one of the three stored labels counts as neutral, matching
+        :func:`classify_aspect`'s "everything else is neutral" rule.
+    """
+    rows = 0
+    pain_points = 0
+    strengths = 0
+    neutral = 0
+    products: set[str] = set()
+    pain_products: set[str] = set()
+    for stat in stats:
+        rows += 1
+        products.add(stat.asin)
+        if stat.classification == ASPECT_PAIN_POINT:
+            pain_points += 1
+            pain_products.add(stat.asin)
+        elif stat.classification == ASPECT_STRENGTH:
+            strengths += 1
+        else:
+            neutral += 1
+    return ClassificationCounts(
+        rows=rows,
+        products=len(products),
+        pain_points=pain_points,
+        strengths=strengths,
+        neutral=neutral,
+        products_with_pain_point=len(pain_products),
+    )
+
+
 __all__ = [
     "AspectPredictionRow",
+    "ClassificationCounts",
     "aggregate_product",
+    "classification_counts",
     "classify_aspect",
     "example_label",
     "iter_product_aspects",

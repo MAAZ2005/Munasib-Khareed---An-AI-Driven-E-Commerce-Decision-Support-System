@@ -661,6 +661,10 @@ class AspectsConfig(BaseModel):
     strength_max_negative_lift: float = 0.75
     max_examples: int = 3
     example_max_chars: int = 240
+    #: Drop aspects whose tokens all restate the product (title/brand/category).
+    exclude_self_reference: bool = True
+    #: Cache of the lemmatized per-product self-reference token sets.
+    self_reference_cache_path: Path = Path("data/interim/product_self_tokens.json")
 
     # --- Manual audit -------------------------------------------------------
     audit_sample_size: int = 100
@@ -777,6 +781,7 @@ class AspectsConfig(BaseModel):
             ("review_aspects_path", self.review_aspects_path),
             ("candidate_parts_dir", self.candidate_parts_dir),
             ("audit_sample_path", self.audit_sample_path),
+            ("self_reference_cache_path", self.self_reference_cache_path),
         ):
             if not str(path).strip():
                 raise ValueError(f"review_intel.aspects.{name} must not be empty")
