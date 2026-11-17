@@ -5,8 +5,14 @@ so this script mirrors the three parquet tables into SQLite:
 
 * ``products`` / ``reviews`` / ``related_products`` - bulk-inserted in batches,
   one transaction per table (``munasib.db.session.session_scope``).
-* ``review_features`` / ``product_features`` / ``analysis_results`` - created
-  empty; later pipeline stages fill them.
+* ``review_features`` / ``product_features`` / ``product_aspects`` /
+  ``product_evidence`` / ``analysis_results`` - created empty; later pipeline
+  stages fill them.
+
+Rebuilds and cache reloads delete the derived tables; the warnings name the
+recompute command for each (``scripts/ingest_predictions.py``,
+``scripts/compute_product_features.py``, ``scripts/compute_aspects.py``,
+``scripts/compute_evidence.py``) instead of letting the data disappear silently.
 
 Null handling is explicit: pandas nulls (``None``/``NaN``/``pd.NA``/``NaT``)
 become SQL NULL, so e.g. an unknown ``verified`` stays NULL and is never
@@ -62,6 +68,7 @@ from munasib.db.models import (
     Base,
     Product,
     ProductAspect,
+    ProductEvidence,
     ProductFeature,
     RelatedProduct,
     Review,
@@ -139,6 +146,7 @@ EMPTY_TABLES = (
     "review_features",
     "product_features",
     "product_aspects",
+    "product_evidence",
     "analysis_results",
 )
 CLEAR_ORDER = (*EMPTY_TABLES, "related_products", "reviews", "products")
@@ -150,6 +158,7 @@ _TABLE_MODELS = {
     "review_features": ReviewFeature,
     "product_features": ProductFeature,
     "product_aspects": ProductAspect,
+    "product_evidence": ProductEvidence,
     "analysis_results": AnalysisResult,
 }
 
@@ -465,6 +474,53 @@ def warn_aspects_will_be_deleted(engine: Engine, *, reason: str) -> int:
     return stored
 
 
+def count_product_evidence(engine: Engine) -> int:
+    """Count rows in ``product_evidence`` (0 when the table does not exist yet).
+
+    Args:
+        engine: Target engine.
+
+    Returns:
+        Stored evidence row count.
+    """
+    if not inspect(engine).has_table("product_evidence"):
+        return 0
+    with engine.connect() as connection:
+        value = connection.execute(
+            select(func.count()).select_from(ProductEvidence)
+        ).scalar_one()
+    return int(value or 0)
+
+
+def warn_evidence_will_be_deleted(engine: Engine, *, reason: str) -> int:
+    """Warn loudly that a rebuild is about to delete product evidence rows.
+
+    ``product_evidence`` is derived data, but recomputing it needs the stored
+    predictions and aspect rows to be present again. The warning prints the
+    exact recompute order so the table cannot disappear silently.
+
+    Args:
+        engine: Target engine.
+        reason: What is about to happen (``"--force rebuild"``/``"cache reload"``).
+
+    Returns:
+        Number of evidence rows that will be deleted.
+    """
+    stored = count_product_evidence(engine)
+    if stored:
+        message = (
+            f"{stored:,} row(s) in product_evidence will be deleted by this {reason}. "
+            "Recompute after the reload with:\n"
+            "  python scripts/ingest_predictions.py\n"
+            "  python scripts/compute_aspects.py --reviews\n"
+            "  python scripts/compute_aspects.py --aggregate\n"
+            "  python scripts/compute_evidence.py"
+        )
+        print(f"WARNING: {message}")
+        logger.warning("product_evidence_wiped rows=%d reason=%s", stored, reason)
+    return stored
+
+
 def cached_image_asins(images_dir: Path) -> set[str]:
     """ASINs with a thumbnail file in the local image cache.
 
@@ -602,7 +658,7 @@ def db_row_counts(engine: Engine) -> dict[str, int]:
         engine: Target engine.
 
     Returns:
-        ``{table_name: row_count}`` for all six tables.
+        ``{table_name: row_count}`` for every table of the serving cache.
     """
     counts: dict[str, int] = {}
     with engine.connect() as connection:
@@ -815,6 +871,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.force:
             warn_predictions_will_be_deleted(engine, reason="--force rebuild")
             warn_aspects_will_be_deleted(engine, reason="--force rebuild")
+            warn_evidence_will_be_deleted(engine, reason="--force rebuild")
             Base.metadata.drop_all(engine)
             logger.info("schema_dropped detail=--force rebuild")
             init_db(engine)
@@ -842,6 +899,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 warn_predictions_will_be_deleted(engine, reason="cache reload")
                 warn_aspects_will_be_deleted(engine, reason="cache reload")
+                warn_evidence_will_be_deleted(engine, reason="cache reload")
                 clear_cache_tables(engine)
                 loaded = ingest_parquet(engine, processed_dir, args.batch_size)
                 logger.info(

@@ -19,7 +19,7 @@ import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 from sqlalchemy import and_, case, delete, func, insert, null, or_, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -36,6 +36,7 @@ from munasib.db.models import (
     AnalysisResult,
     Product,
     ProductAspect,
+    ProductEvidence,
     RelatedProduct,
     Review,
     ReviewFeature,
@@ -920,10 +921,98 @@ class ProductAspectRepository:
         return len(materialised)
 
 
+class ProductEvidenceRepository:
+    """Per-product evidence indicators keyed by ``asin``."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_evidence(self, asin: str) -> ProductEvidence | None:
+        """Fetch one product's stored evidence row.
+
+        Args:
+            asin: Product ASIN.
+
+        Returns:
+            The row, or None when the product was never scored.
+        """
+        return self._session.get(ProductEvidence, asin)
+
+    def list_evidence(self, asins: Sequence[str] | None = None) -> list[ProductEvidence]:
+        """Fetch stored evidence rows, ascending by ASIN.
+
+        Args:
+            asins: ASINs to load, or None for every stored row.
+
+        Returns:
+            Existing rows ordered by ASIN (stable, so a diff of two runs is
+            meaningful).
+        """
+        statement = select(ProductEvidence).order_by(ProductEvidence.asin)
+        if asins is not None:
+            statement = statement.where(ProductEvidence.asin.in_(list(asins)))
+        return list(self._session.scalars(statement))
+
+    def count_rows(self) -> int:
+        """Count stored evidence rows.
+
+        Returns:
+            Row count.
+        """
+        total = self._session.scalar(select(func.count()).select_from(ProductEvidence))
+        return int(total or 0)
+
+    def upsert_evidence(self, rows: Sequence[Mapping[str, object]]) -> int:
+        """Insert or refresh one row per ASIN.
+
+        Merging on the ``asin`` primary key keeps re-runs idempotent and lets a
+        ``--limit``/``--asins`` run refresh only the products it computed
+        instead of replacing the whole table.
+
+        Args:
+            rows: Complete ``product_evidence`` payloads, including
+                ``reference_date`` and ``computed_at``.
+
+        Returns:
+            Number of rows written.
+
+        Raises:
+            ValueError: If a row lacks a required column.
+        """
+        materialised = list(rows)
+        required = {
+            "asin",
+            "n_reviews",
+            "evidence_strength",
+            "indicators",
+            "reference_date",
+            "computed_at",
+        }
+        for row in materialised:
+            missing = required - set(row)
+            if missing:
+                raise ValueError(f"product evidence row lacks column(s) {sorted(missing)}")
+        for row in materialised:
+            strength = row["evidence_strength"]
+            self._session.merge(
+                ProductEvidence(
+                    asin=str(row["asin"]),
+                    n_reviews=cast(int, row["n_reviews"]),
+                    evidence_strength=None if strength is None else cast(float, strength),
+                    indicators=cast(dict, row["indicators"]),
+                    reference_date=cast(datetime, row["reference_date"]),
+                    computed_at=cast(datetime, row["computed_at"]),
+                )
+            )
+        self._session.flush()
+        return len(materialised)
+
+
 __all__ = [
     "AnalysisRepository",
     "Page",
     "ProductAspectRepository",
+    "ProductEvidenceRepository",
     "ProductRepository",
     "RelatedCounts",
     "RelatedRepository",

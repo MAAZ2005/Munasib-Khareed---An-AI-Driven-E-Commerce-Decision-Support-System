@@ -796,12 +796,185 @@ class EvidenceWeightsConfig(BaseModel):
     review_depth: float = 0.20
 
 
+#: Tolerance for the six evidence-strength component weights summing to 1.0.
+STRENGTH_WEIGHT_TOLERANCE = 1e-6
+
+
+class EvidenceIndicatorsConfig(BaseModel):
+    """Windows and thresholds of the per-product evidence indicators.
+
+    Every value is declared in ``configs/config.yaml`` under
+    ``review_intel.evidence.indicators`` and documented in ``docs/evidence.md``;
+    no module hardcodes a threshold.
+    """
+
+    #: Review count at which the volume sufficiency score reaches 1.0.
+    n_saturation: int = 200
+    #: The 1-2 star and 5 star shares must BOTH reach this to call a rating
+    #: distribution polarized.
+    polarization_min_share: float = 0.25
+    #: "Recent" always means this many months before the dataset reference date.
+    recent_months: int = 24
+    #: Minimum predicted-negative reviews inside the recent window before the
+    #: recent/overall negative-shift indicator is reported.
+    min_recent_reviews: int = 10
+    #: Sentiment trend window, in complete calendar quarters before the
+    #: reference quarter.
+    trend_quarters: int = 8
+    #: Minimum number of qualifying quarters required for a trend slope.
+    min_trend_quarters: int = 4
+    #: Minimum reviews with predictions in a quarter for it to qualify.
+    min_quarter_reviews: int = 5
+    #: Width of the sliding temporal-burst window, in months.
+    burst_window_months: int = 6
+    #: A product is flagged as a temporal burst when this share of its
+    #: predicted-negative reviews falls inside one sliding window.
+    burst_flag_share: float = 0.50
+    #: Minimum predicted-negative reviews before the concentration inputs exist.
+    min_negative_reviews: int = 10
+    #: A star label and a probability above this value count as strong
+    #: disagreement for the rating/text agreement indicator.
+    conflict_probability_threshold: float = 0.5
+    #: Conflict rate at which rating/text consistency reaches 0.0.
+    conflict_saturation: float = 0.20
+    #: Number of pain-point aspects whose negative mentions form the top share.
+    top_pain_points: int = 3
+    #: Scale of the staleness cost curve, in months.
+    staleness_scale_months: float = 12.0
+    #: Net-sentiment slope per quarter that saturates the trend indicator.
+    trend_saturation: float = 0.25
+
+    @model_validator(mode="after")
+    def _check_indicator_values(self) -> "EvidenceIndicatorsConfig":
+        """Validate every window and threshold of the indicator block.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When a count is not positive, a share is outside
+                ``(0, 1)``, a scale is not positive, or the trend minimum
+                exceeds the trend window.
+        """
+        for name, value, minimum in (
+            ("n_saturation", self.n_saturation, 2),
+            ("recent_months", self.recent_months, 1),
+            ("min_recent_reviews", self.min_recent_reviews, 1),
+            ("trend_quarters", self.trend_quarters, 2),
+            ("min_trend_quarters", self.min_trend_quarters, 1),
+            ("min_quarter_reviews", self.min_quarter_reviews, 1),
+            ("burst_window_months", self.burst_window_months, 1),
+            ("min_negative_reviews", self.min_negative_reviews, 1),
+            ("top_pain_points", self.top_pain_points, 1),
+        ):
+            if value < minimum:
+                raise ValueError(
+                    f"review_intel.evidence.indicators.{name} must be >= {minimum}, "
+                    f"got {value}"
+                )
+        if self.min_trend_quarters > self.trend_quarters:
+            raise ValueError(
+                "review_intel.evidence.indicators.min_trend_quarters must not exceed "
+                f"trend_quarters, got {self.min_trend_quarters} > {self.trend_quarters}"
+            )
+        for name, share in (
+            ("polarization_min_share", self.polarization_min_share),
+            ("burst_flag_share", self.burst_flag_share),
+            ("conflict_probability_threshold", self.conflict_probability_threshold),
+        ):
+            if not 0.0 < share < 1.0:
+                raise ValueError(
+                    f"review_intel.evidence.indicators.{name} must be in (0, 1), "
+                    f"got {share}"
+                )
+        for name, scale in (
+            ("conflict_saturation", self.conflict_saturation),
+            ("staleness_scale_months", self.staleness_scale_months),
+            ("trend_saturation", self.trend_saturation),
+        ):
+            if scale <= 0.0:
+                raise ValueError(
+                    f"review_intel.evidence.indicators.{name} must be positive, got {scale}"
+                )
+        return self
+
+
+class EvidenceStrengthWeightsConfig(BaseModel):
+    """Weights of the six stored evidence-strength components (sum to 1.0)."""
+
+    review_volume: float = 0.20
+    recency_coverage: float = 0.20
+    verified_purchase_ratio: float = 0.15
+    rating_agreement: float = 0.15
+    rating_text_consistency: float = 0.15
+    helpfulness_coverage: float = 0.15
+
+
+class EvidenceStrengthConfig(BaseModel):
+    """Composite evidence-strength rules: component weights and low-evidence guard."""
+
+    weights: EvidenceStrengthWeightsConfig = Field(
+        default_factory=EvidenceStrengthWeightsConfig
+    )
+    #: Composite strength below this marks the product as low evidence.
+    low_evidence_threshold: float = 0.40
+    #: Review count below this marks the product as low evidence regardless of
+    #: the composite (thin evidence cannot be trusted even when it agrees).
+    min_reviews_for_confidence: int = 50
+
+    @model_validator(mode="after")
+    def _check_strength_values(self) -> "EvidenceStrengthConfig":
+        """Validate the component weights and the low-evidence guard.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When a weight is not positive, the weights do not sum
+                to 1.0 within :data:`STRENGTH_WEIGHT_TOLERANCE`, the strength
+                threshold is outside 0-1, or the review minimum is not positive.
+        """
+        total = 0.0
+        for name, value in self.weights.model_dump().items():
+            if value <= 0.0:
+                raise ValueError(
+                    f"review_intel.evidence.strength.weights.{name} must be positive, "
+                    f"got {value}"
+                )
+            total += value
+        if abs(total - 1.0) > STRENGTH_WEIGHT_TOLERANCE:
+            raise ValueError(
+                "review_intel.evidence.strength.weights must sum to 1.0 "
+                f"(tolerance {STRENGTH_WEIGHT_TOLERANCE}), got {total:.9f}"
+            )
+        if not 0.0 <= self.low_evidence_threshold <= 1.0:
+            raise ValueError(
+                "review_intel.evidence.strength.low_evidence_threshold must be in "
+                f"[0, 1], got {self.low_evidence_threshold}"
+            )
+        if self.min_reviews_for_confidence < 1:
+            raise ValueError(
+                "review_intel.evidence.strength.min_reviews_for_confidence must be >= 1, "
+                f"got {self.min_reviews_for_confidence}"
+            )
+        return self
+
+
 class EvidenceConfig(BaseModel):
-    """Review credibility and evidence-strength configuration."""
+    """Review credibility and evidence-strength configuration.
+
+    ``weights`` drives the three-indicator composite served by the API and the
+    stub service (unchanged). ``indicators`` and ``strength`` drive the stored
+    per-product evidence table written by ``scripts/compute_evidence.py``; see
+    ``docs/evidence.md`` for every formula and the relationship between the two
+    composites.
+    """
 
     min_length_chars: int = 20
     length_scale_chars: int = 200
     weights: EvidenceWeightsConfig = Field(default_factory=EvidenceWeightsConfig)
+    indicators: EvidenceIndicatorsConfig = Field(default_factory=EvidenceIndicatorsConfig)
+    strength: EvidenceStrengthConfig = Field(default_factory=EvidenceStrengthConfig)
 
 
 class ReviewIntelConfig(BaseModel):

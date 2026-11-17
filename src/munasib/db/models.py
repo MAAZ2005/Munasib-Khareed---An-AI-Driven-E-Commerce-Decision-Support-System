@@ -3,8 +3,8 @@
 The database is a **cache of the processed parquet subset**, not a product
 database (locked design decision #6): ``scripts/ingest_db.py`` fills
 ``products``/``reviews``/``related_products`` from ``data/processed/*.parquet``
-and the pipeline fills ``review_features``/``product_features``/
-``analysis_results`` later. Column names mirror the parquet columns, with three
+and later stages fill ``review_features``/``product_features``/
+``product_aspects``/``product_evidence``/``analysis_results``. Column names mirror the parquet columns, with three
 documented renames: ``description_clean`` -> ``description`` (the cleaned text
 *is* the description of the cache), ``features_clean`` -> ``features`` (stored
 as a JSON array), and the review date columns ``review_datetime``/
@@ -272,6 +272,40 @@ class ProductAspect(Base):
         Index("ix_product_aspects_aspect", "aspect"),
         Index("ix_product_aspects_asin_classification", "asin", "classification"),
     )
+
+
+class ProductEvidence(Base):
+    """Per-product evidence indicators (filled by ``scripts/compute_evidence.py``).
+
+    One row per product: the review count the indicators were computed over, the
+    composite :attr:`evidence_strength` (0-1; NULL only when no component was
+    computable), the full indicator payload as JSON, and two timestamps that come
+    from the dataset build (``data/processed/meta.json``), never the wall clock:
+
+    * ``reference_date`` is ``review_date_range.max`` - the anchor for every
+      recency window ("recent" is always relative to the data, not to today).
+    * ``computed_at`` is ``built_at`` - identical inputs rewrite identical rows.
+
+    The ``indicators`` payload holds, per indicator, a raw value, a 0-1
+    normalised value (1.0 = best), a benefit/cost direction, a description citing
+    the computed numbers and optional extras; it also stores the missing-data
+    flags, the low-evidence/polarization/burst flags, and the composite's used
+    components with their renormalised weights. See ``docs/evidence.md``.
+    """
+
+    __tablename__ = "product_evidence"
+
+    asin: Mapped[str] = mapped_column(ForeignKey("products.asin"), primary_key=True)
+    #: Review rows the indicators were computed over (the serving cache count).
+    n_reviews: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Composite strength 0-1; NULL only if every component was unavailable.
+    evidence_strength: Mapped[float | None] = mapped_column(Float)
+    #: Full indicator payload (indicators, flags, strength breakdown).
+    indicators: Mapped[dict] = mapped_column(JSON, nullable=False)
+    #: Dataset reference date (``review_date_range.max``), naive UTC.
+    reference_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    #: Dataset build timestamp (``built_at``), naive UTC.
+    computed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class AnalysisResult(Base):

@@ -1,0 +1,193 @@
+{
+  "products": 2066,
+  "reference_date": "2018-10-04T00:00:00+00:00",
+  "computed_at": "2026-10-24T06:15:06+00:00",
+  "distributions": {
+    "evidence_strength": {
+      "count": 2066,
+      "min": 0.326606,
+      "median": 0.622429,
+      "max": 0.815859
+    },
+    "review_volume": {
+      "count": 2066,
+      "min": 0.452151,
+      "median": 0.889728,
+      "max": 1.0
+    },
+    "rating_agreement": {
+      "count": 2066,
+      "min": 0.013974,
+      "median": 0.454716,
+      "max": 0.958248
+    },
+    "sentiment_shares": {
+      "count": 2066,
+      "min": 0.128588,
+      "median": 0.872739,
+      "max": 0.994292
+    },
+    "helpfulness_coverage": {
+      "count": 2066,
+      "min": 0.0,
+      "median": 0.0621,
+      "max": 1.0
+    },
+    "helpfulness_weighted_sentiment": {
+      "count": 2066,
+      "min": 0.100282,
+      "median": 0.842475,
+      "max": 0.99433
+    },
+    "verified_purchase_ratio": {
+      "count": 2066,
+      "min": 0.0,
+      "median": 0.969994,
+      "max": 1.0
+    },
+    "recency_coverage": {
+      "count": 2066,
+      "min": 0.0,
+      "median": 0.352941,
+      "max": 1.0
+    },
+    "staleness": {
+      "count": 2066,
+      "min": 0.171295,
+      "median": 0.766925,
+      "max": 1.0
+    },
+    "recent_negative_shift": {
+      "count": 1845,
+      "min": 0.521212,
+      "median": 0.991241,
+      "max": 1.0
+    },
+    "sentiment_trend": {
+      "count": 1145,
+      "min": 0.0,
+      "median": 0.47625,
+      "max": 0.937996
+    },
+    "aspect_concentration": {
+      "count": 1151,
+      "min": 0.0,
+      "median": 0.88,
+      "max": 0.991188
+    },
+    "top_pain_point_share": {
+      "count": 1151,
+      "min": 0.0,
+      "median": 0.833333,
+      "max": 1.0
+    },
+    "temporal_burst": {
+      "count": 1171,
+      "min": 0.0,
+      "median": 0.666667,
+      "max": 0.886667
+    },
+    "rating_text_agreement": {
+      "count": 2066,
+      "min": 0.117647,
+      "median": 0.951456,
+      "max": 1.0
+    }
+  },
+  "flags": {
+    "polarized": {
+      "count": 193,
+      "share": 0.093417
+    },
+    "low_evidence": {
+      "count": 18,
+      "share": 0.008712
+    },
+    "no_recent_reviews": {
+      "count": 34,
+      "share": 0.016457
+    },
+    "temporal_burst": {
+      "count": 177,
+      "share": 0.085673
+    }
+  },
+  "per_split": {
+    "train": {
+      "products": 1444,
+      "strength_median": 0.623215
+    },
+    "val": {
+      "products": 310,
+      "strength_median": 0.621113
+    },
+    "test": {
+      "products": 312,
+      "strength_median": 0.618151
+    }
+  },
+  "missing": {
+    "recent_negative_shift": {
+      "count": 221,
+      "reasons": {
+        "recent_window_below_min_reviews": 221
+      }
+    },
+    "sentiment_trend": {
+      "count": 921,
+      "reasons": {
+        "trend_insufficient_quarters": 921
+      }
+    },
+    "aspect_concentration": {
+      "count": 915,
+      "reasons": {
+        "below_min_negative_reviews": 895,
+        "no_negative_mentions": 20
+      }
+    },
+    "top_pain_point_share": {
+      "count": 915,
+      "reasons": {
+        "below_min_negative_reviews": 895,
+        "no_negative_mentions": 20
+      }
+    },
+    "temporal_burst": {
+      "count": 895,
+      "reasons": {
+        "below_min_negative_reviews": 895
+      }
+    }
+  },
+  "correlations": {
+    "review_volume": {
+      "spearman": 0.228459,
+      "n": 2066
+    },
+    "recency_coverage": {
+      "spearman": 0.870955,
+      "n": 2066
+    },
+    "verified_purchase_ratio": {
+      "spearman": 0.358131,
+      "n": 2066
+    },
+    "rating_agreement": {
+      "spearman": 0.425047,
+      "n": 2066
+    },
+    "rating_text_consistency": {
+      "spearman": 0.230346,
+      "n": 2066
+    },
+    "helpfulness_coverage": {
+      "spearman": -0.190301,
+      "n": 2066
+    },
+    "n_reviews": {
+      "spearman": 0.226434,
+      "n": 2066
+    }
+  }
+}

@@ -23,6 +23,7 @@ from munasib.db.models import (
     AnalysisResult,
     Product,
     ProductAspect,
+    ProductEvidence,
     RelatedProduct,
     Review,
     ReviewFeature,
@@ -42,6 +43,7 @@ ALL_TABLES = {
     "review_features",
     "product_features",
     "product_aspects",
+    "product_evidence",
     "analysis_results",
 }
 
@@ -124,8 +126,8 @@ def session(engine: Engine) -> Iterator[Session]:
 # ------------------------------------------------------------------------------
 
 
-def test_init_db_creates_all_seven_tables(engine) -> None:
-    """create_all builds exactly the seven declared tables."""
+def test_init_db_creates_all_eight_tables(engine) -> None:
+    """create_all builds exactly the eight declared tables."""
     with engine.connect() as connection:
         names = set(
             connection.scalars(
@@ -136,12 +138,13 @@ def test_init_db_creates_all_seven_tables(engine) -> None:
 
 
 def test_pipeline_owned_tables_start_empty(engine) -> None:
-    """The cache tables load later; feature/aspect/analysis tables start empty."""
+    """The cache tables load later; feature/aspect/evidence/analysis tables start empty."""
     with engine.connect() as connection:
         for name in (
             "review_features",
             "product_features",
             "product_aspects",
+            "product_evidence",
             "analysis_results",
         ):
             total = connection.scalar(text(f"SELECT COUNT(*) FROM {name}"))
@@ -374,6 +377,17 @@ def test_product_aspects_composite_key() -> None:
     table = ProductAspect.__table__
     assert [column.name for column in table.primary_key.columns] == ["asin", "aspect"]
     assert table.c.asin.foreign_keys
+
+
+def test_product_evidence_keyed_by_asin() -> None:
+    """product_evidence is keyed by asin, references products and NULLs strength."""
+    table = ProductEvidence.__table__
+    assert [column.name for column in table.primary_key.columns] == ["asin"]
+    assert table.c.asin.foreign_keys
+    assert table.c.evidence_strength.nullable
+    for column in ("n_reviews", "indicators", "reference_date", "computed_at"):
+        assert not table.c[column].nullable
+    assert "JSON" in str(table.c.indicators.type).upper()
 
 
 def test_indexes_exist_for_api_queries(engine) -> None:

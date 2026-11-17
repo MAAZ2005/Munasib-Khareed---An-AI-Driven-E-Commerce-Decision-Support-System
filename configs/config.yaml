@@ -336,10 +336,68 @@ review_intel:
   evidence:
     min_length_chars: 20
     length_scale_chars: 200
+    # Three-indicator composite served by the API and the stub service.
+    # Unchanged by P14: the stored per-product table uses `strength` below.
     weights:
       verified_purchase: 0.50
       helpfulness_ratio: 0.30
       review_depth: 0.20
+    # Per-product evidence indicators (scripts/compute_evidence.py).
+    # Every formula, window and missing-data rule is documented in
+    # docs/evidence.md; nothing is hardcoded in the modules.
+    indicators:
+      # Review count at which the volume sufficiency score reaches 1.0
+      # (min(1, log(1 + n) / log(1 + n_saturation))).
+      n_saturation: 200
+      # A rating distribution is polarized when the 1-2 star share AND the
+      # 5 star share both reach this value.
+      polarization_min_share: 0.25
+      # "Recent" ALWAYS means this many months before the dataset reference
+      # date (meta.json review_date_range.max), never today's date.
+      recent_months: 24
+      # Minimum predicted-negative reviews inside the recent window before the
+      # recent/overall negative-shift indicator is reported.
+      min_recent_reviews: 10
+      # Sentiment trend: OLS slope of quarterly mean net sentiment over this
+      # many complete quarters before the reference quarter, requiring at
+      # least min_trend_quarters qualifying quarters with at least
+      # min_quarter_reviews reviews each.
+      trend_quarters: 8
+      min_trend_quarters: 4
+      min_quarter_reviews: 5
+      # Temporal burst: sliding window width in months; a product is flagged
+      # when the largest share of its predicted-negative reviews inside one
+      # sliding window reaches burst_flag_share.
+      burst_window_months: 6
+      burst_flag_share: 0.50
+      # Minimum predicted-negative reviews before the negative-feedback
+      # concentration inputs (aspect HHI, top pain-point share, burst) exist.
+      min_negative_reviews: 10
+      # Strong disagreement for rating/text agreement: 1-2 stars with
+      # prob_positive above this value, or 4-5 stars with prob_negative above it.
+      conflict_probability_threshold: 0.5
+      # Conflict rate at which rating/text consistency reaches 0.0:
+      # consistency = 1 - min(1, conflict_rate / conflict_saturation).
+      conflict_saturation: 0.20
+      # Number of pain-point aspects in the top-share numerator.
+      top_pain_points: 3
+      # Staleness cost curve: normalized = 1 / (1 + months / scale).
+      staleness_scale_months: 12
+      # Net-sentiment slope per quarter that saturates the trend indicator.
+      trend_saturation: 0.25
+    # Composite evidence strength stored in product_evidence (six components,
+    # weights must sum to 1.0; unavailable components are dropped and the
+    # remaining weights renormalized).
+    strength:
+      low_evidence_threshold: 0.40
+      min_reviews_for_confidence: 50
+      weights:
+        review_volume: 0.20
+        recency_coverage: 0.20
+        verified_purchase_ratio: 0.15
+        rating_agreement: 0.15
+        rating_text_consistency: 0.15
+        helpfulness_coverage: 0.15
 
 # Product Intelligence: metadata-derived indicators for the risk stage
 # (see docs/product_intelligence.md for every formula and tie rule).

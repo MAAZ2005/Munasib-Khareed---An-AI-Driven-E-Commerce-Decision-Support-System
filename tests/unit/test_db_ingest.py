@@ -26,7 +26,7 @@ from munasib.core.constants import (
     SENTIMENT_LABEL_POSITIVE,
 )
 from munasib.core.exceptions import DataError
-from munasib.db.models import Product, ProductAspect, Review
+from munasib.db.models import Product, ProductAspect, ProductEvidence, Review
 from munasib.db.session import (
     create_engine_from_settings,
     create_session_factory,
@@ -239,6 +239,7 @@ def _counts(db_path: Path) -> dict[str, int]:
                     "review_features",
                     "product_features",
                     "product_aspects",
+                    "product_evidence",
                     "analysis_results",
                 )
             }
@@ -310,6 +311,7 @@ def test_ingest_loads_every_table(workspace: dict[str, Path]) -> None:
     assert counts["review_features"] == 0  # filled by later prompts
     assert counts["product_features"] == 0
     assert counts["product_aspects"] == 0
+    assert counts["product_evidence"] == 0
     assert counts["analysis_results"] == 0
 
 
@@ -534,6 +536,43 @@ def test_reload_warns_before_deleting_product_aspects(
     assert "compute_aspects.py --reviews" in output
     assert "compute_aspects.py --aggregate" in output
     assert _counts(workspace["db"])["product_aspects"] == 0
+
+
+def test_reload_warns_before_deleting_product_evidence(
+    workspace: dict[str, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A cache reload names the evidence recompute command before deleting rows."""
+    module = _load_module()
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    engine = create_engine_from_settings(db_url=f"sqlite:///{workspace['db']}")
+    try:
+        with session_scope(create_session_factory(engine)) as session:
+            session.add(
+                ProductEvidence(
+                    asin="B000000001",
+                    n_reviews=4,
+                    evidence_strength=0.5,
+                    indicators={"split": "train"},
+                    reference_date=datetime(2018, 10, 4),
+                    computed_at=datetime(2018, 1, 1),
+                )
+            )
+    finally:
+        engine.dispose()
+    # Force the reload path by changing the stored split distribution.
+    engine = create_engine_from_settings(db_url=f"sqlite:///{workspace['db']}")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "UPDATE products SET split='test' WHERE asin='B000000001'"
+            )
+    finally:
+        engine.dispose()
+    assert module.main(["--config", str(workspace["config"])]) == 0
+    output = capsys.readouterr().out
+    assert "product_evidence will be deleted" in output
+    assert "compute_evidence.py" in output
+    assert _counts(workspace["db"])["product_evidence"] == 0
 
 
 def test_verify_fails_when_a_flagged_file_disappeared(workspace: dict[str, Path]) -> None:
