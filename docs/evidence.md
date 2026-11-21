@@ -111,12 +111,12 @@ within 1e-6):
 
 | Component | Indicator | Weight |
 | --- | --- | --- |
-| `review_volume` | `review_volume` | 0.20 |
+| `review_volume` | `review_volume` | 0.25 |
 | `recency_coverage` | `recency_coverage` | 0.20 |
 | `verified_purchase_ratio` | `verified_purchase_ratio` | 0.15 |
-| `rating_agreement` | `rating_agreement` | 0.15 |
+| `rating_agreement` | `rating_agreement` | 0.20 |
 | `rating_text_consistency` | `rating_text_agreement` (normalized) | 0.15 |
-| `helpfulness_coverage` | `helpfulness_coverage` | 0.15 |
+| `helpfulness_coverage` | `helpfulness_coverage` | 0.05 |
 
 * Available components: `evidence_strength = sum(w_c * normalized_c)`.
 * A `None` component is dropped and the remaining weights are renormalized
@@ -130,6 +130,28 @@ within 1e-6):
   trusted even when it agrees, and a product with very weak evidence can never
   receive a clean `CONSIDER` (see `configs/verdict_thresholds.yaml`,
   `min_evidence_for_clean_consider: 0.40`).
+
+### Why these weights (expert-declared, not fitted)
+
+The weights are **expert-declared** domain choices, not fitted to any target
+and not tuned to ground truth. They were rebalanced after measuring the
+previous vector (`0.20 / 0.20 / 0.15 / 0.15 / 0.15 / 0.15`) on the stored
+`product_evidence` rows:
+
+* Spearman(`evidence_strength`, `recency_coverage`) was **+0.871**. Recency had
+  the largest weighted spread of any component, so the composite ranks were
+  dominated by it even though its weight was only 0.20.
+* Spearman(`evidence_strength`, `helpfulness_coverage`) was **-0.190**, because
+  helpful votes accumulate with review age: older products carry more votes
+  while also scoring lower on recency, so the signal pulls against the
+  composite rather than adding independent evidence.
+* `helpfulness_coverage` also has a thin distribution (most reviews carry no
+  votes), so it cannot support a large weight.
+
+`review_volume` and `rating_agreement` gained weight (0.25 and 0.20) and
+`helpfulness_coverage` dropped to 0.05. The composite is still a weighted mean
+of the six components; the correlation figures above are diagnostics of the
+old vector, not a fitting procedure.
 
 ## Storage
 
@@ -164,7 +186,7 @@ The JSON payload has a stable shape:
   "strength": {
     "value": 0.0,
     "components_used": ["review_volume", "..."],
-    "weights": {"review_volume": 0.2},
+    "weights": {"review_volume": 0.25},
     "missing_components": {"<component>": "<reason>"}
   }
 }

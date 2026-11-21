@@ -626,7 +626,9 @@ def test_composite_strength_renormalizes_around_missing_components() -> None:
         "helpfulness_coverage": _indicator("helpfulness_coverage", 0.0),
     }
     result = composite_strength(indicators, EvidenceStrengthConfig())
-    expected = (0.2 * 1.0 + 0.2 * 0.5 + 0.15 * 0.5 + 0.15 * 1.0 + 0.15 * 0.0) / 0.85
+    expected = (
+        0.25 * 1.0 + 0.20 * 0.5 + 0.20 * 0.5 + 0.15 * 1.0 + 0.05 * 0.0
+    ) / 0.85
     assert isinstance(result, StrengthResult)
     assert result.value == pytest.approx(expected)
     assert result.components_used == (
@@ -652,7 +654,7 @@ def test_composite_strength_with_all_components_available() -> None:
     }
     result = composite_strength(indicators, EvidenceStrengthConfig())
     expected = (
-        0.2 * 0.8 + 0.2 * 0.4 + 0.15 * 1.0 + 0.15 * 0.6 + 0.15 * 0.2 + 0.15 * 0.5
+        0.25 * 0.8 + 0.20 * 0.4 + 0.15 * 1.0 + 0.20 * 0.6 + 0.15 * 0.2 + 0.05 * 0.5
     )
     assert result.value == pytest.approx(expected)
     for name, value in EvidenceStrengthConfig().weights.model_dump().items():

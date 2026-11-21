@@ -11,7 +11,7 @@ Computed from the stored sentiment predictions and aspect rows by `python script
 
 | Indicator | n | min | median | max |
 |---|---:|---:|---:|---:|
-| `evidence_strength` | 2,066 | 0.326606 | 0.622429 | 0.815859 |
+| `evidence_strength` | 2,066 | 0.361589 | 0.680937 | 0.900961 |
 | `review_volume` | 2,066 | 0.452151 | 0.889728 | 1.000000 |
 | `rating_agreement` | 2,066 | 0.013974 | 0.454716 | 0.958248 |
 | `sentiment_shares` | 2,066 | 0.128588 | 0.872739 | 0.994292 |
@@ -40,9 +40,9 @@ Computed from the stored sentiment predictions and aspect rows by `python script
 
 | Split | Products | evidence_strength median |
 |---|---:|---:|
-| train | 1,444 | 0.623215 |
-| val | 310 | 0.621113 |
-| test | 312 | 0.618151 |
+| train | 1,444 | 0.683420 |
+| val | 310 | 0.680534 |
+| test | 312 | 0.675972 |
 
 ## Missing values
 
@@ -58,10 +58,10 @@ Computed from the stored sentiment predictions and aspect rows by `python script
 
 | Signal | Spearman | n |
 |---|---:|---:|
-| `review_volume` | +0.2285 | 2,066 |
-| `recency_coverage` | +0.8710 | 2,066 |
-| `verified_purchase_ratio` | +0.3581 | 2,066 |
-| `rating_agreement` | +0.4250 | 2,066 |
-| `rating_text_consistency` | +0.2303 | 2,066 |
-| `helpfulness_coverage` | -0.1903 | 2,066 |
-| `n_reviews` | +0.2264 | 2,066 |
+| `review_volume` | +0.2722 | 2,066 |
+| `recency_coverage` | +0.7959 | 2,066 |
+| `verified_purchase_ratio` | +0.4329 | 2,066 |
+| `rating_agreement` | +0.5642 | 2,066 |
+| `rating_text_consistency` | +0.2599 | 2,066 |
+| `helpfulness_coverage` | -0.3607 | 2,066 |
+| `n_reviews` | +0.2703 | 2,066 |

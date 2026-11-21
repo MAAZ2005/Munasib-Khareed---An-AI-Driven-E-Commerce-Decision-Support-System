@@ -48,12 +48,12 @@ def test_strength_defaults_and_weight_sum() -> None:
     strength = EvidenceStrengthConfig()
     weights = strength.weights.model_dump()
     assert weights == {
-        "review_volume": 0.20,
+        "review_volume": 0.25,
         "recency_coverage": 0.20,
         "verified_purchase_ratio": 0.15,
-        "rating_agreement": 0.15,
+        "rating_agreement": 0.20,
         "rating_text_consistency": 0.15,
-        "helpfulness_coverage": 0.15,
+        "helpfulness_coverage": 0.05,
     }
     assert abs(sum(weights.values()) - 1.0) <= STRENGTH_WEIGHT_TOLERANCE
     assert strength.low_evidence_threshold == 0.40

@@ -902,12 +902,12 @@ class EvidenceIndicatorsConfig(BaseModel):
 class EvidenceStrengthWeightsConfig(BaseModel):
     """Weights of the six stored evidence-strength components (sum to 1.0)."""
 
-    review_volume: float = 0.20
+    review_volume: float = 0.25
     recency_coverage: float = 0.20
     verified_purchase_ratio: float = 0.15
-    rating_agreement: float = 0.15
+    rating_agreement: float = 0.20
     rating_text_consistency: float = 0.15
-    helpfulness_coverage: float = 0.15
+    helpfulness_coverage: float = 0.05
 
 
 class EvidenceStrengthConfig(BaseModel):
