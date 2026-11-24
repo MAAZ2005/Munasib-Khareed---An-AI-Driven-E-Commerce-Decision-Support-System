@@ -433,6 +433,82 @@ risk:
   scale_min: 0.0
   scale_max: 100.0
   default_defuzzification_method: "centroid"
+  # Per-product decision criteria (scripts/compute_risk_indicators.py). Every
+  # formula, constant and threshold below is documented in
+  # docs/risk_indicators.md; nothing is hardcoded in the risk modules.
+  criteria:
+    # Pseudo-reviews of the category prior mixed into each product's rating and
+    # sentiment: shrunk = (n * value + m * prior) / (n + m).
+    shrinkage_m: 20
+    product_quality:
+      weights:
+        shrunk_rating: 0.50
+        shrunk_sentiment: 0.30
+        recent_sentiment: 0.20
+    rating_reliability:
+      weights:
+        rating_agreement: 0.35
+        non_polarization: 0.20
+        rating_text_consistency: 0.25
+        helpfulness_agreement: 0.20
+      # |helpfulness-weighted net - unweighted net| that drives the helpfulness
+      # agreement component to 0: component = 1 - min(1, gap / scale).
+      # The scale is re-chosen from the candidates below when more than
+      # agreement_scale_max_zero_share of products would sit at exactly 0.
+      agreement_scale: 0.10
+      agreement_scale_candidates: [0.10, 0.20, 0.30]
+      agreement_scale_max_zero_share: 0.25
+    negative_feedback_concentration:
+      # Shrunk predicted-negative share that saturates prevalence:
+      # prevalence = min(1, shrunk_negative_share / p_saturation).
+      p_saturation: 0.40
+      # Diffuse negative feedback still counts this much:
+      # value = prevalence * (focus_floor + (1 - focus_floor) * focus).
+      focus_floor: 0.50
+    price_position:
+      # Confidence multiplier when the price peer group fell back to a
+      # shorter breadcrumb prefix or the whole candidate set.
+      fallback_confidence: 0.50
+  factors:
+    # Banded thresholds: a rule triggers at its first threshold (severity low)
+    # and escalates at the next two (medium, high).
+    recent_sentiment_decline:
+      min_recent_predictions: 10
+      min_delta: 0.10
+      medium_delta: 0.20
+      high_delta: 0.35
+    polarized_ratings:
+      medium_rating_agreement: 0.25
+      high_rating_agreement: 0.10
+    low_verified_share:
+      max_verified_share: 0.70
+      medium_verified_share: 0.55
+      high_verified_share: 0.40
+    weak_evidence:
+      max_strength: 0.40
+      medium_strength: 0.30
+      high_strength: 0.20
+    stale_reviews:
+      min_months: 24.0
+      medium_months: 36.0
+      high_months: 48.0
+    price_above_peers_with_low_quality:
+      min_price_percentile: 0.75
+      medium_price_percentile: 0.85
+      high_price_percentile: 0.95
+      max_product_quality: 0.40
+    concentrated_complaints:
+      min_top_share: 0.50
+      medium_top_share: 0.65
+      high_top_share: 0.80
+    negative_burst:
+      min_share: 0.50
+      medium_share: 0.65
+      high_share: 0.80
+    rating_text_conflict:
+      min_conflict_rate: 0.10
+      medium_conflict_rate: 0.15
+      high_conflict_rate: 0.20
 
 decision:
   criteria_weights_file: "configs/criteria_weights.yaml"

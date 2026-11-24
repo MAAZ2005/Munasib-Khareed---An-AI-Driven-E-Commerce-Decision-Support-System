@@ -308,6 +308,42 @@ class ProductEvidence(Base):
     computed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class ProductRiskIndicator(Base):
+    """Per-product decision criteria and risk factors (filled by the risk script).
+
+    One row per product: the five ``configs/criteria_weights.yaml`` criteria as
+    0-1 values with their directions, the fixed-order vector, the triggered
+    risk factors, and the category priors the criteria were shrunk toward.
+    ``scripts/compute_risk_indicators.py`` reads only stored tables (products,
+    product_features, product_evidence, review_features, reviews) - no model
+    inference and no wall clock:
+
+    * ``reference_date`` is ``review_date_range.max`` from
+      ``data/processed/meta.json`` (the same recency anchor as the evidence
+      stage), naive UTC.
+    * ``computed_at`` is the dataset build timestamp (``built_at``), so identical
+      inputs rewrite identical rows.
+
+    The ``priors`` payload carries the TRAIN-split-only category priors and the
+    shrinkage pseudo-count, so every shrunk value is reproducible from the row.
+    See ``docs/risk_indicators.md``.
+    """
+
+    __tablename__ = "product_risk_indicators"
+
+    asin: Mapped[str] = mapped_column(ForeignKey("products.asin"), primary_key=True)
+    #: Five criteria + fixed-order vector + direction map (JSON).
+    indicators: Mapped[dict] = mapped_column(JSON, nullable=False)
+    #: Triggered risk factors (code / severity / description / supporting).
+    risk_factors: Mapped[list] = mapped_column(JSON, nullable=False)
+    #: TRAIN-split category priors and the shrinkage constant (JSON).
+    priors: Mapped[dict] = mapped_column(JSON, nullable=False)
+    #: Dataset reference date (``review_date_range.max``), naive UTC.
+    reference_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    #: Dataset build timestamp (``built_at``), naive UTC.
+    computed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class AnalysisResult(Base):
     """Persisted pipeline output per (product, pipeline version).
 

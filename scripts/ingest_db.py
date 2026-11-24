@@ -70,6 +70,7 @@ from munasib.db.models import (
     ProductAspect,
     ProductEvidence,
     ProductFeature,
+    ProductRiskIndicator,
     RelatedProduct,
     Review,
     ReviewFeature,
@@ -147,6 +148,7 @@ EMPTY_TABLES = (
     "product_features",
     "product_aspects",
     "product_evidence",
+    "product_risk_indicators",
     "analysis_results",
 )
 CLEAR_ORDER = (*EMPTY_TABLES, "related_products", "reviews", "products")
@@ -159,6 +161,7 @@ _TABLE_MODELS = {
     "product_features": ProductFeature,
     "product_aspects": ProductAspect,
     "product_evidence": ProductEvidence,
+    "product_risk_indicators": ProductRiskIndicator,
     "analysis_results": AnalysisResult,
 }
 
@@ -521,6 +524,56 @@ def warn_evidence_will_be_deleted(engine: Engine, *, reason: str) -> int:
     return stored
 
 
+def count_product_risk_indicators(engine: Engine) -> int:
+    """Count rows in ``product_risk_indicators`` (0 when the table does not exist).
+
+    Args:
+        engine: Target engine.
+
+    Returns:
+        Stored risk-indicator row count.
+    """
+    if not inspect(engine).has_table("product_risk_indicators"):
+        return 0
+    with engine.connect() as connection:
+        value = connection.execute(
+            select(func.count()).select_from(ProductRiskIndicator)
+        ).scalar_one()
+    return int(value or 0)
+
+
+def warn_risk_indicators_will_be_deleted(engine: Engine, *, reason: str) -> int:
+    """Warn loudly that a rebuild is about to delete risk-indicator rows.
+
+    ``product_risk_indicators`` is derived data, but recomputing it needs the
+    stored predictions, aspects, evidence and product features to be present
+    again. The warning prints the exact recompute order so the table cannot
+    disappear silently.
+
+    Args:
+        engine: Target engine.
+        reason: What is about to happen (``"--force rebuild"``/``"cache reload"``).
+
+    Returns:
+        Number of risk-indicator rows that will be deleted.
+    """
+    stored = count_product_risk_indicators(engine)
+    if stored:
+        message = (
+            f"{stored:,} row(s) in product_risk_indicators will be deleted by this "
+            f"{reason}. Recompute after the reload with:\n"
+            "  python scripts/ingest_predictions.py\n"
+            "  python scripts/compute_aspects.py --reviews\n"
+            "  python scripts/compute_aspects.py --aggregate\n"
+            "  python scripts/compute_product_features.py\n"
+            "  python scripts/compute_evidence.py\n"
+            "  python scripts/compute_risk_indicators.py"
+        )
+        print(f"WARNING: {message}")
+        logger.warning("product_risk_indicators_wiped rows=%d reason=%s", stored, reason)
+    return stored
+
+
 def cached_image_asins(images_dir: Path) -> set[str]:
     """ASINs with a thumbnail file in the local image cache.
 
@@ -872,6 +925,7 @@ def main(argv: list[str] | None = None) -> int:
             warn_predictions_will_be_deleted(engine, reason="--force rebuild")
             warn_aspects_will_be_deleted(engine, reason="--force rebuild")
             warn_evidence_will_be_deleted(engine, reason="--force rebuild")
+            warn_risk_indicators_will_be_deleted(engine, reason="--force rebuild")
             Base.metadata.drop_all(engine)
             logger.info("schema_dropped detail=--force rebuild")
             init_db(engine)
@@ -900,6 +954,7 @@ def main(argv: list[str] | None = None) -> int:
                 warn_predictions_will_be_deleted(engine, reason="cache reload")
                 warn_aspects_will_be_deleted(engine, reason="cache reload")
                 warn_evidence_will_be_deleted(engine, reason="cache reload")
+                warn_risk_indicators_will_be_deleted(engine, reason="cache reload")
                 clear_cache_tables(engine)
                 loaded = ingest_parquet(engine, processed_dir, args.batch_size)
                 logger.info(

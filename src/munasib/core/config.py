@@ -799,6 +799,69 @@ class EvidenceWeightsConfig(BaseModel):
 #: Tolerance for the six evidence-strength component weights summing to 1.0.
 STRENGTH_WEIGHT_TOLERANCE = 1e-6
 
+#: Tolerance for the risk-criterion component weights summing to 1.0.
+RISK_WEIGHT_TOLERANCE = 1e-6
+
+
+def _check_component_weights(label: str, weights: dict[str, float]) -> None:
+    """Validate one criterion's component weights.
+
+    Args:
+        label: Dotted config key used in the error message.
+        weights: Component name -> weight.
+
+    Raises:
+        ValueError: When a weight is not positive or the weights do not sum to
+            1.0 within :data:`RISK_WEIGHT_TOLERANCE`.
+    """
+    total = 0.0
+    for name, value in weights.items():
+        if value <= 0.0:
+            raise ValueError(f"{label}.{name} must be positive, got {value}")
+        total += value
+    if abs(total - 1.0) > RISK_WEIGHT_TOLERANCE:
+        raise ValueError(
+            f"{label} must sum to 1.0 (tolerance {RISK_WEIGHT_TOLERANCE}), "
+            f"got {total:.9f}"
+        )
+
+
+def _check_bands(label: str, values: list[float], upper: float = 1.0) -> None:
+    """Validate an ascending band triple (trigger, medium, high).
+
+    Args:
+        label: Dotted config key used in the error message.
+        values: Band values, in ascending order.
+        upper: Inclusive upper bound of every band.
+
+    Raises:
+        ValueError: When any value is outside ``[0, upper]`` or the sequence is
+            not non-decreasing.
+    """
+    for value in values:
+        if not 0.0 <= value <= upper:
+            raise ValueError(f"{label} bands must be in [0, {upper:g}], got {value}")
+    if values != sorted(values):
+        raise ValueError(f"{label} bands must be ascending, got {values}")
+
+
+def _check_descending(label: str, values: list[float]) -> None:
+    """Validate a descending band pair/triple (threshold, medium, high).
+
+    Args:
+        label: Dotted config key used in the error message.
+        values: Band values, in descending order.
+
+    Raises:
+        ValueError: When any value is outside ``[0, 1]`` or the sequence is not
+            non-increasing.
+    """
+    for value in values:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{label} bands must be in [0, 1], got {value}")
+    if values != sorted(values, reverse=True):
+        raise ValueError(f"{label} bands must be descending, got {values}")
+
 
 class EvidenceIndicatorsConfig(BaseModel):
     """Windows and thresholds of the per-product evidence indicators.
@@ -985,6 +1048,465 @@ class ReviewIntelConfig(BaseModel):
     evidence: EvidenceConfig = Field(default_factory=EvidenceConfig)
 
 
+class ProductQualityWeightsConfig(BaseModel):
+    """Weights of the three product-quality components (sum to 1.0)."""
+
+    shrunk_rating: float = 0.50
+    shrunk_sentiment: float = 0.30
+    recent_sentiment: float = 0.20
+
+
+class ProductQualityCriteriaConfig(BaseModel):
+    """Product-quality criterion configuration."""
+
+    weights: ProductQualityWeightsConfig = Field(default_factory=ProductQualityWeightsConfig)
+
+    @model_validator(mode="after")
+    def _check_weights(self) -> "ProductQualityCriteriaConfig":
+        """Validate the component weights (positive, sum to 1.0).
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When a weight is not positive or the weights do not sum
+                to 1.0 within :data:`RISK_WEIGHT_TOLERANCE`.
+        """
+        _check_component_weights(
+            "risk.criteria.product_quality.weights", self.weights.model_dump()
+        )
+        return self
+
+
+class RatingReliabilityWeightsConfig(BaseModel):
+    """Weights of the four rating-reliability components (sum to 1.0)."""
+
+    rating_agreement: float = 0.35
+    non_polarization: float = 0.20
+    rating_text_consistency: float = 0.25
+    helpfulness_agreement: float = 0.20
+
+
+class RatingReliabilityCriteriaConfig(BaseModel):
+    """Rating-reliability criterion and its agreement-scale rule."""
+
+    weights: RatingReliabilityWeightsConfig = Field(
+        default_factory=RatingReliabilityWeightsConfig
+    )
+    #: Gap that drives the helpfulness agreement component to exactly 0.
+    agreement_scale: float = 0.10
+    #: Scales tried, smallest first, when too many products would sit at 0.
+    agreement_scale_candidates: list[float] = Field(
+        default_factory=lambda: [0.10, 0.20, 0.30]
+    )
+    #: Share of saturated products above which the next scale is used.
+    agreement_scale_max_zero_share: float = 0.25
+
+    @model_validator(mode="after")
+    def _check_values(self) -> "RatingReliabilityCriteriaConfig":
+        """Validate the weights, the agreement scale and its candidates.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the weights are invalid, the scale is not positive,
+                is missing from the candidates, the candidates are not strictly
+                ascending, or the saturation share is outside [0, 1).
+        """
+        _check_component_weights(
+            "risk.criteria.rating_reliability.weights", self.weights.model_dump()
+        )
+        if self.agreement_scale <= 0.0:
+            raise ValueError(
+                "risk.criteria.rating_reliability.agreement_scale must be positive, "
+                f"got {self.agreement_scale}"
+            )
+        candidates = self.agreement_scale_candidates
+        if not candidates:
+            raise ValueError(
+                "risk.criteria.rating_reliability.agreement_scale_candidates must not be empty"
+            )
+        if any(candidate <= 0.0 for candidate in candidates):
+            raise ValueError(
+                "risk.criteria.rating_reliability.agreement_scale_candidates must all "
+                f"be positive, got {candidates}"
+            )
+        if candidates != sorted(candidates) or len(set(candidates)) != len(candidates):
+            raise ValueError(
+                "risk.criteria.rating_reliability.agreement_scale_candidates must be "
+                f"strictly ascending, got {candidates}"
+            )
+        if self.agreement_scale not in candidates:
+            raise ValueError(
+                "risk.criteria.rating_reliability.agreement_scale must be one of the "
+                f"candidates {candidates}, got {self.agreement_scale}"
+            )
+        if not 0.0 <= self.agreement_scale_max_zero_share < 1.0:
+            raise ValueError(
+                "risk.criteria.rating_reliability.agreement_scale_max_zero_share must be "
+                f"in [0, 1), got {self.agreement_scale_max_zero_share}"
+            )
+        return self
+
+
+class ConcentrationCriteriaConfig(BaseModel):
+    """Negative-feedback-concentration configuration."""
+
+    #: Shrunk negative share that saturates prevalence (0-1].
+    p_saturation: float = 0.40
+    #: Diffuse negative feedback still counts this much (0-1].
+    focus_floor: float = 0.50
+
+    @model_validator(mode="after")
+    def _check_values(self) -> "ConcentrationCriteriaConfig":
+        """Validate the saturation and floor constants.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When either constant is outside (0, 1].
+        """
+        for name, value in (
+            ("p_saturation", self.p_saturation),
+            ("focus_floor", self.focus_floor),
+        ):
+            if not 0.0 < value <= 1.0:
+                raise ValueError(f"risk.criteria.negative_feedback_concentration.{name} "
+                                 f"must be in (0, 1], got {value}")
+        return self
+
+
+class PricePositionCriteriaConfig(BaseModel):
+    """Price-position configuration."""
+
+    #: Confidence multiplier when the price peer group fell back.
+    fallback_confidence: float = 0.50
+
+    @model_validator(mode="after")
+    def _check_values(self) -> "PricePositionCriteriaConfig":
+        """Validate the fallback confidence multiplier.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the multiplier is outside [0, 1].
+        """
+        if not 0.0 <= self.fallback_confidence <= 1.0:
+            raise ValueError(
+                "risk.criteria.price_position.fallback_confidence must be in [0, 1], "
+                f"got {self.fallback_confidence}"
+            )
+        return self
+
+
+class RiskCriteriaConfig(BaseModel):
+    """The five per-product decision criteria (see docs/risk_indicators.md)."""
+
+    #: Pseudo-reviews of the category prior mixed into ratings and sentiment.
+    shrinkage_m: float = 20.0
+    product_quality: ProductQualityCriteriaConfig = Field(
+        default_factory=ProductQualityCriteriaConfig
+    )
+    rating_reliability: RatingReliabilityCriteriaConfig = Field(
+        default_factory=RatingReliabilityCriteriaConfig
+    )
+    negative_feedback_concentration: ConcentrationCriteriaConfig = Field(
+        default_factory=ConcentrationCriteriaConfig
+    )
+    price_position: PricePositionCriteriaConfig = Field(
+        default_factory=PricePositionCriteriaConfig
+    )
+
+    @model_validator(mode="after")
+    def _check_shrinkage(self) -> "RiskCriteriaConfig":
+        """Validate the shrinkage pseudo-count.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When ``shrinkage_m`` is not positive.
+        """
+        if self.shrinkage_m <= 0.0:
+            raise ValueError(
+                f"risk.criteria.shrinkage_m must be positive, got {self.shrinkage_m}"
+            )
+        return self
+
+
+class RecentDeclineFactorConfig(BaseModel):
+    """``recent_sentiment_decline`` thresholds (delta = recent - overall)."""
+
+    min_recent_predictions: int = 10
+    min_delta: float = 0.10
+    medium_delta: float = 0.20
+    high_delta: float = 0.35
+
+    @model_validator(mode="after")
+    def _check_bands(self) -> "RecentDeclineFactorConfig":
+        """Validate the band thresholds.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When a count is not positive or the deltas are not
+                ascending inside [0, 1].
+        """
+        if self.min_recent_predictions < 1:
+            raise ValueError(
+                "risk.factors.recent_sentiment_decline.min_recent_predictions must be "
+                f">= 1, got {self.min_recent_predictions}"
+            )
+        _check_bands(
+            "risk.factors.recent_sentiment_decline",
+            [self.min_delta, self.medium_delta, self.high_delta],
+        )
+        return self
+
+
+class PolarizedFactorConfig(BaseModel):
+    """``polarized_ratings`` severity bands on rating agreement."""
+
+    medium_rating_agreement: float = 0.25
+    high_rating_agreement: float = 0.10
+
+    @model_validator(mode="after")
+    def _check_bands(self) -> "PolarizedFactorConfig":
+        """Validate the descending agreement bands.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the bands are not descending inside [0, 1].
+        """
+        _check_descending(
+            "risk.factors.polarized_ratings",
+            [self.medium_rating_agreement, self.high_rating_agreement],
+        )
+        return self
+
+
+class LowVerifiedFactorConfig(BaseModel):
+    """``low_verified_share`` bands on the verified-purchase ratio."""
+
+    max_verified_share: float = 0.70
+    medium_verified_share: float = 0.55
+    high_verified_share: float = 0.40
+
+    @model_validator(mode="after")
+    def _check_bands(self) -> "LowVerifiedFactorConfig":
+        """Validate the descending verified-share bands.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the bands are not descending inside [0, 1].
+        """
+        _check_descending(
+            "risk.factors.low_verified_share",
+            [self.max_verified_share, self.medium_verified_share, self.high_verified_share],
+        )
+        return self
+
+
+class WeakEvidenceFactorConfig(BaseModel):
+    """``weak_evidence`` bands on the composite evidence strength."""
+
+    max_strength: float = 0.40
+    medium_strength: float = 0.30
+    high_strength: float = 0.20
+
+    @model_validator(mode="after")
+    def _check_bands(self) -> "WeakEvidenceFactorConfig":
+        """Validate the descending strength bands.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the bands are not descending inside [0, 1].
+        """
+        _check_descending(
+            "risk.factors.weak_evidence",
+            [self.max_strength, self.medium_strength, self.high_strength],
+        )
+        return self
+
+
+class StaleReviewsFactorConfig(BaseModel):
+    """``stale_reviews`` bands on the staleness months."""
+
+    min_months: float = 24.0
+    medium_months: float = 36.0
+    high_months: float = 48.0
+
+    @model_validator(mode="after")
+    def _check_bands(self) -> "StaleReviewsFactorConfig":
+        """Validate the ascending month bands.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the bands are not ascending or a month is negative.
+        """
+        _check_bands(
+            "risk.factors.stale_reviews",
+            [self.min_months, self.medium_months, self.high_months],
+            upper=float("inf"),
+        )
+        return self
+
+
+class PriceAbovePeersFactorConfig(BaseModel):
+    """``price_above_peers_with_low_quality`` thresholds and bands."""
+
+    min_price_percentile: float = 0.75
+    medium_price_percentile: float = 0.85
+    high_price_percentile: float = 0.95
+    max_product_quality: float = 0.40
+
+    @model_validator(mode="after")
+    def _check_bands(self) -> "PriceAbovePeersFactorConfig":
+        """Validate the percentile bands and the quality ceiling.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the percentile bands are not ascending inside
+                [0, 1] or the quality ceiling is outside [0, 1].
+        """
+        _check_bands(
+            "risk.factors.price_above_peers_with_low_quality",
+            [
+                self.min_price_percentile,
+                self.medium_price_percentile,
+                self.high_price_percentile,
+            ],
+        )
+        if not 0.0 <= self.max_product_quality <= 1.0:
+            raise ValueError(
+                "risk.factors.price_above_peers_with_low_quality.max_product_quality "
+                f"must be in [0, 1], got {self.max_product_quality}"
+            )
+        return self
+
+
+class ConcentratedComplaintsFactorConfig(BaseModel):
+    """``concentrated_complaints`` bands on the top pain-point share."""
+
+    min_top_share: float = 0.50
+    medium_top_share: float = 0.65
+    high_top_share: float = 0.80
+
+    @model_validator(mode="after")
+    def _check_bands(self) -> "ConcentratedComplaintsFactorConfig":
+        """Validate the ascending share bands.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the bands are not ascending inside [0, 1].
+        """
+        _check_bands(
+            "risk.factors.concentrated_complaints",
+            [self.min_top_share, self.medium_top_share, self.high_top_share],
+        )
+        return self
+
+
+class NegativeBurstFactorConfig(BaseModel):
+    """``negative_burst`` bands on the burst share."""
+
+    min_share: float = 0.50
+    medium_share: float = 0.65
+    high_share: float = 0.80
+
+    @model_validator(mode="after")
+    def _check_bands(self) -> "NegativeBurstFactorConfig":
+        """Validate the ascending burst-share bands.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the bands are not ascending inside [0, 1].
+        """
+        _check_bands(
+            "risk.factors.negative_burst",
+            [self.min_share, self.medium_share, self.high_share],
+        )
+        return self
+
+
+class RatingTextConflictFactorConfig(BaseModel):
+    """``rating_text_conflict`` bands on the conflict rate."""
+
+    min_conflict_rate: float = 0.10
+    medium_conflict_rate: float = 0.15
+    high_conflict_rate: float = 0.20
+
+    @model_validator(mode="after")
+    def _check_bands(self) -> "RatingTextConflictFactorConfig":
+        """Validate the ascending conflict-rate bands.
+
+        Returns:
+            The validated configuration.
+
+        Raises:
+            ValueError: When the bands are not ascending inside [0, 1].
+        """
+        _check_bands(
+            "risk.factors.rating_text_conflict",
+            [
+                self.min_conflict_rate,
+                self.medium_conflict_rate,
+                self.high_conflict_rate,
+            ],
+        )
+        return self
+
+
+class RiskFactorsConfig(BaseModel):
+    """Thresholds of the nine rule-based risk factors."""
+
+    recent_sentiment_decline: RecentDeclineFactorConfig = Field(
+        default_factory=RecentDeclineFactorConfig
+    )
+    polarized_ratings: PolarizedFactorConfig = Field(
+        default_factory=PolarizedFactorConfig
+    )
+    low_verified_share: LowVerifiedFactorConfig = Field(
+        default_factory=LowVerifiedFactorConfig
+    )
+    weak_evidence: WeakEvidenceFactorConfig = Field(
+        default_factory=WeakEvidenceFactorConfig
+    )
+    stale_reviews: StaleReviewsFactorConfig = Field(
+        default_factory=StaleReviewsFactorConfig
+    )
+    price_above_peers_with_low_quality: PriceAbovePeersFactorConfig = Field(
+        default_factory=PriceAbovePeersFactorConfig
+    )
+    concentrated_complaints: ConcentratedComplaintsFactorConfig = Field(
+        default_factory=ConcentratedComplaintsFactorConfig
+    )
+    negative_burst: NegativeBurstFactorConfig = Field(
+        default_factory=NegativeBurstFactorConfig
+    )
+    rating_text_conflict: RatingTextConflictFactorConfig = Field(
+        default_factory=RatingTextConflictFactorConfig
+    )
+
+
 class RiskConfig(BaseModel):
     """Fuzzy logic risk inference configuration."""
 
@@ -992,6 +1514,10 @@ class RiskConfig(BaseModel):
     scale_min: float = 0.0
     scale_max: float = 100.0
     default_defuzzification_method: str = "centroid"
+    #: Per-product decision criteria (filled by scripts/compute_risk_indicators.py).
+    criteria: RiskCriteriaConfig = Field(default_factory=RiskCriteriaConfig)
+    #: Rule-based risk-factor thresholds.
+    factors: RiskFactorsConfig = Field(default_factory=RiskFactorsConfig)
 
 
 class DecisionConfig(BaseModel):

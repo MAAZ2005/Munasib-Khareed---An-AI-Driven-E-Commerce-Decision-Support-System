@@ -37,6 +37,7 @@ from munasib.db.models import (
     Product,
     ProductAspect,
     ProductEvidence,
+    ProductRiskIndicator,
     RelatedProduct,
     Review,
     ReviewFeature,
@@ -1008,12 +1009,105 @@ class ProductEvidenceRepository:
         return len(materialised)
 
 
+class ProductRiskIndicatorRepository:
+    """Per-product decision criteria and risk factors keyed by ``asin``."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_risk_indicators(self, asin: str) -> ProductRiskIndicator | None:
+        """Fetch one product's stored risk-indicator row.
+
+        Args:
+            asin: Product ASIN.
+
+        Returns:
+            The row, or None when the product was never scored.
+        """
+        return self._session.get(ProductRiskIndicator, asin)
+
+    def list_risk_indicators(
+        self, asins: Sequence[str] | None = None
+    ) -> list[ProductRiskIndicator]:
+        """Fetch stored risk-indicator rows, ascending by ASIN.
+
+        Args:
+            asins: ASINs to load, or None for every stored row.
+
+        Returns:
+            Existing rows ordered by ASIN (stable, so a diff of two runs is
+            meaningful).
+        """
+        statement = select(ProductRiskIndicator).order_by(ProductRiskIndicator.asin)
+        if asins is not None:
+            statement = statement.where(ProductRiskIndicator.asin.in_(list(asins)))
+        return list(self._session.scalars(statement))
+
+    def count_rows(self) -> int:
+        """Count stored risk-indicator rows.
+
+        Returns:
+            Row count.
+        """
+        total = self._session.scalar(
+            select(func.count()).select_from(ProductRiskIndicator)
+        )
+        return int(total or 0)
+
+    def upsert_risk_indicators(self, rows: Sequence[Mapping[str, object]]) -> int:
+        """Insert or refresh one row per ASIN.
+
+        Merging on the ``asin`` primary key keeps re-runs idempotent and lets a
+        ``--limit``/``--asins`` run refresh only the products it computed
+        instead of replacing the whole table.
+
+        Args:
+            rows: Complete ``product_risk_indicators`` payloads, including
+                ``reference_date`` and ``computed_at``.
+
+        Returns:
+            Number of rows written.
+
+        Raises:
+            ValueError: If a row lacks a required column.
+        """
+        materialised = list(rows)
+        required = {
+            "asin",
+            "indicators",
+            "risk_factors",
+            "priors",
+            "reference_date",
+            "computed_at",
+        }
+        for row in materialised:
+            missing = required - set(row)
+            if missing:
+                raise ValueError(
+                    f"product risk-indicator row lacks column(s) {sorted(missing)}"
+                )
+        for row in materialised:
+            self._session.merge(
+                ProductRiskIndicator(
+                    asin=str(row["asin"]),
+                    indicators=cast(dict, row["indicators"]),
+                    risk_factors=cast(list, row["risk_factors"]),
+                    priors=cast(dict, row["priors"]),
+                    reference_date=cast(datetime, row["reference_date"]),
+                    computed_at=cast(datetime, row["computed_at"]),
+                )
+            )
+        self._session.flush()
+        return len(materialised)
+
+
 __all__ = [
     "AnalysisRepository",
     "Page",
     "ProductAspectRepository",
     "ProductEvidenceRepository",
     "ProductRepository",
+    "ProductRiskIndicatorRepository",
     "RelatedCounts",
     "RelatedRepository",
     "ReviewFeatureRepository",

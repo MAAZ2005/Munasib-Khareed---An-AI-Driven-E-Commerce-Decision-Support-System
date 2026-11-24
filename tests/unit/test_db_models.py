@@ -44,6 +44,7 @@ ALL_TABLES = {
     "product_features",
     "product_aspects",
     "product_evidence",
+    "product_risk_indicators",
     "analysis_results",
 }
 
@@ -126,8 +127,8 @@ def session(engine: Engine) -> Iterator[Session]:
 # ------------------------------------------------------------------------------
 
 
-def test_init_db_creates_all_eight_tables(engine) -> None:
-    """create_all builds exactly the eight declared tables."""
+def test_init_db_creates_all_nine_tables(engine) -> None:
+    """create_all builds exactly the nine declared tables."""
     with engine.connect() as connection:
         names = set(
             connection.scalars(
@@ -138,13 +139,14 @@ def test_init_db_creates_all_eight_tables(engine) -> None:
 
 
 def test_pipeline_owned_tables_start_empty(engine) -> None:
-    """The cache tables load later; feature/aspect/evidence/analysis tables start empty."""
+    """The cache tables load later; feature/aspect/evidence/risk/analysis tables start empty."""
     with engine.connect() as connection:
         for name in (
             "review_features",
             "product_features",
             "product_aspects",
             "product_evidence",
+            "product_risk_indicators",
             "analysis_results",
         ):
             total = connection.scalar(text(f"SELECT COUNT(*) FROM {name}"))
