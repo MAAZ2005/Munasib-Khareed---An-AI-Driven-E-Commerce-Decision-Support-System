@@ -4,7 +4,13 @@ Every test here runs a real page through ``streamlit.testing.v1.AppTest``, which
 executes the whole script - sidebar included. The sidebar reads ``GET /health``,
 so an unpatched test would open a socket to ``127.0.0.1:8000`` and pay the API
 client's retry/backoff (about 2.4s) whenever no server is listening, which is
-enough to blow the AppTest 3s run timeout.
+enough to blow the AppTest run timeout.
+
+Running a page also means importing Streamlit, Plotly and the whole app in the
+same process, so a cold run on a slow machine can take far longer than the
+Streamlit default of 3s. Every ``AppTest.run`` call in this package therefore
+goes through :func:`apptest_timeout`, one shared timeout that defaults to 30s
+and can be overridden machine-wide with ``MUNASIB_APPTEST_TIMEOUT``.
 
 The whole API client is therefore patched for every test in this package, and the
 fixtures are built from the schema examples (``ANALYSIS_EXAMPLE`` and friends) -
@@ -20,6 +26,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import os
 import unittest.mock as mock
 from datetime import UTC, datetime
 from typing import Any
@@ -50,6 +57,48 @@ STUB_PIPELINE_VERSION = "stub-0"
 
 #: Second ASIN used to build a two-item search page.
 SECOND_ASIN = "B00QO4ZX30"
+
+#: Shared default, in seconds, for every ``AppTest.run`` call in this package.
+#: Generous enough for a cold page on a slow machine (which measured in the
+#: single-digit seconds there) while still failing a page that hangs.
+DEFAULT_APPTEST_TIMEOUT = 30.0
+
+#: Environment variable that overrides :data:`DEFAULT_APPTEST_TIMEOUT` and any
+#: per-call default, e.g. ``MUNASIB_APPTEST_TIMEOUT=60 pytest tests -q``.
+APPTTEST_TIMEOUT_ENV_VAR = "MUNASIB_APPTEST_TIMEOUT"
+
+
+def apptest_timeout(default: float = DEFAULT_APPTEST_TIMEOUT) -> float:
+    """Run timeout, in seconds, for one ``AppTest.run(...)`` call.
+
+    The environment variable wins over ``default`` so a slower machine can
+    raise the budget for every e2e test at once instead of editing literals.
+
+    Args:
+        default: Seconds to use when ``MUNASIB_APPTEST_TIMEOUT`` is unset or
+            empty. Callers with a documented reason for a different budget (the
+            component gallery's first run) pass their own value here.
+
+    Returns:
+        The timeout to pass to ``AppTest.run(timeout=...)``.
+
+    Raises:
+        ValueError: If the environment variable is set but is not a positive
+            number of seconds - a misconfigured run must fail loudly rather
+            than silently fall back to a different budget.
+    """
+    raw = os.environ.get(APPTTEST_TIMEOUT_ENV_VAR, "").strip()
+    if not raw:
+        return default
+    try:
+        timeout = float(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"{APPTTEST_TIMEOUT_ENV_VAR} must be a number of seconds, got {raw!r}"
+        ) from exc
+    if timeout <= 0:
+        raise ValueError(f"{APPTTEST_TIMEOUT_ENV_VAR} must be > 0, got {raw!r}")
+    return timeout
 
 
 def build_health_response() -> HealthResponse:

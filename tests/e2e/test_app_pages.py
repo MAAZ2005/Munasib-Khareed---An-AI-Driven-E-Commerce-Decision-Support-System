@@ -134,7 +134,7 @@ def test_home_page_renders_with_backend_online() -> None:
         mock.patch("app.api_client.ApiClient.health", return_value=_fixture_health()),
     ):
         at = AppTest.from_file(_app_path("app/Home.py"))
-        at.run()
+        at.run(timeout=e2e.apptest_timeout())
 
         assert not at.exception, at.exception
         assert len(at.title) > 0
@@ -155,7 +155,7 @@ def test_home_page_handles_backend_offline() -> None:
         ),
     ):
         at = AppTest.from_file(_app_path("app/Home.py"))
-        at.run()
+        at.run(timeout=e2e.apptest_timeout())
 
         assert not at.exception, at.exception
         assert any("FastAPI backend is currently unavailable" in e.value for e in at.error)
@@ -172,7 +172,7 @@ def test_product_selection_page_renders_and_selects_asin() -> None:
         mock.patch("app.api_client.ApiClient.health", return_value=_fixture_health()),
     ):
         at = AppTest.from_file(_app_path("app/pages/1_Product_Selection.py"))
-        at.run()
+        at.run(timeout=e2e.apptest_timeout())
 
         assert not at.exception, at.exception
         assert len(at.title) > 0
@@ -181,7 +181,7 @@ def test_product_selection_page_renders_and_selects_asin() -> None:
         # Click the 'Select' button for B00009V3UF
         select_buttons = [b for b in at.button if b.key == "select_B00009V3UF"]
         assert len(select_buttons) == 1
-        select_buttons[0].click().run()
+        select_buttons[0].click().run(timeout=e2e.apptest_timeout())
 
         assert not at.exception, at.exception
         assert at.session_state["selected_asin"] == "B00009V3UF"
@@ -192,7 +192,7 @@ def test_pages_guard_when_no_product_selected(rel_path: str) -> None:
     """Verify pages 2-7 display guard warning and halt when no ASIN is selected."""
     at = AppTest.from_file(_app_path(rel_path))
     at.session_state["selected_asin"] = None
-    at.run()
+    at.run(timeout=e2e.apptest_timeout())
 
     assert not at.exception, at.exception
     assert any("No product selected" in w.value for w in at.warning)
@@ -203,7 +203,7 @@ def test_pages_render_title_with_selected_product(rel_path: str) -> None:
     """Verify pages 2-7 render successfully with title when a product is chosen."""
     at = AppTest.from_file(_app_path(rel_path))
     at.session_state["selected_asin"] = "B00009V3UF"
-    at.run()
+    at.run(timeout=e2e.apptest_timeout())
 
     assert not at.exception, at.exception
     assert len(at.title) > 0
@@ -220,7 +220,7 @@ def test_stub_banner_appears_for_stub_analysis() -> None:
     at = AppTest.from_file(_app_path("app/pages/4_Risk_and_Evidence.py"))
     at.session_state["selected_asin"] = "B00009V3UF"
     at.session_state["last_analysis"] = analysis
-    at.run()
+    at.run(timeout=e2e.apptest_timeout())
 
     assert not at.exception, at.exception
     assert any("Placeholder analysis from the stub engine" in w.value for w in at.warning)
@@ -236,7 +236,7 @@ def test_stub_banner_does_not_appear_for_non_stub_analysis() -> None:
     at = AppTest.from_file(_app_path("app/pages/4_Risk_and_Evidence.py"))
     at.session_state["selected_asin"] = "B00009V3UF"
     at.session_state["last_analysis"] = analysis
-    at.run()
+    at.run(timeout=e2e.apptest_timeout())
 
     assert not at.exception, at.exception
     assert not any("Placeholder analysis from the stub engine" in w.value for w in at.warning)
@@ -295,7 +295,7 @@ def _run_page(
         at.session_state["selected_asin"] = asin
     if analysis is not None:
         at.session_state["last_analysis"] = analysis
-    at.run()
+    at.run(timeout=e2e.apptest_timeout())
     return at
 
 
@@ -322,7 +322,7 @@ def test_product_selection_renders_cards_and_price_absence() -> None:
     # The header logo is disabled so the only images left would be product images.
     with mock.patch("app.components.header.load_logo_bytes", return_value=None):
         at = AppTest.from_file(_app_path("app/pages/1_Product_Selection.py"))
-        at.run()
+        at.run(timeout=e2e.apptest_timeout())
 
     assert not at.exception, at.exception
     assert any("Price not listed" in m.value for m in at.markdown)
@@ -416,7 +416,7 @@ def test_alternatives_renders_cards_and_switch_updates_selection() -> None:
 
     switch = [b for b in at.button if b.key == "switch_B0050O1N2U"]
     assert len(switch) == 1
-    switch[0].click().run()
+    switch[0].click().run(timeout=e2e.apptest_timeout())
 
     assert not at.exception, at.exception
     assert at.session_state["selected_asin"] == "B0050O1N2U"
@@ -588,13 +588,13 @@ def test_header_search_stores_query_resets_offset_and_routes_to_selection() -> N
     """Submitting the header search stores the query, resets paging and routes."""
     at = AppTest.from_file(_app_path("app/pages/1_Product_Selection.py"))
     at.session_state["search_offset"] = 20
-    at.run()
+    at.run(timeout=e2e.apptest_timeout())
     assert not at.exception, at.exception
 
     at.text_input[0].input("gas range knobs")
     with mock.patch("streamlit.switch_page") as switch:
         submit = next(b for b in at.button if b.label == "Search")
-        submit.click().run()
+        submit.click().run(timeout=e2e.apptest_timeout())
 
     assert not at.exception, at.exception
     assert at.session_state["search_query"] == "gas range knobs"
@@ -621,7 +621,7 @@ def test_product_grid_renders_cards_escapes_titles_and_shows_price_absence() -> 
 
     with mock.patch("app.api_client.ApiClient.search_products", return_value=page):
         at = AppTest.from_file(_app_path("app/pages/1_Product_Selection.py"))
-        at.run()
+        at.run(timeout=e2e.apptest_timeout())
 
     assert not at.exception, at.exception
     select_buttons = [b for b in at.button if (b.key or "").startswith("select_")]
@@ -648,7 +648,9 @@ def test_overview_advocate_panel_is_labelled_placeholder_under_stub() -> None:
 
 def test_about_page_renders_the_team_and_publishes_no_contact_details() -> None:
     """The About page shows the team, academic info, pipeline, tech stack, and no contact details."""
-    at = AppTest.from_file(_app_path("app/pages/About.py")).run()
+    at = AppTest.from_file(_app_path("app/pages/About.py")).run(
+        timeout=e2e.apptest_timeout()
+    )
 
     assert not at.exception, at.exception
     text = _page_text(at)

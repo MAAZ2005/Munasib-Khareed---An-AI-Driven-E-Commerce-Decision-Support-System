@@ -14,8 +14,15 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from tests.e2e.conftest import apptest_timeout
+
 #: The gallery lives in ``app/pages`` so it is reachable from the sidebar.
 GALLERY_PATH = Path(__file__).resolve().parents[2] / "app" / "pages" / "_component_gallery.py"
+
+#: The gallery's first run pays for importing Streamlit, Plotly and every
+#: component, so it keeps a more generous budget than the other pages. It goes
+#: through the shared helper, so ``MUNASIB_APPTEST_TIMEOUT`` still overrides it.
+GALLERY_TIMEOUT = 60.0
 
 #: One Plotly chart per chart component: gauge, rating, sentiment, trend,
 #: aspects, radar, fuzzy, TOPSIS and SHAP.
@@ -37,7 +44,7 @@ def run_gallery() -> AppTest:
         The executed AppTest context.
     """
     app = AppTest.from_file(str(GALLERY_PATH))
-    app.run(timeout=60)
+    app.run(timeout=apptest_timeout(GALLERY_TIMEOUT))
     return app
 
 
@@ -50,7 +57,7 @@ def toggle_empty_data(app: AppTest) -> AppTest:
     Returns:
         The re-run context.
     """
-    app.checkbox[0].set_value(True).run(timeout=60)
+    app.checkbox[0].set_value(True).run(timeout=apptest_timeout(GALLERY_TIMEOUT))
     return app
 
 
