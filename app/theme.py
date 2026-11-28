@@ -129,6 +129,7 @@ CHART_PALETTE: dict[str, str] = {
     "positive": "#009E73",
     "negative": "#D55E00",
     "neutral": "#56B4E9",
+     "mixed": "#E69F00",
     "unlabelled": "#999999",
     # TOPSIS / criterion direction: blue = the more of this the better,
     # orange = the more of this the worse.
