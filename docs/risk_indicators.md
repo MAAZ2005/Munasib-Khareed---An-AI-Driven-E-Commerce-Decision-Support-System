@@ -301,6 +301,26 @@ Neither threshold was changed after seeing these counts.
 
 Elapsed time is printed but never stored.
 
+### Report files
+
+The same figures are written, from computed values only, to
+`reports/risk_indicators_summary.json` and `reports/risk_indicators_summary.md`
+(under `paths.reports_dir`):
+
+* `reports/risk_indicators_summary.json` - machine-readable: products written,
+  the reference date and the dataset build timestamp, the train priors **with
+  their train counts**, the agreement-scale decision and every candidate's
+  saturation share, min/median/max of every criterion plus the raw **and**
+  normalized cost inputs, missing counts with reasons, both 5x5 Spearman
+  matrices, the per-split medians, the factor counts by severity, the notes, and
+  the five best and five worst products by `product_quality`.
+* `reports/risk_indicators_summary.md` - the same figures rendered for reading.
+
+The only timestamps in either file are the dataset's own (`review_date_range.max`
+and `built_at` from `data/processed/meta.json`); no wall-clock value and no
+elapsed time is ever written, so two runs over the same cache produce
+byte-identical files.
+
 ### Measured correlations
 
 All products (pairwise complete):
@@ -376,6 +396,11 @@ Exit codes: `0` rows written; `1` the run could not start (bad config, empty
 cache, unreadable `meta.json`, a direction mismatch, or an unknown `--asins`
 entry).
 
+Every successful run also writes `reports/risk_indicators_summary.json` and
+`reports/risk_indicators_summary.md` into `paths.reports_dir` and prints the
+two paths; the files are regenerated on each run and are byte-identical for the
+same cache.
+
 ## 11. Limitations
 
 * Criteria are correlated (see above); the vector is the declared TOPSIS input,
@@ -393,7 +418,10 @@ entry).
 renormalization, missing gating, vector order, direction-map failure modes,
 priors), `test_risk_factors.py` (every rule at its boundary and each severity
 band), `test_risk_compute.py` (determinism, no wall clock, agreement-scale rule,
-missing handling, summary statistics and matrices), `test_risk_store_db.py`
+missing handling, summary statistics and matrices, plus the JSON payload and
+Markdown report), `test_risk_store_db.py`
 (JSON decoding, repository round-trip/upsert, real-cache skip test),
 `test_risk_config.py` (defaults and validators) and `test_risk_cli.py` (hermetic
-temp-cache runs, `--limit`/`--asins`, exit codes).
+temp-cache runs, `--limit`/`--asins`, exit codes, and the summary reports: both
+files written, byte-identical across two runs, and carrying only the dataset's
+timestamps).

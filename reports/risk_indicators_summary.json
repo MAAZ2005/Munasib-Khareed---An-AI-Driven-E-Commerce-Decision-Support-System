@@ -1,0 +1,438 @@
+{
+  "products": 2066,
+  "reference_date": "2018-10-04T00:00:00+00:00",
+  "computed_at": "2026-10-24T06:15:06+00:00",
+  "priors": {
+    "split": "train",
+    "n_train_products": 1444,
+    "n_train_with_rating": 1444,
+    "n_train_with_predictions": 1444,
+    "mean_rating": 4.303889,
+    "net_sentiment": 0.682193,
+    "negative_share": 0.123858
+  },
+  "agreement": {
+    "scale": 0.2,
+    "zero_share": 0.123911,
+    "median_component": 0.764733,
+    "median_gap": 0.047053,
+    "zero_share_by_candidate": {
+      "0.1": 0.317038,
+      "0.2": 0.123911,
+      "0.3": 0.052759
+    },
+    "gap_count": 2066,
+    "meets_target": true
+  },
+  "criteria": {
+    "product_quality": {
+      "count": 2066,
+      "min": 0.1732,
+      "median": 0.880324,
+      "max": 0.974335
+    },
+    "evidence_strength": {
+      "count": 2066,
+      "min": 0.361589,
+      "median": 0.680937,
+      "max": 0.900961
+    },
+    "rating_reliability": {
+      "count": 2066,
+      "min": 0.207572,
+      "median": 0.725368,
+      "max": 0.966493
+    },
+    "negative_feedback_concentration": {
+      "count": 2066,
+      "min": 0.011955,
+      "median": 0.134317,
+      "max": 0.660083
+    },
+    "price_position": {
+      "count": 1678,
+      "min": 0.0,
+      "median": 0.494502,
+      "max": 1.0
+    }
+  },
+  "cost_indicators": {
+    "negative_feedback_concentration": {
+      "value (cost)": {
+        "count": 2066,
+        "min": 0.011955,
+        "median": 0.134317,
+        "max": 0.660083
+      },
+      "normalized (1 - value)": {
+        "count": 2066,
+        "min": 0.339917,
+        "median": 0.865683,
+        "max": 0.988045
+      },
+      "prevalence": {
+        "count": 2066,
+        "min": 0.023911,
+        "median": 0.240872,
+        "max": 1.0
+      },
+      "focus": {
+        "count": 2066,
+        "min": 0.0,
+        "median": 0.129095,
+        "max": 0.866667
+      }
+    },
+    "price_position": {
+      "value (cost percentile)": {
+        "count": 1678,
+        "min": 0.0,
+        "median": 0.494502,
+        "max": 1.0
+      },
+      "normalized (1 - value)": {
+        "count": 1678,
+        "min": 0.0,
+        "median": 0.505498,
+        "max": 1.0
+      }
+    },
+    "top_pain_point_share": {
+      "raw": {
+        "count": 1151,
+        "min": 0.0,
+        "median": 0.166667,
+        "max": 1.0
+      },
+      "normalized (1 - raw)": {
+        "count": 1151,
+        "min": 0.0,
+        "median": 0.833333,
+        "max": 1.0
+      }
+    },
+    "aspect_concentration": {
+      "raw (HHI)": {
+        "count": 1151,
+        "min": 0.008812,
+        "median": 0.12,
+        "max": 1.0
+      },
+      "normalized (1 - raw)": {
+        "count": 1151,
+        "min": 0.0,
+        "median": 0.88,
+        "max": 0.991188
+      }
+    },
+    "temporal_burst": {
+      "raw": {
+        "count": 1171,
+        "min": 0.113333,
+        "median": 0.333333,
+        "max": 1.0
+      },
+      "normalized (1 - raw)": {
+        "count": 1171,
+        "min": 0.0,
+        "median": 0.666667,
+        "max": 0.886667
+      }
+    }
+  },
+  "missing": {
+    "product_quality": {
+      "count": 0,
+      "reasons": {}
+    },
+    "evidence_strength": {
+      "count": 0,
+      "reasons": {}
+    },
+    "rating_reliability": {
+      "count": 0,
+      "reasons": {}
+    },
+    "negative_feedback_concentration": {
+      "count": 0,
+      "reasons": {}
+    },
+    "price_position": {
+      "count": 388,
+      "reasons": {
+        "price_missing": 388
+      }
+    }
+  },
+  "correlations": {
+    "product_quality": {
+      "product_quality": 1.0,
+      "evidence_strength": 0.6039,
+      "rating_reliability": 0.8418,
+      "negative_feedback_concentration": -0.931,
+      "price_position": 0.0026
+    },
+    "evidence_strength": {
+      "product_quality": 0.6039,
+      "evidence_strength": 1.0,
+      "rating_reliability": 0.4782,
+      "negative_feedback_concentration": -0.4344,
+      "price_position": -0.006
+    },
+    "rating_reliability": {
+      "product_quality": 0.8418,
+      "evidence_strength": 0.4782,
+      "rating_reliability": 1.0,
+      "negative_feedback_concentration": -0.8096,
+      "price_position": -0.0318
+    },
+    "negative_feedback_concentration": {
+      "product_quality": -0.931,
+      "evidence_strength": -0.4344,
+      "rating_reliability": -0.8096,
+      "negative_feedback_concentration": 1.0,
+      "price_position": -0.0037
+    },
+    "price_position": {
+      "product_quality": 0.0026,
+      "evidence_strength": -0.006,
+      "rating_reliability": -0.0318,
+      "negative_feedback_concentration": -0.0037,
+      "price_position": 1.0
+    }
+  },
+  "train_correlations": {
+    "product_quality": {
+      "product_quality": 1.0,
+      "evidence_strength": 0.6063,
+      "rating_reliability": 0.8371,
+      "negative_feedback_concentration": -0.9297,
+      "price_position": 0.0361
+    },
+    "evidence_strength": {
+      "product_quality": 0.6063,
+      "evidence_strength": 1.0,
+      "rating_reliability": 0.4768,
+      "negative_feedback_concentration": -0.4344,
+      "price_position": 0.0113
+    },
+    "rating_reliability": {
+      "product_quality": 0.8371,
+      "evidence_strength": 0.4768,
+      "rating_reliability": 1.0,
+      "negative_feedback_concentration": -0.8055,
+      "price_position": 0.0021
+    },
+    "negative_feedback_concentration": {
+      "product_quality": -0.9297,
+      "evidence_strength": -0.4344,
+      "rating_reliability": -0.8055,
+      "negative_feedback_concentration": 1.0,
+      "price_position": -0.0331
+    },
+    "price_position": {
+      "product_quality": 0.0361,
+      "evidence_strength": 0.0113,
+      "rating_reliability": 0.0021,
+      "negative_feedback_concentration": -0.0331,
+      "price_position": 1.0
+    }
+  },
+  "split_medians": {
+    "test": {
+      "product_quality": 0.876864,
+      "evidence_strength": 0.675972,
+      "rating_reliability": 0.71166,
+      "negative_feedback_concentration": 0.139701,
+      "price_position": 0.426523
+    },
+    "train": {
+      "product_quality": 0.88114,
+      "evidence_strength": 0.68342,
+      "rating_reliability": 0.728381,
+      "negative_feedback_concentration": 0.134601,
+      "price_position": 0.526316
+    },
+    "val": {
+      "product_quality": 0.880213,
+      "evidence_strength": 0.680534,
+      "rating_reliability": 0.72451,
+      "negative_feedback_concentration": 0.129458,
+      "price_position": 0.430794
+    }
+  },
+  "factors": {
+    "recent_sentiment_decline": {
+      "count": 118,
+      "share": 0.057115,
+      "severities": {
+        "low": 93,
+        "medium": 21,
+        "high": 4
+      }
+    },
+    "polarized_ratings": {
+      "count": 193,
+      "share": 0.093417,
+      "severities": {
+        "low": 37,
+        "medium": 116,
+        "high": 40
+      }
+    },
+    "low_verified_share": {
+      "count": 60,
+      "share": 0.029042,
+      "severities": {
+        "low": 20,
+        "medium": 11,
+        "high": 29
+      }
+    },
+    "weak_evidence": {
+      "count": 18,
+      "share": 0.008712,
+      "severities": {
+        "low": 18,
+        "medium": 0,
+        "high": 0
+      }
+    },
+    "stale_reviews": {
+      "count": 34,
+      "share": 0.016457,
+      "severities": {
+        "low": 24,
+        "medium": 8,
+        "high": 2
+      }
+    },
+    "price_above_peers_with_low_quality": {
+      "count": 0,
+      "share": 0.0,
+      "severities": {
+        "low": 0,
+        "medium": 0,
+        "high": 0
+      }
+    },
+    "concentrated_complaints": {
+      "count": 142,
+      "share": 0.068732,
+      "severities": {
+        "low": 73,
+        "medium": 43,
+        "high": 26
+      }
+    },
+    "negative_burst": {
+      "count": 177,
+      "share": 0.085673,
+      "severities": {
+        "low": 140,
+        "medium": 25,
+        "high": 12
+      }
+    },
+    "rating_text_conflict": {
+      "count": 2,
+      "share": 0.000968,
+      "severities": {
+        "low": 1,
+        "medium": 1,
+        "high": 0
+      }
+    }
+  },
+  "best": [
+    {
+      "asin": "B00IVO8478",
+      "title": "80040 - Original Factory OEM Washer Agitator Dog (4 Pack) Roper Estate",
+      "mean_rating": 4.921788,
+      "n_reviews": 179,
+      "net_sentiment": 0.975285,
+      "value": 0.974335
+    },
+    {
+      "asin": "B00DM8J11Q",
+      "title": "Supco LP338 Agitator Dogs For Whirlpool 285770, 80040, AP3119063, 285612, 3366877, 387091",
+      "mean_rating": 4.868737,
+      "n_reviews": 1417,
+      "net_sentiment": 0.946865,
+      "value": 0.974086
+    },
+    {
+      "asin": "B01FZJXITU",
+      "title": "Replacement Part for 279834 Dryer Gas Coil Kit - Valve Ignition Solenoid For Dryers Premium Parts",
+      "mean_rating": 4.883598,
+      "n_reviews": 378,
+      "net_sentiment": 0.933974,
+      "value": 0.970007
+    },
+    {
+      "asin": "B0053F80JA",
+      "title": "Whirlpool 3406107 Door Switch for Dryer",
+      "mean_rating": 4.838946,
+      "n_reviews": 1366,
+      "net_sentiment": 0.935767,
+      "value": 0.968718
+    },
+    {
+      "asin": "B006H7HB7K",
+      "title": "Supco SET401 Dryer Thermal Fuse Replaces Whirlpool 3392519, 33886651, GE WE4X857",
+      "mean_rating": 4.851711,
+      "n_reviews": 526,
+      "net_sentiment": 0.918756,
+      "value": 0.965469
+    }
+  ],
+  "worst": [
+    {
+      "asin": "B005KT4LK6",
+      "title": "Whirlpool WTW8800YW Cabrio 4.6 Cu. Ft. White Top Load Washer - Energy Star",
+      "mean_rating": 1.230263,
+      "n_reviews": 152,
+      "net_sentiment": -0.731305,
+      "value": 0.1732
+    },
+    {
+      "asin": "B003KHEABK",
+      "title": "Maytag Performance Series MHWE450WW 27 4.5 cu. Ft. Front-Load Washer - White",
+      "mean_rating": 1.267606,
+      "n_reviews": 71,
+      "net_sentiment": -0.742825,
+      "value": 0.253025
+    },
+    {
+      "asin": "B003BSKI6O",
+      "title": "Maytag Performance Series MHWE200XW 27 4 cu. Ft. Front-Load Washer - White",
+      "mean_rating": 1.318841,
+      "n_reviews": 69,
+      "net_sentiment": -0.735308,
+      "value": 0.263987
+    },
+    {
+      "asin": "B0015YQV8K",
+      "title": " Electrolux EWDW6505GS Wave-Touch 24&quot; Stainless Steel Fully Integrated Dishwasher - Energy Star",
+      "mean_rating": 1.361111,
+      "n_reviews": 72,
+      "net_sentiment": -0.62429,
+      "value": 0.280081
+    },
+    {
+      "asin": "B002ACHJF0",
+      "title": "Maytag Centennial Series MVWC6ESWW 27 4 cu. Ft. Top-Load Washer -White",
+      "mean_rating": 1.318182,
+      "n_reviews": 66,
+      "net_sentiment": -0.646075,
+      "value": 0.282488
+    }
+  ],
+  "notes": [
+    "criteria 'product_quality' and 'rating_reliability' correlate at rho=+0.8418 (>|0.8|), so they are not independent signals",
+    "criteria 'negative_feedback_concentration' and 'product_quality' correlate at rho=-0.9310 (>|0.8|), so they are not independent signals",
+    "criteria 'negative_feedback_concentration' and 'rating_reliability' correlate at rho=-0.8096 (>|0.8|), so they are not independent signals",
+    "factor 'price_above_peers_with_low_quality' triggers for 0.00% of products (<0.5%), so it is close to dead",
+    "factor 'rating_text_conflict' triggers for 0.10% of products (<0.5%), so it is close to dead"
+  ]
+}

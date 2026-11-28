@@ -21,7 +21,10 @@ missing counts with their reasons, raw **and** normalized statistics for the
 cost-direction indicators, the 5x5 Spearman matrix over all written products and
 again over the train split, per-split medians, the severity counts of every risk
 factor with its trigger share, correlation/factor warnings, and the five best and
-worst products by ``product_quality``.
+worst products by ``product_quality``. The same figures are written to
+``reports/risk_indicators_summary.json`` and ``reports/risk_indicators_summary.md``;
+only the dataset's own timestamps (reference date and build time) appear in
+them, never the wall clock and never the elapsed time.
 
 Usage::
 
@@ -58,7 +61,12 @@ from munasib.db.session import (
     init_db,
     session_scope,
 )
-from munasib.risk.compute import RiskSummary, compute_risk_indicators, summarize
+from munasib.risk.compute import (
+    RiskSummary,
+    compute_risk_indicators,
+    summarize,
+    write_summary_reports,
+)
 from munasib.risk.indicators import (
     product_sentiment_totals,
     read_criteria_directions,
@@ -88,6 +96,8 @@ class RiskRun:
     written: int
     #: The printed summary.
     summary: RiskSummary
+    #: Files written under ``settings.paths.reports_dir``.
+    report_paths: list[Path]
     #: Wall-clock duration of the run (printed, never stored).
     elapsed_seconds: float
 
@@ -173,7 +183,7 @@ def run(settings: Settings, limit: int | None, asins: Sequence[str] | None) -> R
         asins: Explicit ASINs, or None to take them in ASIN order.
 
     Returns:
-        The run outcome (rows written, summary, elapsed time).
+        The run outcome (rows written, summary, report paths, elapsed time).
 
     Raises:
         DataError: If the cache is empty, metadata cannot supply the reference
@@ -232,9 +242,15 @@ def run(settings: Settings, limit: int | None, asins: Sequence[str] | None) -> R
         logger.info("risk_indicators_written rows=%d", written)
 
         summary = summarize(result.rows, evidence, result.agreement, result.priors)
+        report_paths = write_summary_reports(summary, Path(settings.paths.reports_dir))
         elapsed = time.perf_counter() - started
         logger.info("run_complete elapsed=%.2fs", elapsed)
-        return RiskRun(written=written, summary=summary, elapsed_seconds=elapsed)
+        return RiskRun(
+            written=written,
+            summary=summary,
+            report_paths=report_paths,
+            elapsed_seconds=elapsed,
+        )
     finally:
         engine.dispose()
 
@@ -266,6 +282,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(line)
     print(f"{'elapsed':<34}: {outcome.elapsed_seconds:.2f}s")
     print()
+    for path in outcome.report_paths:
+        print(f"{'report written':<34}: {path}")
     return 0
 
 

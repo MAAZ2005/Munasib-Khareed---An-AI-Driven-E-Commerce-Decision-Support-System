@@ -18,11 +18,16 @@ from munasib.core.config import RiskConfig
 from munasib.core.exceptions import DataError
 from munasib.risk.compute import (
     CRITERION_ORDER,
+    JSON_FILENAME,
+    MARKDOWN_FILENAME,
     agreement_component,
     choose_agreement_scale,
     compute_risk_indicators,
+    render_summary_markdown,
     summarize,
+    write_summary_reports,
 )
+from munasib.risk.factors import FACTOR_CODES
 from munasib.risk.indicators import (
     product_sentiment_totals,
     read_criteria_directions,
@@ -483,3 +488,65 @@ def test_summary_flags_dead_factors_on_a_tiny_run() -> None:
     result = _compute()
     summary = summarize(result.rows, _evidence(), result.agreement, result.priors)
     assert any("<0.5%" in note for note in summary.notes)
+
+
+def test_summary_payload_is_json_safe_and_complete() -> None:
+    """The JSON payload carries every section and survives a JSON round-trip."""
+    result = _compute()
+    summary = summarize(result.rows, _evidence(), result.agreement, result.priors)
+    payload = summary.to_payload()
+
+    assert payload["products"] == len(PRODUCTS)
+    assert payload["reference_date"] == "2018-10-04T00:00:00+00:00"
+    assert payload["computed_at"] == "2026-10-24T06:15:06+00:00"
+    assert payload["priors"]["n_train_products"] == 3
+    assert payload["agreement"]["scale"] == summary.agreement.scale
+    assert payload["agreement"]["zero_share_by_candidate"]
+    assert set(payload["criteria"]) == set(CRITERION_ORDER)
+    assert set(payload["cost_indicators"]) == set(summary.cost_raw)
+    assert set(payload["missing"]) == set(CRITERION_ORDER)
+    assert set(payload["correlations"]) == set(CRITERION_ORDER)
+    assert set(payload["train_correlations"]) == set(CRITERION_ORDER)
+    assert set(payload["split_medians"]) == {"train", "val", "test"}
+    assert set(payload["factors"]) == set(FACTOR_CODES)
+    assert len(payload["best"]) == len(PRODUCTS)
+    assert len(payload["worst"]) == len(PRODUCTS)
+    assert json.loads(json.dumps(payload)) == payload
+
+
+def test_summary_markdown_renders_every_section() -> None:
+    """The Markdown report mirrors the JSON sections and never shows elapsed time."""
+    result = _compute()
+    summary = summarize(result.rows, _evidence(), result.agreement, result.priors)
+    text = render_summary_markdown(summary)
+
+    for heading in (
+        "# Risk indicators summary",
+        "## Category priors (train split)",
+        "## Agreement scale",
+        "## Criterion values",
+        "## Cost-direction inputs (raw and normalized)",
+        "## Missing values (None, never imputed)",
+        "## Spearman correlations (all products, pairwise complete)",
+        "## Spearman correlations (train split only, pairwise complete)",
+        "## Median criterion value by split",
+        "## Risk factors",
+        "## Best 5 by product_quality",
+        "## Worst 5 by product_quality",
+    ):
+        assert heading in text
+    assert "elapsed" not in text
+    assert "2018-10-04" in text
+
+
+def test_write_summary_reports_writes_both_files(tmp_path: Path) -> None:
+    """The writer creates both reports and reproduces them byte for byte."""
+    result = _compute()
+    summary = summarize(result.rows, _evidence(), result.agreement, result.priors)
+
+    paths = write_summary_reports(summary, tmp_path)
+
+    assert [path.name for path in paths] == [JSON_FILENAME, MARKDOWN_FILENAME]
+    first = [path.read_bytes() for path in paths]
+    write_summary_reports(summary, tmp_path)
+    assert [path.read_bytes() for path in paths] == first

@@ -26,15 +26,21 @@ weighted/unweighted gap reaches ``agreement_scale``. When more than
 ``agreement_scale_max_zero_share`` of the written products would sit at 0, the
 smallest candidate scale that avoids that saturation is used instead; the choice
 and the per-candidate zero shares are reported, never fitted to ground truth.
+
+The printed summary is also written, from computed values only, to
+``reports/risk_indicators_summary.json`` and ``.md``; only the dataset's own
+timestamps (reference date and build time) appear there, never the wall clock.
 """
 
 from __future__ import annotations
 
+import json
 import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, cast
 
 import pandas as pd
 
@@ -55,6 +61,10 @@ from munasib.risk.indicators import (
 
 DIGITS = 6
 
+#: Report file names written under ``paths.reports_dir``.
+JSON_FILENAME = "risk_indicators_summary.json"
+MARKDOWN_FILENAME = "risk_indicators_summary.md"
+
 #: Short labels used in the correlation matrix rendering.
 CRITERION_LABELS: Mapping[str, str] = {
     "product_quality": "pq",
@@ -63,6 +73,61 @@ CRITERION_LABELS: Mapping[str, str] = {
     "negative_feedback_concentration": "nfc",
     "price_position": "pp",
 }
+
+
+def _iso(value: datetime | None) -> str | None:
+    """Render a naive UTC datetime as an ISO 8601 string.
+
+    Args:
+        value: Naive UTC datetime, or None when the run carried none.
+
+    Returns:
+        ISO 8601 string with ``+00:00``, or None.
+    """
+    if value is None:
+        return None
+    return value.replace(tzinfo=UTC).isoformat()
+
+
+def _json_ready(value: Any) -> Any:
+    """Convert a summary value into a JSON-safe, deterministically rounded copy.
+
+    Floats are rounded to :data:`DIGITS` so two runs over the same cache
+    serialise byte-identically, datetimes become ISO 8601 strings and mappings
+    and sequences are converted recursively.
+
+    Args:
+        value: Any summary value.
+
+    Returns:
+        The JSON-safe equivalent.
+    """
+    if isinstance(value, datetime):
+        return _iso(value)
+    if isinstance(value, float):
+        return _rounded(value)
+    if isinstance(value, Mapping):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_ready(item) for item in value]
+    return value
+
+
+def _stat_payload(stat: Stat) -> dict[str, Any]:
+    """Render one statistic as a JSON-safe min/median/max mapping.
+
+    Args:
+        stat: The statistic (rounding happens in :func:`_json_ready`).
+
+    Returns:
+        Mapping with ``count``, ``min``, ``median`` and ``max``.
+    """
+    return {
+        "count": stat.count,
+        "min": stat.minimum,
+        "median": stat.median,
+        "max": stat.maximum,
+    }
 
 
 def _as_int(value: Any) -> int:
@@ -753,6 +818,10 @@ class RiskSummary:
         agreement: The agreement-scale choice.
         best: Five highest-``product_quality`` products.
         worst: Five lowest-``product_quality`` products.
+        reference_date: Dataset reference date (naive UTC), or None for an
+            empty run.
+        computed_at: Dataset build timestamp (naive UTC), or None for an
+            empty run.
         notes: Flagged correlations and factor shares.
     """
 
@@ -769,6 +838,8 @@ class RiskSummary:
     agreement: AgreementScaleChoice
     best: tuple[Mapping[str, Any], ...]
     worst: tuple[Mapping[str, Any], ...]
+    reference_date: datetime | None = None
+    computed_at: datetime | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
 
     def lines(self) -> list[str]:
@@ -879,6 +950,66 @@ class RiskSummary:
         lines.append("worst 5 by product_quality:")
         lines.extend(self._product_lines(self.worst))
         return lines
+
+    def to_payload(self) -> dict[str, Any]:
+        """Render the JSON report payload (computed values only).
+
+        Returns:
+            Mapping with the run metadata, the train priors and their counts,
+            the agreement-scale decision with every candidate's saturation
+            share, min/median/max of every criterion plus the raw and
+            normalized cost inputs, missing counts with reasons, both Spearman
+            matrices, the per-split medians, the factor counts by severity, the
+            notes and the five best/worst products. The only timestamps are the
+            dataset's own (reference date and build time); no wall-clock value
+            is included.
+        """
+        factors = {
+            code: {
+                "count": self.factor_counts.get(code, 0),
+                "share": (
+                    round(self.factor_counts.get(code, 0) / self.products, DIGITS)
+                    if self.products
+                    else 0.0
+                ),
+                "severities": {
+                    severity: self.factor_severities.get(code, {}).get(severity, 0)
+                    for severity in SEVERITIES
+                },
+            }
+            for code in FACTOR_CODES
+        }
+        missing = {
+            name: {
+                "count": sum(reasons.values()),
+                "reasons": dict(sorted(reasons.items())),
+            }
+            for name, reasons in self.missing.items()
+        }
+        payload = {
+            "products": self.products,
+            "reference_date": self.reference_date,
+            "computed_at": self.computed_at,
+            "priors": dict(self.priors),
+            "agreement": self.agreement.to_payload(),
+            "criteria": {
+                name: _stat_payload(self.criteria_stats[name])
+                for name in CRITERION_ORDER
+            },
+            "cost_indicators": {
+                name: {label: _stat_payload(stat) for label, stat in parts.items()}
+                for name, parts in self.cost_raw.items()
+            },
+            "missing": missing,
+            "correlations": self.correlations,
+            "train_correlations": self.train_correlations,
+            "split_medians": self.split_medians,
+            "factors": factors,
+            "best": list(self.best),
+            "worst": list(self.worst),
+            "notes": list(self.notes),
+        }
+        return cast(dict[str, Any], _json_ready(payload))
 
     def _matrix_lines(
         self, matrix: Mapping[str, Mapping[str, float | None]]
@@ -1153,12 +1284,243 @@ def summarize(
         agreement=agreement,
         best=best,
         worst=worst,
+        reference_date=rows[0].reference_date if rows else None,
+        computed_at=rows[0].computed_at if rows else None,
         notes=tuple(notes),
     )
 
 
+def _md_cell(value: Any) -> str:
+    """Render one summary value as a Markdown table cell.
+
+    Args:
+        value: Any JSON-safe summary value.
+
+    Returns:
+        The rendered cell (never empty).
+    """
+    if value is None:
+        return "n/a"
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    if isinstance(value, int):
+        return f"{value:,}"
+    return str(value)
+
+
+def _matrix_markdown(matrix: Mapping[str, Mapping[str, float | None]]) -> list[str]:
+    """Render one labelled Spearman matrix as a Markdown table.
+
+    Args:
+        matrix: Criterion -> criterion -> rho.
+
+    Returns:
+        A key line plus one row per criterion.
+    """
+    key = "Key: " + ", ".join(
+        f"{CRITERION_LABELS[name]}={name}" for name in CRITERION_ORDER
+    )
+    header = "| | " + " | ".join(
+        f"`{CRITERION_LABELS[name]}`" for name in CRITERION_ORDER
+    ) + " |"
+    lines = [
+        key,
+        header,
+        "|---|" + "---:|" * len(CRITERION_ORDER),
+    ]
+    for row in CRITERION_ORDER:
+        cells = []
+        for column in CRITERION_ORDER:
+            value = matrix.get(row, {}).get(column)
+            cells.append("n/a" if value is None else f"{value:.3f}")
+        lines.append(f"| `{CRITERION_LABELS[row]}` | " + " | ".join(cells) + " |")
+    return lines
+
+
+def render_summary_markdown(summary: RiskSummary) -> str:
+    """Render the Markdown report from the same figures as the JSON report.
+
+    Args:
+        summary: Run summary.
+
+    Returns:
+        GitHub-flavoured Markdown.
+    """
+    lines = [
+        "# Risk indicators summary",
+        "",
+        "Computed from the stored cache by `python scripts/compute_risk_indicators.py`; "
+        "every number below is produced by the code, none is illustrative.",
+        "",
+        f"- **Products written:** {summary.products:,}",
+        f"- **Reference date (recency anchor):** {_iso(summary.reference_date) or 'n/a'} "
+        "- the latest review timestamp in `data/processed/meta.json`, never today's "
+        "date.",
+        f"- **Computed at:** {_iso(summary.computed_at) or 'n/a'} - the dataset build "
+        "timestamp, never the wall clock.",
+        "",
+        "## Category priors (train split)",
+        "",
+        "| Prior | Value |",
+        "|---|---:|",
+    ]
+    for name, value in summary.priors.items():
+        lines.append(f"| `{name}` | {_md_cell(value)} |")
+    choice = summary.agreement
+    lines += [
+        "",
+        "## Agreement scale",
+        "",
+        f"- **Chosen scale:** {choice.scale:g}",
+        f"- **Share of products saturated at 0:** {choice.zero_share:.2%} over "
+        f"{choice.gap_count:,} products",
+        f"- **Median component:** {_md_cell(_rounded(choice.median_component))}",
+        f"- **Median gap:** {_md_cell(_rounded(choice.median_gap))}",
+        f"- **Kept the saturation share under the cap:** "
+        f"{str(choice.meets_target).lower()}",
+        "",
+        "| Candidate scale | Share at 0 |",
+        "|---:|---:|",
+    ]
+    for scale, share in choice.zero_share_by_candidate.items():
+        lines.append(f"| {scale:g} | {share:.2%} |")
+    lines += [
+        "",
+        "## Criterion values",
+        "",
+        "| Criterion | n | min | median | max |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for name in CRITERION_ORDER:
+        stat = summary.criteria_stats[name]
+        lines.append(
+            f"| `{name}` | {stat.count:,} | {_md_cell(_rounded(stat.minimum))} | "
+            f"{_md_cell(_rounded(stat.median))} | {_md_cell(_rounded(stat.maximum))} |"
+        )
+    lines += [
+        "",
+        "## Cost-direction inputs (raw and normalized)",
+        "",
+        "| Indicator | Input | n | min | median | max |",
+        "|---|---|---:|---:|---:|---:|",
+    ]
+    for name, parts in summary.cost_raw.items():
+        for label, stat in parts.items():
+            lines.append(
+                f"| `{name}` | {label} | {stat.count:,} | "
+                f"{_md_cell(_rounded(stat.minimum))} | "
+                f"{_md_cell(_rounded(stat.median))} | "
+                f"{_md_cell(_rounded(stat.maximum))} |"
+            )
+    lines += [
+        "",
+        "## Missing values (None, never imputed)",
+        "",
+        "| Criterion | Products | Reasons |",
+        "|---|---:|---|",
+    ]
+    for name in CRITERION_ORDER:
+        reasons = summary.missing.get(name, {})
+        total = sum(reasons.values())
+        detail = ", ".join(
+            f"`{reason}`={count:,}" for reason, count in sorted(reasons.items())
+        )
+        lines.append(f"| `{name}` | {total:,} | {detail or '-'} |")
+    lines += [
+        "",
+        "## Spearman correlations (all products, pairwise complete)",
+        "",
+    ]
+    lines += _matrix_markdown(summary.correlations)
+    lines += [
+        "",
+        "## Spearman correlations (train split only, pairwise complete)",
+        "",
+    ]
+    lines += _matrix_markdown(summary.train_correlations)
+    lines += [
+        "",
+        "## Median criterion value by split",
+        "",
+        "| Split | " + " | ".join(f"`{CRITERION_LABELS[n]}`" for n in CRITERION_ORDER) + " |",
+        "|---|" + "---:|" * len(CRITERION_ORDER),
+    ]
+    for split in sorted(summary.split_medians):
+        cells = [
+            _md_cell(_rounded(summary.split_medians[split].get(name)))
+            for name in CRITERION_ORDER
+        ]
+        lines.append(f"| {split} | " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        "## Risk factors",
+        "",
+        "| Factor | Products | Share | " + " | ".join(SEVERITIES) + " |",
+        "|---|---:|---:|" + "---:|" * len(SEVERITIES),
+    ]
+    for code in FACTOR_CODES:
+        count = summary.factor_counts.get(code, 0)
+        share = count / summary.products if summary.products else 0.0
+        severities = summary.factor_severities.get(code, {})
+        cells = [f"{severities.get(severity, 0):,}" for severity in SEVERITIES]
+        lines.append(
+            f"| `{code}` | {count:,} | {share:.2%} | " + " | ".join(cells) + " |"
+        )
+    if summary.notes:
+        lines += ["", "## Notes", ""]
+        lines.extend(f"- {note}" for note in summary.notes)
+    for heading, entries in (
+        ("Best 5 by product_quality", summary.best),
+        ("Worst 5 by product_quality", summary.worst),
+    ):
+        lines += [
+            "",
+            f"## {heading}",
+            "",
+            "| ASIN | product_quality | mean_rating | n_reviews | net_sentiment | Title |",
+            "|---|---:|---:|---:|---:|---|",
+        ]
+        if not entries:
+            lines.append("| - | n/a | n/a | n/a | n/a | no product has a value |")
+        for entry in entries:
+            title = str(entry["title"]).replace("|", "\\|")
+            lines.append(
+                f"| {entry['asin']} | {_md_cell(_rounded(entry['value']))} | "
+                f"{_md_cell(_rounded(entry['mean_rating']))} | "
+                f"{_md_cell(entry['n_reviews'])} | "
+                f"{_md_cell(_rounded(entry['net_sentiment']))} | {title} |"
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def write_summary_reports(summary: RiskSummary, reports_dir: Path) -> list[Path]:
+    """Write ``risk_indicators_summary.json`` and ``risk_indicators_summary.md``.
+
+    Args:
+        summary: Run summary.
+        reports_dir: Target directory (created when missing).
+
+    Returns:
+        The two written paths ``[json_path, markdown_path]``.
+    """
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    json_path = reports_dir / JSON_FILENAME
+    markdown_path = reports_dir / MARKDOWN_FILENAME
+    json_path.write_text(
+        json.dumps(summary.to_payload(), indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    markdown_path.write_text(render_summary_markdown(summary), encoding="utf-8")
+    return [json_path, markdown_path]
+
+
 __all__ = [
     "CRITERION_LABELS",
+    "JSON_FILENAME",
+    "MARKDOWN_FILENAME",
     "AgreementScaleChoice",
     "RiskResult",
     "RiskRow",
@@ -1167,5 +1529,7 @@ __all__ = [
     "agreement_component",
     "choose_agreement_scale",
     "compute_risk_indicators",
+    "render_summary_markdown",
     "summarize",
+    "write_summary_reports",
 ]

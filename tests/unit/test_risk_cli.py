@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from collections.abc import Iterator
 from datetime import datetime
@@ -32,6 +33,7 @@ from munasib.db.session import (
     init_db,
     session_scope,
 )
+from munasib.risk.factors import FACTOR_CODES, SEVERITIES
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "compute_risk_indicators.py"
 
@@ -42,6 +44,9 @@ P_C = "B0000000KC"
 BUILD_TIMESTAMP = "2026-10-24T06:15:06+00:00"
 REFERENCE = datetime(2018, 10, 4)
 BUILD_AT = datetime(2026, 10, 24, 6, 15, 6)
+
+#: Any ISO 8601 date or timestamp appearing in a generated report.
+STAMP = re.compile(r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\+00:00)?)?")
 
 
 def _load_module():
@@ -434,3 +439,113 @@ def test_cli_missing_config_fails(tmp_path: Path) -> None:
     """An unreadable config exits 1 instead of raising."""
     module = _load_module()
     assert module.main(["--config", str(tmp_path / "missing.yaml")]) == 1
+
+
+def test_cli_writes_the_summary_reports(
+    cache: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """The run writes risk_indicators_summary.json/.md with the computed figures."""
+    db_path, processed = cache
+    module = _load_module()
+    config = _config(tmp_path, db_path, processed)
+    reports = tmp_path / "reports"
+
+    assert module.main(["--config", str(config)]) == 0
+
+    json_path = reports / "risk_indicators_summary.json"
+    md_path = reports / "risk_indicators_summary.md"
+    assert json_path.is_file() and md_path.is_file()
+
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    assert payload["products"] == 3
+    assert payload["reference_date"] == "2018-10-04T00:00:00+00:00"
+    assert payload["computed_at"] == BUILD_TIMESTAMP
+    assert payload["priors"]["n_train_products"] == 3
+    assert payload["priors"]["split"] == "train"
+
+    agreement = payload["agreement"]
+    assert isinstance(agreement["scale"], float)
+    assert agreement["gap_count"] == 3
+    assert set(agreement["zero_share_by_candidate"]) >= {str(agreement["scale"])}
+    assert all(0.0 <= share <= 1.0 for share in agreement["zero_share_by_candidate"].values())
+
+    criteria = payload["criteria"]
+    assert set(criteria) == {
+        "product_quality",
+        "evidence_strength",
+        "rating_reliability",
+        "negative_feedback_concentration",
+        "price_position",
+    }
+    for stats in criteria.values():
+        assert set(stats) == {"count", "min", "median", "max"}
+        assert stats["count"] == 3
+
+    # Cost criteria expose both the raw value and its normalization.
+    price = payload["cost_indicators"]["price_position"]
+    assert set(price) == {"value (cost percentile)", "normalized (1 - value)"}
+    concentration = payload["cost_indicators"]["negative_feedback_concentration"]
+    assert {"value (cost)", "normalized (1 - value)"} <= set(concentration)
+
+    assert set(payload["missing"]) == set(criteria)
+    assert set(payload["missing"]["price_position"]) == {"count", "reasons"}
+    assert payload["missing"]["price_position"]["count"] == 0
+
+    for key in ("correlations", "train_correlations"):
+        matrix = payload[key]
+        assert set(matrix) == set(criteria)
+        assert all(set(row) == set(criteria) for row in matrix.values())
+    assert set(payload["split_medians"]["train"]) == set(criteria)
+
+    factors = payload["factors"]
+    assert set(factors) == set(FACTOR_CODES)
+    for entry in factors.values():
+        assert set(entry) == {"count", "share", "severities"}
+        assert set(entry["severities"]) == set(SEVERITIES)
+
+    assert {entry["asin"] for entry in payload["best"]} == {P_A, P_B, P_C}
+    assert {entry["asin"] for entry in payload["worst"]} == {P_A, P_B, P_C}
+    assert isinstance(payload["notes"], list)
+
+    markdown = md_path.read_text(encoding="utf-8")
+    assert "# Risk indicators summary" in markdown
+    assert "## Criterion values" in markdown
+    assert "## Spearman correlations (all products, pairwise complete)" in markdown
+    assert "## Risk factors" in markdown
+    assert "elapsed" not in markdown
+
+
+def test_cli_summary_reports_are_deterministic_across_two_runs(
+    cache: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """Two runs over the same cache write byte-identical report files."""
+    db_path, processed = cache
+    module = _load_module()
+    config = _config(tmp_path, db_path, processed)
+    reports = tmp_path / "reports"
+    names = ("risk_indicators_summary.json", "risk_indicators_summary.md")
+
+    assert module.main(["--config", str(config)]) == 0
+    first = {name: (reports / name).read_bytes() for name in names}
+    assert module.main(["--config", str(config)]) == 0
+    second = {name: (reports / name).read_bytes() for name in names}
+
+    assert first == second
+
+
+def test_cli_summary_reports_carry_only_dataset_timestamps(
+    cache: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """The reports contain the dataset's own timestamps and nothing else."""
+    db_path, processed = cache
+    module = _load_module()
+    config = _config(tmp_path, db_path, processed)
+    reports = tmp_path / "reports"
+
+    assert module.main(["--config", str(config)]) == 0
+
+    expected = {"2018-10-04T00:00:00+00:00", BUILD_TIMESTAMP}
+    for name in ("risk_indicators_summary.json", "risk_indicators_summary.md"):
+        text = (reports / name).read_text(encoding="utf-8")
+        found = set(STAMP.findall(text))
+        assert found == expected, f"{name} carries unexpected timestamps: {found}"
