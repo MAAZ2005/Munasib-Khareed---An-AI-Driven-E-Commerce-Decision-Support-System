@@ -1,26 +1,41 @@
-"""Analysis service contract and the deterministic stub implementation.
+"""Analysis service contract plus the deterministic stub and hybrid implementations.
 
 The API layer depends on :class:`AnalysisService` only, so the real
-fuzzy + TOPSIS + SHAP engine can replace :class:`StubAnalysisService` later
-without touching a single router (locked design decision: the UI never imports
-ML modules, it only calls the API).
+fuzzy + TOPSIS + SHAP engine can replace the placeholders later without touching
+a single router (locked design decision: the UI never imports ML modules, it only
+calls the API).
 
-The stub splits every field honestly in two:
+Two implementations ship today, and both split every field honestly in two.
 
-**Real (computed from the serving cache rows).** Review counts, the star
-histogram, weak-label sentiment shares, monthly temporal buckets, the verified
-and helpfulness evidence indicators, review depth, the composite evidence
-strength, the product's own review date range, the dataset ``reference_date``
-from ``data/processed/meta.json``, and the alternatives read from the real
-``related_products`` edges.
+:class:`StubAnalysisService` (``pipeline_version="stub-0"``)
 
-**Placeholder (seeded from the ASIN).** The fuzzy assessment, the TOPSIS
-ranking, the SHAP explanation, the risk score, the verdict label, the concerns
-and the aspects. Each is ``hashlib.sha256``-derived, never Python's randomised
-``hash()``, so two calls for the same ASIN are byte-identical and two different
-ASINs get different values. Every stub response carries
-``pipeline_version="stub-0"`` and a ``warnings`` entry beginning with
-``"STUB:"``; nothing placeholder is ever presented as a result.
+* **Real (computed from the serving cache rows).** Review counts, the star
+  histogram, weak-label sentiment shares, monthly temporal buckets, the verified
+  and helpfulness evidence indicators, review depth, the composite evidence
+  strength, the product's own review date range, the dataset ``reference_date``
+  from ``data/processed/meta.json``, and the alternatives read from the real
+  ``related_products`` edges.
+* **Placeholder (seeded from the ASIN).** The fuzzy assessment, the TOPSIS
+  ranking, the SHAP explanation, the risk score, the verdict label, the concerns
+  and the aspects. Every stub response carries a ``warnings`` entry beginning
+  with ``"STUB:"``.
+
+:class:`HybridAnalysisService` (``pipeline_version="hybrid-0"``, the default)
+
+* **Real, read from the stored tables.** Everything the stub computes from the
+  rows, plus the sentiment breakdown and trend from the stored **model
+  predictions** (``review_features``), the aspects from ``product_aspects``, the
+  evidence indicators and composite from ``product_evidence`` (the stored
+  composite, not the live one), and the five criteria from
+  ``product_risk_indicators`` when that row exists.
+* **Placeholder, reused unchanged from the stub.** The fuzzy assessment, the
+  TOPSIS result, the SHAP explanation, the risk score, the verdict, the concerns
+  and the alternatives' risk scores. Every hybrid response leads its ``warnings``
+  with a ``"PARTIAL:"`` entry.
+
+Both seed with ``hashlib.sha256``, never Python's randomised ``hash()``, so two
+calls for the same ASIN are byte-identical and two different ASINs get different
+values. Nothing placeholder is ever presented as a result.
 """
 
 from __future__ import annotations
@@ -57,6 +72,7 @@ from munasib.api.schemas.decision import (
     TopsisResult,
 )
 from munasib.api.schemas.evidence import (
+    FIXED_INDICATOR_NAMES,
     EvidenceIndicator,
     EvidenceIndicators,
     IndicatorDirection,
@@ -69,6 +85,8 @@ from munasib.api.schemas.explanation import (
 )
 from munasib.api.schemas.products import ProductDetail, ProductSummary
 from munasib.api.schemas.review_analysis import (
+    AspectInsight,
+    AspectPolarity,
     RatingDistribution,
     ReviewAnalysis,
     SentimentBreakdown,
@@ -82,14 +100,32 @@ from munasib.core.constants import (
     VERDICT_LABELS,
 )
 from munasib.core.exceptions import DataError, ProductNotFoundError
-from munasib.db.models import Product, Review
-from munasib.db.repositories import RelatedRepository
+from munasib.db.models import (
+    Product,
+    ProductAspect,
+    ProductEvidence,
+    ProductRiskIndicator,
+    Review,
+    ReviewFeature,
+)
+from munasib.db.repositories import (
+    ProductAspectRepository,
+    ProductEvidenceRepository,
+    ProductRiskIndicatorRepository,
+    RelatedRepository,
+)
 
 #: Version string stamped on every stub response (a placeholder, never a result).
 STUB_PIPELINE_VERSION = "stub-0"
 
 #: Every stub warning starts with this prefix so a client can filter them out.
 STUB_WARNING_PREFIX = "STUB:"
+
+#: Version string stamped on every hybrid response.
+HYBRID_PIPELINE_VERSION = "hybrid-0"
+
+#: Every hybrid warning starts with this prefix so a client can recognize partial outputs.
+HYBRID_WARNING_PREFIX = "PARTIAL:"
 
 #: How many alternatives the stub actually compares (``usable`` still reports
 #: the true distinct count, and ``items`` may never exceed it).
@@ -983,7 +1019,12 @@ def _placeholder_topsis(
     )
 
 
-def _placeholder_explanation(asin: str, sentiment: SentimentBreakdown) -> ShapExplanation:
+def _placeholder_explanation(
+    asin: str,
+    sentiment: SentimentBreakdown,
+    *,
+    sentiment_label: str = "weak",
+) -> ShapExplanation:
     """Build the placeholder SHAP explanation for one product.
 
     The three features are real pipeline features with the product's real values;
@@ -992,7 +1033,10 @@ def _placeholder_explanation(asin: str, sentiment: SentimentBreakdown) -> ShapEx
 
     Args:
         asin: Product ASIN.
-        sentiment: The product's real weak-label breakdown.
+        sentiment: The product's real sentiment breakdown (predicted labels in the
+            hybrid service, weak labels in the pure stub).
+        sentiment_label: Adjective naming those labels in the narrative
+            (``"weak"`` for the stub, ``"predicted"`` for the hybrid service).
 
     Returns:
         A schema-valid explanation whose numbers are labelled placeholders.
@@ -1027,8 +1071,8 @@ def _placeholder_explanation(asin: str, sentiment: SentimentBreakdown) -> ShapEx
             ShapReason(
                 text=(
                     f"{sentiment.negative_count} of {sentiment.total} reviews "
-                    f"({sentiment.negative_share:.1%}) carry the weak negative label "
-                    "(placeholder ranking, not a fitted surrogate)."
+                    f"({sentiment.negative_share:.1%}) carry the {sentiment_label} "
+                    "negative label (placeholder ranking, not a fitted surrogate)."
                 ),
                 feature="negative_sentiment_share",
                 raw_value=_round(sentiment.negative_share, _DEGREE_DIGITS),
@@ -1090,6 +1134,9 @@ def _placeholder_verdict(
     rating_distribution: RatingDistribution,
     sentiment: SentimentBreakdown,
     thresholds: VerdictThresholds,
+    *,
+    sentiment_label: str = "weak",
+    verdict_kind: str = "stub",
 ) -> ConsumerVerdict:
     """Build the verdict from the placeholder risk score and the real evidence.
 
@@ -1099,8 +1146,12 @@ def _placeholder_verdict(
         evidence_strength: Real evidence strength on 0-1.
         reviews: Every stored review of the product.
         rating_distribution: Pre-computed star histogram.
-        sentiment: Pre-computed weak-label breakdown.
+        sentiment: Pre-computed sentiment breakdown (predicted labels in the
+            hybrid service, weak labels in the pure stub).
         thresholds: The bands loaded from the thresholds config.
+        sentiment_label: Adjective naming those labels in the concerns.
+        verdict_kind: Word naming the placeholder in the rationale (``"stub"``
+            for the pure stub, ``"placeholder"`` for the hybrid service).
 
     Returns:
         A consumer verdict whose rationale cites only real numbers.
@@ -1119,8 +1170,8 @@ def _placeholder_verdict(
                 code="high_negative_sentiment",
                 text=(
                     f"{sentiment.negative_count} of {sentiment.total} reviews "
-                    f"({sentiment.negative_share:.1%}) carry the weak negative label, "
-                    "above the 25% caution band."
+                    f"({sentiment.negative_share:.1%}) carry the {sentiment_label} "
+                    "negative label, above the 25% caution band."
                 ),
                 severity=_severity(2),
                 supporting_numbers={
@@ -1166,8 +1217,9 @@ def _placeholder_verdict(
     rationale = (
         f"{label.value}: placeholder risk {risk_score:.1f}/100 against an evidence base "
         f"of {total} reviews ({verified} of {total} verified purchases, "
-        f"{sentiment.negative_count} weakly negative). This verdict is a stub: the "
-        "risk score it summarises is seeded from the ASIN, not computed."
+        f"{sentiment.negative_count} with the {sentiment_label} negative label). "
+        f"This verdict is a {verdict_kind}: the risk score it summarises is seeded "
+        "from the ASIN, not computed."
     )
     return ConsumerVerdict(
         label=label,
@@ -1574,6 +1626,20 @@ class StubAnalysisService(AnalysisService):
         return indicators
 
 
+def _ensure_utc(moment: datetime) -> datetime:
+    """Ensure a datetime is timezone-aware in UTC.
+
+    Args:
+        moment: Naive or aware datetime.
+
+    Returns:
+        Timezone-aware UTC datetime.
+    """
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC)
+
+
 def _first_review_time(reviews: Sequence[Review], fallback: datetime) -> datetime:
     """Return the oldest review timestamp.
 
@@ -1586,8 +1652,8 @@ def _first_review_time(reviews: Sequence[Review], fallback: datetime) -> datetim
         A UTC datetime.
     """
     if not reviews:
-        return fallback
-    return min(review.review_time for review in reviews)
+        return _ensure_utc(fallback)
+    return min(_ensure_utc(review.review_time) for review in reviews)
 
 
 def _last_review_time(reviews: Sequence[Review], fallback: datetime) -> datetime:
@@ -1602,8 +1668,8 @@ def _last_review_time(reviews: Sequence[Review], fallback: datetime) -> datetime
         A UTC datetime.
     """
     if not reviews:
-        return fallback
-    return max(review.review_time for review in reviews)
+        return _ensure_utc(fallback)
+    return max(_ensure_utc(review.review_time) for review in reviews)
 
 
 def _verified_share(reviews: Sequence[Review]) -> float:
@@ -1636,4 +1702,541 @@ def _relation(subject: VerdictLabel, alternative: VerdictLabel) -> AlternativeRe
     if alternative_rank > subject_rank:
         return AlternativeRelation.WORSE
     return AlternativeRelation.COMPARABLE
+
+
+# ------------------------------------------------------------------------------
+# Hybrid service: stored review analysis, aspects and evidence + stub placeholders
+# ------------------------------------------------------------------------------
+
+#: Stored aspect classification -> API polarity. ``neutral`` (and any unknown
+#: value) falls through to the sign of the stored net sentiment.
+_ASPECT_POLARITY: dict[str, AspectPolarity] = {
+    "pain_point": AspectPolarity.NEGATIVE,
+    "strength": AspectPolarity.POSITIVE,
+}
+
+#: Fixed evidence fields mapped from their stored ``product_evidence`` key.
+_VERIFIED_KEY = "verified_purchase_ratio"
+_HELPFULNESS_KEY = "helpfulness_coverage"
+
+
+def _hybrid_aspects(
+    aspect_rows: Sequence[ProductAspect],
+) -> tuple[list[AspectInsight], str | None]:
+    """Convert stored aspect rows into API ``AspectInsight`` items.
+
+    Pain points and strengths come first (each group ordered by mention count
+    descending, then aspect name), and the polarity comes from the stored
+    classification, falling back to the sign of the stored net sentiment for
+    neutral aspects. Nothing is invented: a product without stored aspect rows
+    gets an empty list plus the reason.
+
+    Args:
+        aspect_rows: The stored ``ProductAspect`` rows for one product.
+
+    Returns:
+        The insights, plus an explicit reason when the list is empty.
+    """
+    if not aspect_rows:
+        return (
+            [],
+            "No stored aspect rows exist for this product (product_aspects is "
+            "empty), so aspects are omitted rather than estimated.",
+        )
+
+    def _sort_key(row: ProductAspect) -> tuple[int, int, str]:
+        priority = 0 if row.classification == "pain_point" else 1
+        if row.classification not in ("pain_point", "strength"):
+            priority = 2
+        return (priority, -row.mention_count, row.aspect)
+
+    insights: list[AspectInsight] = []
+    for row in sorted(aspect_rows, key=_sort_key):
+        polarity = _ASPECT_POLARITY.get(row.classification)
+        if polarity is None:
+            if row.net_sentiment > 0:
+                polarity = AspectPolarity.POSITIVE
+            elif row.net_sentiment < 0:
+                polarity = AspectPolarity.NEGATIVE
+            else:
+                polarity = AspectPolarity.MIXED
+        insights.append(
+            AspectInsight(
+                aspect=row.aspect,
+                polarity=polarity,
+                mention_count=row.mention_count,
+                examples=list(row.examples or []),
+            )
+        )
+    return insights, None
+
+
+def _hybrid_sentiment(
+    reviews: Sequence[Review],
+    features: Sequence[ReviewFeature | None],
+) -> SentimentBreakdown:
+    """Build the sentiment breakdown from the stored predicted labels.
+
+    ``reviews`` and ``features`` are row-aligned (one entry per review; ``None``
+    when the review has no stored prediction). The headline counts/shares are the
+    predictions; ``star_*_share`` exposes the star-derived weak labels so a client
+    can compare the model's view with the rating view.
+
+    Args:
+        reviews: The product's review rows.
+        features: The parallel stored prediction rows (or ``None`` per review).
+
+    Returns:
+        The predicted breakdown with the star-derived shares attached.
+    """
+    total = len(reviews)
+    counts = dict.fromkeys(SENTIMENT_LABELS, 0)
+    unlabelled = 0
+    for feature in features:
+        code = feature.predicted_label if feature is not None else None
+        if code is None or code not in counts:
+            unlabelled += 1
+            continue
+        counts[code] += 1
+
+    star_counts = dict.fromkeys(SENTIMENT_LABELS, 0)
+    for review in reviews:
+        code = review.sentiment_label_weak
+        if code in star_counts:
+            star_counts[code] += 1
+
+    return SentimentBreakdown(
+        total=total,
+        negative_count=counts[SENTIMENT_LABELS[0]],
+        neutral_count=counts[SENTIMENT_LABELS[1]],
+        positive_count=counts[SENTIMENT_LABELS[2]],
+        unlabelled_count=unlabelled,
+        negative_share=_round(_share(counts[SENTIMENT_LABELS[0]], total), _DEGREE_DIGITS),
+        neutral_share=_round(_share(counts[SENTIMENT_LABELS[1]], total), _DEGREE_DIGITS),
+        positive_share=_round(_share(counts[SENTIMENT_LABELS[2]], total), _DEGREE_DIGITS),
+        star_negative_share=_round(
+            _share(star_counts[SENTIMENT_LABELS[0]], total), _DEGREE_DIGITS
+        ),
+        star_neutral_share=_round(
+            _share(star_counts[SENTIMENT_LABELS[1]], total), _DEGREE_DIGITS
+        ),
+        star_positive_share=_round(
+            _share(star_counts[SENTIMENT_LABELS[2]], total), _DEGREE_DIGITS
+        ),
+    )
+
+
+def _hybrid_trend(
+    reviews: Sequence[Review],
+    features: Sequence[ReviewFeature | None],
+    reference_date: datetime,
+) -> TemporalTrend:
+    """Bucket the predicted labels by calendar month and fit the positive slope.
+
+    Buckets come from the stored review timestamps and the series stops at the
+    dataset ``reference_date`` - never at the wall clock. A review without a
+    stored prediction stays in its bucket as an unlabelled member, so the
+    denominators stay honest.
+
+    Args:
+        reviews: The product's review rows.
+        features: The parallel stored prediction rows (or ``None`` per review).
+        reference_date: Dataset reference date anchoring the timeline.
+
+    Returns:
+        One bucket per non-empty month, ascending, plus the OLS slope of the
+        positive share per period.
+    """
+    anchor = _ensure_utc(reference_date)
+    grouped: dict[tuple[int, int], list[int | None]] = {}
+    for review, feature in zip(reviews, features, strict=True):
+        moment = _ensure_utc(review.review_time)
+        if moment > anchor:
+            continue
+        code = feature.predicted_label if feature is not None else None
+        grouped.setdefault((moment.year, moment.month), []).append(code)
+
+    buckets: list[TemporalBucket] = []
+    positive_shares: list[float] = []
+    for year, month in sorted(grouped):
+        labels = grouped[(year, month)]
+        bucket_total = len(labels)
+        positive_share = _share(
+            sum(1 for code in labels if code == SENTIMENT_LABELS[2]), bucket_total
+        )
+        positive_shares.append(positive_share)
+        buckets.append(
+            TemporalBucket(
+                period_start=datetime(year, month, 1, tzinfo=UTC),
+                n_reviews=bucket_total,
+                negative_share=_round(
+                    _share(sum(1 for code in labels if code == SENTIMENT_LABELS[0]), bucket_total),
+                    _DEGREE_DIGITS,
+                ),
+                neutral_share=_round(
+                    _share(sum(1 for code in labels if code == SENTIMENT_LABELS[1]), bucket_total),
+                    _DEGREE_DIGITS,
+                ),
+                positive_share=_round(positive_share, _DEGREE_DIGITS),
+            )
+        )
+
+    slope = _ols_slope(positive_shares)
+    return TemporalTrend(
+        period="month",
+        buckets=buckets,
+        positive_share_slope=None if slope is None else _round(slope, 6),
+        n_reviews_used=sum(bucket.n_reviews for bucket in buckets),
+    )
+
+
+def _stored_indicator(name: str, payload: dict[str, Any]) -> EvidenceIndicator:
+    """Convert one stored indicator entry into the API contract.
+
+    Args:
+        name: API indicator name (the stored key for ``details`` entries, the
+            fixed name for the three fixed fields).
+        payload: The stored ``{"raw_value", "normalized", "direction",
+            "description", "missing_reason"}`` mapping.
+
+    Returns:
+        The indicator, with ``value=None`` plus ``missing_reason`` when the
+        stored inputs were unavailable.
+    """
+    normalized = payload.get("normalized")
+    raw = payload.get("raw_value")
+    return EvidenceIndicator(
+        name=name,
+        value=None if normalized is None else _round(normalized, _DEGREE_DIGITS),
+        raw_value=None if raw is None else _round(raw, _DEGREE_DIGITS),
+        direction=IndicatorDirection(payload.get("direction") or "benefit"),
+        description=str(payload.get("description") or ""),
+        missing_reason=payload.get("missing_reason"),
+    )
+
+
+def _hybrid_evidence(
+    stored_evidence: ProductEvidence | None,
+    reviews: Sequence[Review],
+    rating_distribution: RatingDistribution,
+    sentiment: SentimentBreakdown,
+    settings: Settings,
+) -> tuple[EvidenceIndicators, list[str]]:
+    """Build the evidence block from the stored ``product_evidence`` row.
+
+    The fixed fields map onto the stored indicators where one exists
+    (``verified_purchase_ratio`` -> ``verified_purchase``,
+    ``helpfulness_coverage`` -> ``helpfulness_ratio``); ``review_depth`` has no
+    stored counterpart and is computed from the stored review text lengths. The
+    composite ``evidence_strength`` is the stored value. Every other stored
+    indicator travels in ``details`` with its stored description, direction and
+    ``missing_reason`` - never a fabricated 0/1 and never a duplicate of a fixed
+    name.
+
+    Args:
+        stored_evidence: The stored row, or ``None`` when the stage has not run
+            for this product.
+        reviews: The product's review rows.
+        rating_distribution: Pre-computed star histogram.
+        sentiment: Pre-computed sentiment breakdown.
+        settings: Project settings (``review_intel.evidence``).
+
+    Returns:
+        The populated evidence block plus any degradation warnings.
+    """
+    live = _evidence_indicators(reviews, rating_distribution, sentiment, settings)
+    if stored_evidence is None:
+        return (
+            live,
+            [
+                "No stored product_evidence row exists for this product, so the "
+                "evidence indicators and composite were computed from its review rows."
+            ],
+        )
+
+    payload = stored_evidence.indicators.get("indicators")
+    if not isinstance(payload, dict):
+        payload = {}
+
+    warnings: list[str] = []
+
+    def _fixed(key: str, fallback: EvidenceIndicator) -> EvidenceIndicator:
+        entry = payload.get(key)
+        if not isinstance(entry, dict):
+            warnings.append(
+                f"The stored evidence payload has no {key!r}; "
+                f"{fallback.name} was computed from the review rows instead."
+            )
+            return fallback
+        return _stored_indicator(fallback.name, entry)
+
+    verified_purchase = _fixed(_VERIFIED_KEY, live.verified_purchase)
+    helpfulness = _fixed(_HELPFULNESS_KEY, live.helpfulness)
+    # No stored counterpart exists for review depth, so it is computed from the
+    # stored text lengths exactly as the stub does.
+    review_depth = live.review_depth
+
+    if stored_evidence.evidence_strength is None:
+        strength = live.evidence_strength
+        warnings.append(
+            "The stored product_evidence row has a null composite strength, so "
+            "evidence_strength was computed from the review rows instead."
+        )
+    else:
+        strength = _round(stored_evidence.evidence_strength, _DEGREE_DIGITS)
+
+    excluded = {_VERIFIED_KEY, _HELPFULNESS_KEY, *FIXED_INDICATOR_NAMES}
+    details: list[EvidenceIndicator] = []
+    for key in sorted(payload):
+        if key in excluded:
+            continue
+        entry = payload[key]
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("normalized") is None and not entry.get("missing_reason"):
+            warnings.append(
+                f"The stored evidence indicator {key!r} has a null value but no "
+                "missing_reason, so it is omitted from details rather than guessed."
+            )
+            continue
+        details.append(_stored_indicator(key, entry))
+
+    return (
+        EvidenceIndicators(
+            verified_purchase=verified_purchase,
+            helpfulness=helpfulness,
+            review_depth=review_depth,
+            evidence_strength=strength,
+            details=details,
+        ),
+        warnings,
+    )
+
+
+def _hybrid_risk_indicators(
+    stored_risk: ProductRiskIndicator | None,
+    criteria: CriteriaSpec,
+) -> list[EvidenceIndicator]:
+    """Read the five decision criteria from the stored ``product_risk_indicators``.
+
+    Order, names and direction fallbacks come from
+    ``configs/criteria_weights.yaml`` (``criteria.risk_criteria``, i.e. the five
+    0-1 criteria without ``fuzzy_risk``). A criterion whose stored value is null
+    keeps ``value=None`` and its stored ``missing_reason`` (for example
+    ``price_missing`` for the 388 products with no usable price).
+
+    Args:
+        stored_risk: The stored row, or ``None`` when the stage has not run.
+        criteria: The criteria spec loaded from config.
+
+    Returns:
+        One indicator per stored criterion in config order; empty when the row
+        (or its criteria) is absent, never a seeded stand-in.
+    """
+    if stored_risk is None or not isinstance(stored_risk.indicators, dict):
+        return []
+    stored_criteria = stored_risk.indicators.get("criteria")
+    if not isinstance(stored_criteria, dict) or not stored_criteria:
+        return []
+
+    indicators: list[EvidenceIndicator] = []
+    for criterion in criteria.risk_criteria:
+        entry = stored_criteria.get(criterion.name)
+        if not isinstance(entry, dict):
+            continue
+        value = entry.get("value")
+        # The stored criterion is already the 0-1 criterion value, so raw_value
+        # mirrors it (the stub does the same); None stays None with its reason.
+        indicators.append(
+            EvidenceIndicator(
+                name=criterion.name,
+                value=None if value is None else _round(value, _DEGREE_DIGITS),
+                raw_value=None if value is None else _round(value, _DEGREE_DIGITS),
+                direction=IndicatorDirection(entry.get("direction") or criterion.direction),
+                description=str(entry.get("description") or criterion.description),
+                missing_reason=entry.get("missing_reason"),
+            )
+        )
+    return indicators
+
+
+class HybridAnalysisService(StubAnalysisService):
+    """Stored-data analysis with the stub's deterministic placeholders on top.
+
+    **Real, read from the serving cache:** the star histogram, the sentiment
+    breakdown and monthly trend from the stored model predictions, the aspects
+    from ``product_aspects``, the evidence indicators and composite from
+    ``product_evidence``, the five criteria from ``product_risk_indicators``
+    when present, the product profile, the date range and the alternatives.
+
+    **Placeholder, inherited unchanged from :class:`StubAnalysisService`:** the
+    fuzzy assessment, the TOPSIS result, the SHAP explanation, the risk score,
+    the verdict, the concerns and the alternatives' risk scores. Every response
+    is stamped ``pipeline_version="hybrid-0"`` and leads its ``warnings`` with a
+    ``"PARTIAL:"`` entry, so no placeholder number can be mistaken for a result.
+    """
+
+    def __init__(self, session: Session, settings: Settings) -> None:
+        """Wire the hybrid service to repositories and settings.
+
+        Args:
+            session: Open SQLAlchemy session over the serving cache.
+            settings: Project settings.
+        """
+        super().__init__(session, settings)
+        self._aspect_repo = ProductAspectRepository(session)
+        self._evidence_repo = ProductEvidenceRepository(session)
+        self._risk_repo = ProductRiskIndicatorRepository(session)
+
+    def _evidence_strength_for(self, asin: str) -> float:
+        """Return the stored evidence strength for any product.
+
+        The alternatives' comparison deltas must agree with the headline
+        ``evidence_strength``, so this reads the same stored composite and only
+        falls back to the live computation when the row (or its strength) is
+        missing.
+
+        Args:
+            asin: Product ASIN.
+
+        Returns:
+            The evidence strength in [0, 1].
+        """
+        stored = self._evidence_repo.get_evidence(asin)
+        if stored is not None and stored.evidence_strength is not None:
+            return _round(stored.evidence_strength, _DEGREE_DIGITS)
+        return super()._evidence_strength_for(asin)
+
+    def _reviews_with_features(
+        self, asin: str
+    ) -> tuple[list[Review], list[ReviewFeature | None]]:
+        """Fetch one product's reviews together with their stored predictions.
+
+        Args:
+            asin: Product ASIN.
+
+        Returns:
+            Two row-aligned lists: the reviews and their ``ReviewFeature`` rows
+            (``None`` where the review has no stored prediction).
+        """
+        statement = (
+            select(Review, ReviewFeature)
+            .outerjoin(ReviewFeature, Review.review_id == ReviewFeature.review_id)
+            .where(Review.asin == asin)
+            .order_by(Review.id)
+        )
+        reviews: list[Review] = []
+        features: list[ReviewFeature | None] = []
+        for review, feature in self._session.execute(statement):
+            reviews.append(review)
+            features.append(feature)
+        return reviews, features
+
+    def analyze(self, asin: str) -> AnalysisResponse:
+        """Return the full hybrid analysis for one product.
+
+        Args:
+            asin: Product ASIN.
+
+        Returns:
+            The composed analysis response stamped ``pipeline_version="hybrid-0"``.
+
+        Raises:
+            ProductNotFoundError: If the ASIN is not in the serving cache.
+        """
+        product = self._get_product(asin)
+        reviews, features = self._reviews_with_features(asin)
+
+        rating = _rating_distribution(reviews)
+        sentiment = _hybrid_sentiment(reviews, features)
+        trend = _hybrid_trend(reviews, features, self._meta.reference_date)
+        aspects, aspect_warning = _hybrid_aspects(self._aspect_repo.get_aspects(asin))
+
+        review_analysis = ReviewAnalysis(
+            rating_distribution=rating,
+            sentiment=sentiment,
+            temporal_trend=trend,
+            aspects=aspects,
+        )
+
+        evidence, evidence_warnings = _hybrid_evidence(
+            self._evidence_repo.get_evidence(asin), reviews, rating, sentiment, self._settings
+        )
+        risk_indicators = _hybrid_risk_indicators(
+            self._risk_repo.get_risk_indicators(asin), self._criteria
+        )
+
+        fuzzy = _placeholder_fuzzy(asin, self._fuzzy)
+        topsis = _placeholder_topsis(
+            asin, self._criteria, self._fuzzy, evidence.evidence_strength
+        )
+        risk_score = topsis.risk_score
+
+        verdict = _placeholder_verdict(
+            asin,
+            risk_score,
+            evidence.evidence_strength,
+            reviews,
+            rating,
+            sentiment,
+            self._thresholds,
+            sentiment_label="predicted",
+            verdict_kind="placeholder",
+        )
+
+        warnings: list[str] = [
+            f"{HYBRID_WARNING_PREFIX} Review analysis, aspects and evidence come from "
+            "stored data while the fuzzy assessment, TOPSIS result, SHAP explanation, "
+            "risk score, verdict, concerns and the alternatives' risk scores are "
+            "placeholders.",
+            "The headline sentiment shares are stored model predictions; the "
+            "star_*_share fields are weak supervision from star ratings (1-2 "
+            "negative, 3 neutral, 4-5 positive), not model sentiment.",
+        ]
+        if aspect_warning:
+            warnings.append(aspect_warning)
+        warnings.extend(evidence_warnings)
+        if sentiment.total and sentiment.unlabelled_count == sentiment.total:
+            warnings.append(
+                "No stored sentiment predictions were found for this product's "
+                "reviews (the review_features rows are absent or carry no "
+                "predicted_label), so every review is unlabelled and the predicted "
+                "shares are zero rather than estimated."
+            )
+        if sentiment.total < 20:
+            warnings.append(
+                f"Evidence base of {sentiment.total} reviews is very small; treat every "
+                "number here as thin evidence."
+            )
+        if any(review.verified is None for review in reviews):
+            unknown = sum(1 for review in reviews if review.verified is None)
+            warnings.append(
+                f"{unknown} review(s) have no verified-purchase flag (NULL, not False); "
+                "the verified share counts only explicit True rows."
+            )
+
+        return AnalysisResponse(
+            asin=asin,
+            product=self._product_detail(product, reviews),
+            review_analysis=review_analysis,
+            evidence=evidence,
+            risk_indicators=risk_indicators,
+            decision=DecisionAssessment(fuzzy=fuzzy, topsis=topsis),
+            explanation=_placeholder_explanation(asin, sentiment, sentiment_label="predicted"),
+            alternatives=self.alternatives(asin),
+            verdict=verdict,
+            risk_score=risk_score,
+            evidence_strength=evidence.evidence_strength,
+            pipeline_version=HYBRID_PIPELINE_VERSION,
+            generated_at=self._meta.built_at,
+            data_basis=DataBasis(
+                category=self._meta.category,
+                n_reviews=len(reviews),
+                date_range_start=_first_review_time(reviews, self._meta.reference_date),
+                date_range_end=_last_review_time(reviews, self._meta.reference_date),
+                reference_date=self._meta.reference_date,
+            ),
+            warnings=warnings,
+        )
+
 

@@ -14,13 +14,18 @@ helpfulness-weighted sentiment, ...) travel in
 with its own 0-1 value, raw value, direction and description. Names stay a
 reliable key: a name repeated inside ``details`` or reused from a fixed
 indicator is rejected by a validator instead of silently colliding.
+
+A stored indicator whose inputs were unavailable carries ``value=None`` plus
+the stored ``missing_reason`` (for example ``"price_missing"``) instead of a
+fabricated 0.0 or 1.0; the validator refuses a null value without a reason, so
+a client can always tell "uncomputable" from "computed as the worst/best end".
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .common import UnitFloat
 
@@ -57,7 +62,10 @@ class EvidenceIndicator(BaseModel):
         f"{INDICATOR_REVIEW_DEPTH!r}; `details` entries carry additional unique "
         "keys (e.g. 'rating_distribution_entropy')."
     )
-    value: UnitFloat = Field(description="Normalised indicator value, 0.0-1.0 (1.0 = best).")
+    value: UnitFloat | None = Field(
+        description="Normalised indicator value, 0.0-1.0 (1.0 = best). None when the "
+        "stored inputs were unavailable; `missing_reason` then says why.",
+    )
     raw_value: float | None = Field(
         default=None,
         description="Value in its natural unit before normalisation (e.g. mean review "
@@ -70,6 +78,28 @@ class EvidenceIndicator(BaseModel):
     description: str = Field(
         description="One sentence explaining what this indicator measures in plain language."
     )
+    missing_reason: str | None = Field(
+        default=None,
+        description="Stored reason why the indicator could not be computed "
+        "(e.g. 'price_missing'); None when `value` is present.",
+    )
+
+    @model_validator(mode="after")
+    def _check_missing_reason(self) -> EvidenceIndicator:
+        """Refuse a null value that does not explain itself.
+
+        Returns:
+            The validated indicator.
+
+        Raises:
+            ValueError: If ``value`` is None and ``missing_reason`` is absent.
+        """
+        if self.value is None and not self.missing_reason:
+            raise ValueError(
+                f"indicator {self.name!r} has a null value but no missing_reason; "
+                "an uncomputable indicator must say why"
+            )
+        return self
 
 
 class EvidenceIndicators(BaseModel):

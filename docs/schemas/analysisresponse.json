@@ -399,11 +399,19 @@
           "type": "string"
         },
         "value": {
-          "description": "Normalised indicator value, 0.0-1.0 (1.0 = best).",
-          "maximum": 1.0,
-          "minimum": 0.0,
-          "title": "Value",
-          "type": "number"
+          "anyOf": [
+            {
+              "description": "Ratio on the unit interval, 0.0-1.0.",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Normalised indicator value, 0.0-1.0 (1.0 = best). None when the stored inputs were unavailable; `missing_reason` then says why.",
+          "title": "Value"
         },
         "raw_value": {
           "anyOf": [
@@ -426,6 +434,19 @@
           "description": "One sentence explaining what this indicator measures in plain language.",
           "title": "Description",
           "type": "string"
+        },
+        "missing_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stored reason why the indicator could not be computed (e.g. 'price_missing'); None when `value` is present.",
+          "title": "Missing Reason"
         }
       },
       "required": [
@@ -1057,7 +1078,7 @@
       "type": "object"
     },
     "SentimentBreakdown": {
-      "description": "Weak-supervision sentiment counts and shares for one product.\n\n``*_share`` values are counts divided by ``total``. ``unlabelled_count`` counts\nreviews with no rating, which therefore carry no weak label at all.",
+      "description": "Sentiment label counts and shares for one product.\n\nThe headline ``*_count``/``*_share`` fields describe the labels the analysis\nuses: model **predictions** from ``review_features`` in the hybrid/real\nservice, or star-derived weak labels in the pure stub. ``unlabelled_count``\ncounts reviews without that label (no stored prediction, respectively no\nrating), and the shares use every review as denominator.\n\n``star_*_share`` is only populated when the headline breakdown is *not* the\nstar-derived one (the hybrid service): it exposes the weak supervision from\nstars (1-2 negative, 3 neutral, 4-5 positive) so a client can compare the\nmodel's view with the rating view without re-deriving it from the histogram.",
       "example": {
         "negative_count": 23,
         "negative_share": 0.4423,
@@ -1076,25 +1097,25 @@
           "type": "integer"
         },
         "negative_count": {
-          "description": "Reviews with the negative weak label.",
+          "description": "Reviews carrying the negative label (predicted or weak).",
           "minimum": 0,
           "title": "Negative Count",
           "type": "integer"
         },
         "neutral_count": {
-          "description": "Reviews with the neutral weak label.",
+          "description": "Reviews carrying the neutral label (predicted or weak).",
           "minimum": 0,
           "title": "Neutral Count",
           "type": "integer"
         },
         "positive_count": {
-          "description": "Reviews with the positive weak label.",
+          "description": "Reviews carrying the positive label (predicted or weak).",
           "minimum": 0,
           "title": "Positive Count",
           "type": "integer"
         },
         "unlabelled_count": {
-          "description": "Reviews with no rating, hence no weak label.",
+          "description": "Reviews with no label (no stored prediction / no rating).",
           "minimum": 0,
           "title": "Unlabelled Count",
           "type": "integer"
@@ -1119,6 +1140,54 @@
           "minimum": 0.0,
           "title": "Positive Share",
           "type": "number"
+        },
+        "star_negative_share": {
+          "anyOf": [
+            {
+              "description": "Ratio on the unit interval, 0.0-1.0.",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Share of reviews carrying the weak negative label from star ratings.",
+          "title": "Star Negative Share"
+        },
+        "star_neutral_share": {
+          "anyOf": [
+            {
+              "description": "Ratio on the unit interval, 0.0-1.0.",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Share of reviews carrying the weak neutral label from star ratings.",
+          "title": "Star Neutral Share"
+        },
+        "star_positive_share": {
+          "anyOf": [
+            {
+              "description": "Ratio on the unit interval, 0.0-1.0.",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Share of reviews carrying the weak positive label from star ratings.",
+          "title": "Star Positive Share"
         }
       },
       "required": [
@@ -1881,6 +1950,9 @@
         "neutral_share": 0.2692,
         "positive_count": 15,
         "positive_share": 0.2885,
+        "star_negative_share": 0.4423,
+        "star_neutral_share": 0.2692,
+        "star_positive_share": 0.2885,
         "total": 52,
         "unlabelled_count": 0
       },

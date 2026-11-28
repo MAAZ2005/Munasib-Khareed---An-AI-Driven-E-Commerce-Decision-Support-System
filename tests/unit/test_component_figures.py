@@ -187,6 +187,25 @@ def test_sentiment_breakdown_without_reviews_is_a_placeholder() -> None:
     assert "classified reviews" in placeholder_message(figure)
 
 
+def test_sentiment_breakdown_labels_predictions_not_weak_labels(
+    analysis: AnalysisResponse,
+) -> None:
+    """The hybrid source relabels the bars as model predictions.
+
+    The numbers stay the payload's; only the label family changes, so a hybrid
+    chart can never claim its counts are star-derived weak labels.
+    """
+    sentiment = analysis.review_analysis.sentiment
+    figure = build_sentiment_breakdown_figure(sentiment, source="predicted")
+
+    labels = list(figure.data[0].y)
+    assert "Negative" in labels
+    assert "Negative (1-2 stars)" not in labels
+    hovers = [entry[0] for entry in figure.data[0].customdata]
+    assert all(hover.startswith("predicted label:") for hover in hovers)
+    assert sum(figure.data[0].x) == sentiment.total - sentiment.unlabelled_count
+
+
 def test_sentiment_over_time_plots_every_bucket_for_every_series(analysis: AnalysisResponse) -> None:
     """Three share lines, each with one point per bucket."""
     trend = analysis.review_analysis.temporal_trend

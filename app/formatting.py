@@ -237,12 +237,12 @@ def _indicator_row(indicator: EvidenceIndicator, group: str) -> dict[str, str]:
 
     Returns:
         A mapping in :data:`INDICATOR_COLUMNS` order, with ``"n/a"`` for a
-        missing raw value.
+        missing raw value or normalised value.
     """
     return {
         "Group": group,
         "Indicator": indicator.name,
-        "Value (0-1)": _number(indicator.value),
+        "Value (0-1)": NOT_AVAILABLE if indicator.value is None else _number(indicator.value),
         "Raw value": NOT_AVAILABLE if indicator.raw_value is None else _number(indicator.raw_value),
         "Direction": indicator.direction.value,
         "Description": indicator.description,

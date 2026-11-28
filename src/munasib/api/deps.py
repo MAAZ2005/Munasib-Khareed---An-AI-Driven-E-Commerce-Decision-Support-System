@@ -6,15 +6,18 @@ Three dependency families live here so no router hand-writes plumbing:
   lifespan stored on ``app.state`` and always closes it.
 * **Settings** - :func:`get_settings` returns the cached project settings.
 * **Repositories / service** - thin constructors over the session, plus
-  :func:`get_analysis_service`, the single place that chooses between the stub
-  and the real engine.
+  :func:`get_analysis_service`, the single place that chooses between the stub,
+  the hybrid service and the real engine.
 
 The service switch is ``analysis.service`` in ``configs/config.yaml``
-(``stub`` by default, overridable with ``MUNASIB_ANALYSIS_SERVICE``). Selecting
+(``hybrid`` by default, overridable with ``MUNASIB_ANALYSIS_SERVICE``). ``stub``
+serves the all-placeholder analysis, ``hybrid`` serves the stored sentiment,
+aspects and evidence with labelled placeholders for the unbuilt stages. Selecting
 ``real`` raises :class:`~munasib.core.exceptions.ModelNotLoadedError` - a
 ``ModelError``, so the API answers ``503`` with the standard error envelope -
 because the fuzzy + TOPSIS engine does not exist yet. It never silently falls
-back to the stub, which would present placeholder numbers as a real result.
+back to a placeholder service, which would present placeholder numbers as a real
+result.
 """
 
 from __future__ import annotations
@@ -33,15 +36,20 @@ from munasib.db.repositories import (
     RelatedRepository,
     ReviewRepository,
 )
-from munasib.pipeline.service import AnalysisService, StubAnalysisService
+from munasib.pipeline.service import (
+    AnalysisService,
+    HybridAnalysisService,
+    StubAnalysisService,
+)
 
 #: Message used when ``analysis.service: real`` is selected before the engine
 #: exists. Kept here so the error text and the documented cause stay together.
 REAL_SERVICE_ERROR = (
     'analysis.service is "real", but the fuzzy + TOPSIS + SHAP engine is not '
-    "implemented yet. Set analysis.service to \"stub\" in configs/config.yaml "
-    "(or export MUNASIB_ANALYSIS_SERVICE=stub) until the engine lands; the stub "
-    "is the only implementation available today."
+    "implemented yet. Set analysis.service to \"hybrid\" in configs/config.yaml "
+    "(or export MUNASIB_ANALYSIS_SERVICE=hybrid) for the stored sentiment, aspects "
+    "and evidence with labelled placeholders, or to \"stub\" for the "
+    "all-placeholder analysis, until the engine lands."
 )
 
 
@@ -148,7 +156,7 @@ def get_analysis_service(session: SessionDep, settings: SettingsDep) -> Analysis
         settings: Project settings (``analysis.service``).
 
     Returns:
-        The stub service for ``stub``.
+        The stub service for ``stub`` or the hybrid service for ``hybrid``.
 
     Raises:
         ModelNotLoadedError: If ``analysis.service`` is ``real``, which has no
@@ -157,6 +165,8 @@ def get_analysis_service(session: SessionDep, settings: SettingsDep) -> Analysis
     """
     if settings.analysis.service == "stub":
         return StubAnalysisService(session, settings)
+    if settings.analysis.service == "hybrid":
+        return HybridAnalysisService(session, settings)
     raise ModelNotLoadedError(REAL_SERVICE_ERROR, details={"service": "real"})
 
 

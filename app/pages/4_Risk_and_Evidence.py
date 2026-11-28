@@ -4,8 +4,12 @@ Shows the fuzzy-logic + TOPSIS consumer risk assessment of the selected product:
 the 0-100 risk gauge banded by the verdict thresholds, the composite evidence
 strength, a table of every evidence and risk indicator (value, raw value, direction
 and plain-language description), the evidence radar, the fuzzy membership chart and
-the TOPSIS criterion contributions. The stub banner is shown whenever the analysis
-still comes from the stub engine.
+the TOPSIS criterion contributions.
+
+Banner governance: the pure stub shows its full banner at the top. The hybrid
+service keeps the placeholder banner only above the sections that are still
+placeholders (the risk gauge, the fuzzy chart, the TOPSIS chart) and labels the
+stored-data evidence block with a "Computed from stored data" caption.
 """
 
 from __future__ import annotations
@@ -29,7 +33,12 @@ from app.components import (  # noqa: E402
     render_risk_gauge,
     render_topsis_ranking_chart,
 )
-from app.components.sidebar import render_sidebar, show_stub_banner  # noqa: E402
+from app.components.sidebar import (  # noqa: E402
+    is_hybrid_analysis,
+    is_stub_analysis,
+    render_sidebar,
+    show_stub_banner,
+)
 from app.errors import render_api_error  # noqa: E402
 from app.formatting import INDICATOR_COLUMNS, build_indicator_rows, format_unit  # noqa: E402
 from app.state import get_or_load_analysis, require_product  # noqa: E402
@@ -49,10 +58,13 @@ def _render_body() -> None:
         render_api_error(exc)
         return
 
-    show_stub_banner(analysis)
+    if is_stub_analysis(analysis):
+        show_stub_banner(analysis)
 
     col_gauge, col_strength = st.columns([1.2, 1])
     with col_gauge:
+        if is_hybrid_analysis(analysis):
+            show_stub_banner(analysis)
         render_risk_gauge(analysis.risk_score)
     with col_strength:
         metric_card(
@@ -63,6 +75,8 @@ def _render_body() -> None:
         )
 
     st.subheader("Evidence and risk indicators")
+    if is_hybrid_analysis(analysis):
+        st.caption("Computed from stored data")
     st.caption(
         "Every indicator carries its normalised 0-1 value, the raw value it came "
         "from, its direction (benefit = higher is better) and a plain-language "
@@ -78,6 +92,8 @@ def _render_body() -> None:
     render_evidence_indicator_radar(analysis.evidence, analysis.risk_indicators)
 
     decision = analysis.decision
+    if is_hybrid_analysis(analysis):
+        show_stub_banner(analysis)
     render_fuzzy_membership_chart(decision.fuzzy if decision is not None else None)
     render_topsis_ranking_chart(decision.topsis if decision is not None else None)
 

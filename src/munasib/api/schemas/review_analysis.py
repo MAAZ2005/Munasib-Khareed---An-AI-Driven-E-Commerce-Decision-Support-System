@@ -82,10 +82,18 @@ class RatingDistribution(BaseModel):
 
 
 class SentimentBreakdown(BaseModel):
-    """Weak-supervision sentiment counts and shares for one product.
+    """Sentiment label counts and shares for one product.
 
-    ``*_share`` values are counts divided by ``total``. ``unlabelled_count`` counts
-    reviews with no rating, which therefore carry no weak label at all.
+    The headline ``*_count``/``*_share`` fields describe the labels the analysis
+    uses: model **predictions** from ``review_features`` in the hybrid/real
+    service, or star-derived weak labels in the pure stub. ``unlabelled_count``
+    counts reviews without that label (no stored prediction, respectively no
+    rating), and the shares use every review as denominator.
+
+    ``star_*_share`` is only populated when the headline breakdown is *not* the
+    star-derived one (the hybrid service): it exposes the weak supervision from
+    stars (1-2 negative, 3 neutral, 4-5 positive) so a client can compare the
+    model's view with the rating view without re-deriving it from the histogram.
     """
 
     model_config = ConfigDict(
@@ -105,15 +113,33 @@ class SentimentBreakdown(BaseModel):
     )
 
     total: int = Field(..., ge=0, description="Reviews counted.")
-    negative_count: int = Field(..., ge=0, description="Reviews with the negative weak label.")
-    neutral_count: int = Field(..., ge=0, description="Reviews with the neutral weak label.")
-    positive_count: int = Field(..., ge=0, description="Reviews with the positive weak label.")
+    negative_count: int = Field(
+        ..., ge=0, description="Reviews carrying the negative label (predicted or weak)."
+    )
+    neutral_count: int = Field(
+        ..., ge=0, description="Reviews carrying the neutral label (predicted or weak)."
+    )
+    positive_count: int = Field(
+        ..., ge=0, description="Reviews carrying the positive label (predicted or weak)."
+    )
     unlabelled_count: int = Field(
-        ..., ge=0, description="Reviews with no rating, hence no weak label."
+        ..., ge=0, description="Reviews with no label (no stored prediction / no rating)."
     )
     negative_share: UnitFloat
     neutral_share: UnitFloat
     positive_share: UnitFloat
+    star_negative_share: UnitFloat | None = Field(
+        default=None,
+        description="Share of reviews carrying the weak negative label from star ratings.",
+    )
+    star_neutral_share: UnitFloat | None = Field(
+        default=None,
+        description="Share of reviews carrying the weak neutral label from star ratings.",
+    )
+    star_positive_share: UnitFloat | None = Field(
+        default=None,
+        description="Share of reviews carrying the weak positive label from star ratings.",
+    )
 
     @field_validator("unlabelled_count")
     @classmethod

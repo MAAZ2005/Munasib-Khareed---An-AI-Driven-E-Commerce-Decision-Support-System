@@ -3,8 +3,9 @@
 Covers:
 * :mod:`app.branding` - the offline logo loader (a missing asset is ``None``,
   never an exception);
-* :func:`app.components.sidebar.is_stub_analysis` - the one place the "is this
-  stub output?" rule lives;
+* :func:`app.components.sidebar.is_stub_analysis` and
+  :func:`app.components.sidebar.is_hybrid_analysis` - the one place the "which
+  engine produced this?" rule lives;
 * :mod:`app.components.product_card` - the escaped, absence-aware card builders.
 """
 
@@ -24,7 +25,7 @@ from app.components.product_card import (
     card_rating_html,
     card_title_html,
 )
-from app.components.sidebar import is_stub_analysis
+from app.components.sidebar import is_hybrid_analysis, is_stub_analysis
 from app.formatting import BRAND_NOT_LISTED, PRICE_NOT_LISTED
 from munasib.api.schemas import AnalysisResponse
 from munasib.api.schemas.analysis import ANALYSIS_EXAMPLE
@@ -79,6 +80,21 @@ def test_is_stub_analysis_detects_version_and_warning() -> None:
     assert is_stub_analysis(_analysis(version="stub-0", warnings=[])) is True
     assert is_stub_analysis(_analysis(version="0.1.0", warnings=["STUB: placeholder"])) is True
     assert is_stub_analysis(_analysis(version="0.1.0", warnings=["info"])) is False
+
+
+def test_is_hybrid_analysis_detects_version_and_warning() -> None:
+    """Hybrid is flagged by the version prefix or a PARTIAL: warning only."""
+    assert is_hybrid_analysis(None) is False
+    assert is_hybrid_analysis(_analysis(version="hybrid-0", warnings=[])) is True
+    assert (
+        is_hybrid_analysis(_analysis(version="0.1.0", warnings=["PARTIAL: stored data"]))
+        is True
+    )
+    assert is_hybrid_analysis(_analysis(version="0.1.0", warnings=["info"])) is False
+    # The two detectors are mutually exclusive: a stub payload is never "hybrid".
+    stub = _analysis(version="stub-0", warnings=["STUB: placeholder"])
+    assert is_stub_analysis(stub) is True
+    assert is_hybrid_analysis(stub) is False
 
 
 # --------------------------------------------------------------------------- #

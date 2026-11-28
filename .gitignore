@@ -91,3 +91,6 @@ reports/image_download_report.json
 !docs/proposal.pdf
 
 logs/
+
+# OpenCode harness config (local tooling, not project work)
+opencode.json

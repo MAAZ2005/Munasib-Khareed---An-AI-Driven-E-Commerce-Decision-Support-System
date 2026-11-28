@@ -109,7 +109,7 @@ To ensure rapid page navigation and prevent redundant network overhead against t
 | `get_cached_health()` | 15 s (`15s`) | None | Short interval for near-realtime backend liveness. |
 
 ### Cache Invalidation
-A dedicated button in the sidebar (**"Clear cached data"**) invokes `st.cache_data.clear()`, allowing users to manually refresh all cached data across all pages.
+A dedicated button in the sidebar (**"🧹 Clear cached data"**) invokes `st.cache_data.clear()`, allowing users to manually refresh all cached data across all pages. The dashboard caches analyses for up to 5 minutes (`get_cached_analysis` TTL = 300s), so after changing `analysis.service` in `configs/config.yaml` or `MUNASIB_ANALYSIS_SERVICE`, restart both servers or click **"🧹 Clear cached data"** in the sidebar.
 
 ---
 
@@ -153,17 +153,22 @@ streamlit run app/Home.py --server.port 8501
 
 ---
 
-## 6. Stub Banner Governance
+## 6. Stub and Hybrid Banner Governance
 
-Because the system uses a deterministic `StubAnalysisService` prior to the full integration of the real fuzzy-logic and TOPSIS engines, strict transparency rules apply:
+Because the system uses `StubAnalysisService` and `HybridAnalysisService` prior to the full integration of the real fuzzy-logic and TOPSIS engines, strict transparency rules apply:
 
-- Any page displaying analysis data invokes `show_stub_banner(analysis)`.
-- The banner triggers if:
-  1. `analysis.pipeline_version` begins with `"stub"` (e.g. `"stub-0"`), OR
-  2. Any item in `analysis.warnings` starts with `"STUB:"`.
-- When triggered, it renders a prominent warning:
-  > **⚠️ Placeholder analysis from the stub engine. Risk scores, verdicts and explanations are NOT real results.**
-- This guarantees users and evaluators never mistake deterministic test placeholders for authentic machine learning assessments.
+- Any page displaying placeholder analysis data invokes `show_stub_banner(analysis)`.
+- For `stub` analyses (`pipeline_version` starting with `"stub"` or warnings starting with `"STUB:"`):
+  - Prominent warning appears on pages 3-7:
+    > **⚠️ Placeholder analysis from the stub engine. Risk scores, verdicts and explanations are NOT real results.**
+- For `hybrid` analyses (`pipeline_version` starting with `"hybrid"` or warnings starting with `"PARTIAL:"`):
+  - **Page 3 (Review Analysis)**: shows no placeholder banner; instead renders a small caption `"Computed from stored data (sentiment predictions, aspects)"`.
+  - **Page 4 (Risk and Evidence)**: shows the placeholder banner only above the risk gauge, fuzzy and TOPSIS sections; and renders a caption `"Computed from stored data"` above the evidence indicator table, radar and risk indicators.
+  - **Pages 5 (SHAP) and 7 (Verdict)**, and the risk/verdict/deltas parts of **Page 6 (Alternatives)**: keep the placeholder warning banner:
+    > **⚠️ Placeholder decision assessment. Risk scores, verdicts, and explanations are placeholders.**
+  - **Page 2 (Product Overview)**: Consumer Advocate panel shows the placeholder banner and keeps the **Placeholder** caption.
+- **Cache note:** The dashboard caches analyses for up to 5 minutes (`get_cached_analysis` TTL = 300s), so after changing `analysis.service` in `configs/config.yaml` or `MUNASIB_ANALYSIS_SERVICE`, restart both servers or click **"🧹 Clear cached data"** in the sidebar — otherwise a cached `stub-0` payload keeps rendering the stub banner until the entry expires.
+- This guarantees users and evaluators never mistake placeholder decision results for authentic machine learning assessments while distinguishing real stored data.
 
 ---
 
@@ -261,6 +266,11 @@ running (`make run-api` and `make run-ui`) and confirm every step.
   `GET /products/{asin}/analysis` (a spinner is shown) and stores it in
   `last_analysis`; the other pages reuse it. Selecting a different product clears
   it so the next page fetches the new product's analysis.
+- **Analyses are cached for up to 5 minutes.** `get_or_load_analysis` is wrapped in
+  `st.cache_data(ttl=300)`. After changing `analysis.service` in `configs/config.yaml` or
+  `MUNASIB_ANALYSIS_SERVICE` (or rebuilding the serving cache) restart both servers or click
+  **"🧹 Clear cached data"** in the sidebar before judging the banners — a cached `stub-0`
+  payload keeps showing the stub banner for up to five minutes.
 - **Failure mapping, never a traceback:**
   - `ApiNotFound` (404) shows *"Product not found in the serving cache."*, clears
     `selected_asin` and offers a link back to Product Selection.
@@ -294,15 +304,17 @@ running (`make run-api` and `make run-ui`) and confirm every step.
       **About this item** bullets from the published features.
 - [ ] The four metric cards show reviews, mean rating and the first/last review dates.
 - [ ] The **Full product description** expander opens.
-- [ ] The Consumer Advocate panel shows the stub banner, a **Placeholder** caption,
-      the verdict badge, a compact risk gauge, the evidence strength and a
-      **View full analysis** button that opens page 7.
+- [ ] The Consumer Advocate panel shows the placeholder banner, a **Placeholder**
+      caption, the verdict badge, a compact risk gauge, the evidence strength and a
+      **View full analysis** button that opens page 7. (Both `stub` and `hybrid`
+      keep the banner and caption here: the verdict and risk score are placeholders.)
 - [ ] The "Related products" counts and the "Data basis · category … pipeline …"
       caption are present.
 
 ### 3. Review Analysis (`3_Review_Analysis.py`)
 
-- [ ] The stub banner is visible (never a real result without it).
+- [ ] On `stub`: the stub banner is visible at the top.
+- [ ] On `hybrid`: no placeholder banner is shown; the caption "Computed from stored data (sentiment predictions, aspects)" is visible.
 - [ ] The star histogram, sentiment breakdown, sentiment-over-time lines and aspect
       bars all render (or their `st.info` empty state, never an exception).
 - [ ] The verified-purchase and helpfulness metric cards show.
@@ -311,7 +323,8 @@ running (`make run-api` and `make run-ui`) and confirm every step.
 
 ### 4. Risk and Evidence (`4_Risk_and_Evidence.py`)
 
-- [ ] The stub banner is visible.
+- [ ] On `stub`: the stub banner is visible at the top.
+- [ ] On `hybrid`: the placeholder banner appears only above the risk gauge, fuzzy and TOPSIS sections; the caption "Computed from stored data" appears above the indicator table and radar.
 - [ ] The risk gauge is banded by `configs/verdict_thresholds.yaml`, with the band
       legend caption underneath.
 - [ ] The composite-evidence metric card shows.
@@ -321,7 +334,8 @@ running (`make run-api` and `make run-ui`) and confirm every step.
 
 ### 5. Explanation (SHAP) (`5_Explanation_SHAP.py`)
 
-- [ ] The stub banner is visible.
+- [ ] The placeholder banner is visible on `stub` **and** `hybrid` (the SHAP
+      explanation is a placeholder in both).
 - [ ] R², MAE and "meets configured minimum" metric cards show, with the
       plain-language note on how to read them.
 - [ ] The waterfall chart renders with the base value and the final prediction.
@@ -329,7 +343,8 @@ running (`make run-api` and `make run-ui`) and confirm every step.
 
 ### 6. Alternatives (`6_Alternatives.py`)
 
-- [ ] The stub banner is visible.
+- [ ] The placeholder banner is visible on `stub` **and** `hybrid` (the
+      alternatives' risk scores and deltas are placeholders in both).
 - [ ] The **Customers also considered** heading and the "usable of total related"
       caption show.
 - [ ] Each alternative card shows an image or placeholder, a two-line title, its
@@ -343,7 +358,8 @@ running (`make run-api` and `make run-ui`) and confirm every step.
 
 ### 7. Consumer Verdict (`7_Consumer_Verdict.py`)
 
-- [ ] The stub banner is visible.
+- [ ] The placeholder banner is visible on `stub` **and** `hybrid` (the risk score,
+      verdict and concerns are placeholders in both).
 - [ ] The verdict badge, risk gauge, evidence strength and risk score show.
 - [ ] The major concerns list, the rationale and the data-basis block
       (category, review count, date range, reference date, pipeline version) show.

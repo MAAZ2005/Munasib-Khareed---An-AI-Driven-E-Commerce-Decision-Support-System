@@ -107,6 +107,9 @@ ANALYSIS_EXAMPLE: dict[str, Any] = {
             "negative_share": 0.4423,
             "neutral_share": 0.2692,
             "positive_share": 0.2885,
+            "star_negative_share": 0.4423,
+            "star_neutral_share": 0.2692,
+            "star_positive_share": 0.2885,
         },
         "temporal_trend": {
             "period": "month",

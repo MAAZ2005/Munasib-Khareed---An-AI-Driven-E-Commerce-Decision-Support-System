@@ -93,7 +93,7 @@ curl.exe "http://127.0.0.1:8000/products/B00009V3UF/reviews?limit=2"
 curl.exe "http://127.0.0.1:8000/products/B00009V3UF/reviews?label=negative"
 curl.exe "http://127.0.0.1:8000/products/B00009V3UF/reviews?verified=false"
 
-# 6. The full analysis (see "The analysis is a stub" below)
+# 6. The full analysis (see "What the analysis contains" below)
 curl.exe http://127.0.0.1:8000/products/B00009V3UF/analysis
 
 # 7. Evidence-based alternatives
@@ -115,28 +115,37 @@ All non-2xx bodies use the same envelope from
 `request_id`. The `X-Request-ID` response header always matches
 `request_id`, so one id ties a dashboard action to a log line.
 
-## The analysis is a stub (important)
+## What the analysis contains: real data vs placeholders (important)
 
-The `/analysis` route is served by `StubAnalysisService` and marks itself as
-such on every response:
+The `/analysis` route is served by `HybridAnalysisService` by default
+(`pipeline_version` `"hybrid-0"`) and marks itself as such on every response:
 
-- `pipeline_version` is `"stub-0"`.
-- `warnings[0]` begins with `"STUB:"` and says the risk assessment is a
-  deterministic placeholder, not a result.
+- `warnings[0]` begins with `"PARTIAL:"` and names exactly which parts are real
+  and which are placeholders.
 
-**Real, computed from the cache rows:** review counts, the star histogram,
-weak-label sentiment shares, monthly temporal buckets, the verified/helpfulness
-evidence indicators, review depth, the composite `evidence_strength`, the
-product's own review date range, `data_basis.reference_date` from
-`data/processed/meta.json`, and the alternatives read from the real
-`related_products` edges.
+**Real, read from the stored tables:** the star histogram and review counts, the
+verified/helpfulness figures, the sentiment breakdown and monthly trend from the
+stored **model predictions** (`review_features.predicted_label`; the star-derived
+weak shares travel alongside as `star_*_share`), the aspects from
+`product_aspects`, the evidence indicators and composite `evidence_strength` from
+`product_evidence`, the five decision criteria from `product_risk_indicators`
+(when that row exists; otherwise `risk_indicators` is `[]`), the product's own
+review date range, `data_basis.reference_date` from `data/processed/meta.json`,
+and the alternatives read from the real `related_products` edges.
 
 **Placeholder, seeded from the ASIN with `hashlib`:** the fuzzy assessment, the
 TOPSIS ranking, the SHAP explanation, the risk score, the verdict label and the
-concerns, and the aspects. Results are byte-identical for repeated calls of the
-same ASIN, so a frontend can render deterministically - but they must never be
-presented to a user as a real assessment. The real engine (prompt 22) swaps in
-behind the same `AnalysisService` contract without any router change.
+concerns, and the alternatives' risk scores. Results are byte-identical for
+repeated calls of the same ASIN, so a frontend can render deterministically - but
+they must never be presented to a user as a real assessment. The real engine
+(prompt 22) swaps in behind the same `AnalysisService` contract without any
+router change.
+
+The pure `StubAnalysisService` (`analysis.service: stub`, `pipeline_version`
+`"stub-0"`, `warnings[0]` beginning `"STUB:"`) still exists for comparison: it
+serves the same placeholders but keeps the star-derived weak-label sentiment and
+the live evidence composite instead of the stored predictions and stored
+composite.
 
 `/products/{asin}/reviews` and `/products/{asin}/alternatives` carry no
 placeholder values at all.
@@ -197,18 +206,23 @@ About 18% of this category's products have no usable alternative; those return
 
 ```yaml
 analysis:
-  service: "stub"   # the only implementation today
+  service: "hybrid"   # the default
 ```
 
-`"stub"` is the default. `"real"` (the fuzzy + TOPSIS engine) does not exist
-yet: selecting it makes `/analysis` and `/alternatives` answer `503` with code
-`MODEL_UNAVAILABLE` and logs the actionable message. It never silently falls
-back to the stub, which would present placeholder numbers as a real result.
+- `"hybrid"` (default) serves the stored sentiment predictions, aspects and
+  evidence with clearly-labelled placeholders for the unbuilt decision stages
+  (`pipeline_version` `"hybrid-0"`).
+- `"stub"` serves the all-placeholder analysis over the live review rows
+  (`pipeline_version` `"stub-0"`); useful to compare the two label sets.
+- `"real"` (the fuzzy + TOPSIS engine) does not exist yet: selecting it makes
+  `/analysis` and `/alternatives` answer `503` with code `MODEL_UNAVAILABLE` and
+  logs the actionable message. It never silently falls back to a placeholder
+  service, which would present placeholder numbers as a real result.
 
 Override per environment with `MUNASIB_ANALYSIS_SERVICE`:
 
 ```powershell
-$env:MUNASIB_ANALYSIS_SERVICE = "stub"
+$env:MUNASIB_ANALYSIS_SERVICE = "hybrid"
 ```
 
 ## CORS
@@ -267,16 +281,20 @@ Where the brief left room, the simplest option was chosen:
 python -m pytest tests/unit tests/integration -q
 ```
 
-- `tests/unit/test_analysis_config.py` - the stub default, the env override and
+- `tests/unit/test_analysis_config.py` - the hybrid default, the env override and
   the rejection of an unknown value.
+- `tests/unit/test_hybrid_service.py` - the stored sentiment/aspects/evidence
+  values, the reused placeholders and the graceful degradation when a stored row
+  is absent.
 - `tests/unit/test_stub_service.py` - the stub's seeding (same ASIN, same
   output; different ASIN, different placeholders), the real evidence numbers,
   and config-driven criteria/rules.
 - `tests/integration/test_api.py` - every route over a temporary SQLite cache
-  (200s, 404s, 422s, paging, request-id, determinism, the stub markers, empty
-  alternatives, the `real` service error, the cached-image route and the
+  (200s, 404s, 422s, paging, request-id, determinism, the hybrid/STUB markers,
+  empty alternatives, the `real` service error, the cached-image route and the
   rejection of a malicious ASIN), plus tests against the real
-  `data/db/munasib.sqlite` that skip automatically when it is absent.
+  `data/db/munasib.sqlite` that skip automatically when it is absent (including
+  the stored `evidence_strength` equality for `B00009V3UF`).
 - `tests/unit/test_download_images.py` - the image downloader against an
   `httpx.MockTransport` (resize, metadata stripping, resume/`--force`, every
   failure reason, the JSON report counts, the cache flag) with no network.

@@ -5,7 +5,11 @@ Renders:
 - Currently selected product indicator.
 - Concise navigation hints guiding the consumer through the 7-step analysis.
 - "Clear cached data" action button calling st.cache_data.clear().
-- `show_stub_banner(analysis)`: prominent warning whenever analysis is from the stub engine.
+- `is_stub_analysis` / `is_hybrid_analysis`: the one place the "which engine
+  produced this?" rule lives.
+- `show_stub_banner(analysis)`: prominent warning whenever the analysis carries
+  placeholder decision numbers - the full stub banner for `stub`, a narrower
+  "placeholder decision assessment" banner for `hybrid`.
 """
 
 from __future__ import annotations
@@ -93,11 +97,33 @@ def is_stub_analysis(analysis: AnalysisResponse | None) -> bool:
     return any(warning.startswith("STUB:") for warning in (analysis.warnings or []))
 
 
-def show_stub_banner(analysis: AnalysisResponse | None) -> None:
-    """Display a warning banner whenever analysis originates from the stub engine.
+def is_hybrid_analysis(analysis: AnalysisResponse | None) -> bool:
+    """Report whether an analysis comes from the hybrid service.
 
-    Triggers when `analysis.pipeline_version` starts with 'stub' or any warning in
-    `analysis.warnings` starts with 'STUB:'.
+    An analysis is hybrid when its ``pipeline_version`` starts with ``hybrid``
+    or any warning starts with ``PARTIAL:``.
+
+    Args:
+        analysis: AnalysisResponse instance or None.
+
+    Returns:
+        True when the analysis is hybrid output, False otherwise (including None).
+    """
+    if analysis is None:
+        return False
+    if analysis.pipeline_version and analysis.pipeline_version.lower().startswith("hybrid"):
+        return True
+    return any(warning.startswith("PARTIAL:") for warning in (analysis.warnings or []))
+
+
+def show_stub_banner(analysis: AnalysisResponse | None) -> None:
+    """Display the placeholder warning for stub or hybrid output.
+
+    Triggers when `analysis.pipeline_version` starts with 'stub' or 'hybrid', or
+    any warning in `analysis.warnings` starts with 'STUB:' or 'PARTIAL:'. The
+    stub gets the full-engine warning; the hybrid gets the narrower
+    "placeholder decision assessment" warning because its review analysis,
+    aspects and evidence are real stored data.
 
     Args:
         analysis: AnalysisResponse instance or None.
@@ -105,4 +131,8 @@ def show_stub_banner(analysis: AnalysisResponse | None) -> None:
     if is_stub_analysis(analysis):
         st.warning(
             "⚠️ **Placeholder analysis from the stub engine. Risk scores, verdicts and explanations are NOT real results.**"
+        )
+    elif is_hybrid_analysis(analysis):
+        st.warning(
+            "⚠️ **Placeholder decision assessment. Risk scores, verdicts, and explanations are placeholders.**"
         )

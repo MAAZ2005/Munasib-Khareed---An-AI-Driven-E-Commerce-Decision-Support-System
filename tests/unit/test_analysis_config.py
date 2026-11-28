@@ -1,6 +1,6 @@
 """Tests for the ``analysis`` configuration block added for the API layer.
 
-Covers the three behaviours the API depends on: the documented ``stub`` default,
+Covers the behaviours the API depends on: the documented ``hybrid`` default,
 the ``MUNASIB_ANALYSIS_SERVICE`` environment override, and the rejection of an
 unknown value (so a typo cannot silently fall back to the stub and present
 placeholder numbers as a real analysis).
@@ -10,30 +10,36 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
 
+from munasib.api.deps import get_analysis_service
 from munasib.core.config import Settings, load_settings
-from munasib.core.exceptions import ConfigError
+from munasib.core.exceptions import ConfigError, ModelNotLoadedError
 
 REPO_CONFIG = Path(__file__).resolve().parents[2] / "configs" / "config.yaml"
 
 
-def test_analysis_service_defaults_to_stub() -> None:
-    """The default is the stub, so a fresh checkout serves placeholders knowingly."""
-    assert Settings().analysis.service == "stub"
+def test_analysis_service_defaults_to_hybrid() -> None:
+    """The default is hybrid, serving real stored data with clearly labelled placeholders."""
+    assert Settings().analysis.service == "hybrid"
 
 
-def test_repo_config_declares_stub_service() -> None:
-    """The shipped config agrees with the documented default."""
+def test_repo_config_declares_hybrid_service() -> None:
+    """The shipped config agrees with the hybrid default."""
     text = REPO_CONFIG.read_text(encoding="utf-8")
-    assert 'service: "stub"' in text
+    assert 'service: "hybrid"' in text
 
 
-def test_analysis_service_accepts_real_value() -> None:
-    """'real' is a legal selection (it fails later, not at config load)."""
-    assert Settings.model_validate({"analysis": {"service": "real"}}).analysis.service == "real"
+def test_analysis_service_accepts_valid_values() -> None:
+    """'stub', 'hybrid', and 'real' are legal selections."""
+    for service_name in ("stub", "hybrid", "real"):
+        assert (
+            Settings.model_validate({"analysis": {"service": service_name}}).analysis.service
+            == service_name
+        )
 
 
 def test_analysis_service_rejects_unknown_value() -> None:
@@ -75,3 +81,13 @@ def test_env_override_with_invalid_value_is_a_config_error(
             load_settings()
     finally:
         os.environ.pop("MUNASIB_ANALYSIS_SERVICE", None)
+
+
+def test_get_analysis_service_with_real_raises_model_not_loaded() -> None:
+    """Selecting 'real' raises ModelNotLoadedError in the dependency injection layer."""
+    settings = Settings.model_validate({"analysis": {"service": "real"}})
+    session = MagicMock()
+    with pytest.raises(ModelNotLoadedError) as exc_info:
+        get_analysis_service(session=session, settings=settings)
+    assert "fuzzy + TOPSIS + SHAP engine is not implemented yet" in str(exc_info.value)
+    assert exc_info.value.details == {"service": "real"}

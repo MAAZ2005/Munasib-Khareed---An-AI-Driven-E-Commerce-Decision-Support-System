@@ -1549,12 +1549,14 @@ class AnalysisConfig(BaseModel):
 
     ``stub`` is the deterministic placeholder in
     :mod:`munasib.pipeline.service` (real evidence numbers, clearly labelled
-    placeholder risk scores) and is the default. ``real`` is the fuzzy + TOPSIS
+    placeholder risk scores). ``hybrid`` combines stored sentiment predictions,
+    aspects, evidence indicators and risk indicators with placeholder decision
+    machinery, and is the default. ``real`` is the fuzzy + TOPSIS
     engine; selecting it before that engine exists raises a documented error from
     the API dependency instead of silently falling back.
     """
 
-    service: Literal["stub", "real"] = "stub"
+    service: Literal["stub", "hybrid", "real"] = "hybrid"
 
 
 class APIConfig(BaseModel):

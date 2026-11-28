@@ -530,9 +530,10 @@ analysis:
   # Which analysis service the API serves (consumed by src/munasib/api/deps.py).
   # "stub" is the deterministic placeholder in src/munasib/pipeline/service.py:
   # real evidence numbers, clearly-labelled placeholder risk scores.
+  # "hybrid" serves real stored sentiment, aspects and evidence with placeholders for unbuilt stages.
   # "real" is the fuzzy + TOPSIS engine, which is not written yet - selecting it
-  # fails with a documented error until it exists, so this stays "stub" by default.
-  service: "stub"
+  # fails with a documented error until it exists.
+  service: "hybrid"
 
 api:
   host: "127.0.0.1"

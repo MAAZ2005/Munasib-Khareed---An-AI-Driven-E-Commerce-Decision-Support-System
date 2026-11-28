@@ -242,6 +242,45 @@ def test_stub_banner_does_not_appear_for_non_stub_analysis() -> None:
     assert not any("Placeholder analysis from the stub engine" in w.value for w in at.warning)
 
 
+def test_hybrid_banner_rules() -> None:
+    """Verify banner and caption behavior for hybrid analysis across pages."""
+    hybrid_data = dict(ANALYSIS_EXAMPLE)
+    hybrid_data["pipeline_version"] = "hybrid-0"
+    hybrid_data["warnings"] = [
+        "PARTIAL: Review analysis, aspects and evidence come from stored data while the fuzzy assessment, TOPSIS result, SHAP explanation, risk score, verdict and concerns are placeholders."
+    ]
+    analysis = AnalysisResponse.model_validate(hybrid_data)
+
+    # Page 3: Review Analysis -> NO placeholder banner, caption "Computed from stored data"
+    at3 = _run_page("app/pages/3_Review_Analysis.py", asin=e2e.DEFAULT_ASIN, analysis=analysis)
+    assert not at3.exception, at3.exception
+    assert not any("Placeholder" in w.value for w in at3.warning)
+    assert any("Computed from stored data (sentiment predictions, aspects)" in c.value for c in at3.caption)
+
+    # Page 4: Risk and Evidence -> placeholder banner above risk gauge, caption above evidence
+    at4 = _run_page("app/pages/4_Risk_and_Evidence.py", asin=e2e.DEFAULT_ASIN, analysis=analysis)
+    assert not at4.exception, at4.exception
+    assert any("Placeholder decision assessment" in w.value for w in at4.warning)
+    assert any("Computed from stored data" in c.value for c in at4.caption)
+
+    # Page 2: Product Overview -> Consumer Advocate panel shows placeholder banner + caption
+    at2 = _run_page("app/pages/2_Product_Overview.py", asin=e2e.DEFAULT_ASIN, analysis=analysis)
+    assert not at2.exception, at2.exception
+    assert any("Placeholder decision assessment" in w.value for w in at2.warning)
+    assert any("Placeholder:" in c.value for c in at2.caption)
+
+    # Pages 5, 6 and 7 -> Keep the placeholder banner (SHAP, alternatives' risk
+    # scores, verdict/risk are placeholders in the hybrid service too).
+    for page in (
+        "app/pages/5_Explanation_SHAP.py",
+        "app/pages/6_Alternatives.py",
+        "app/pages/7_Consumer_Verdict.py",
+    ):
+        at = _run_page(page, asin=e2e.DEFAULT_ASIN, analysis=analysis)
+        assert not at.exception, at.exception
+        assert any("Placeholder decision assessment" in w.value for w in at.warning)
+
+
 # ---------------------------------------------------------------------------
 # Dashboard pages on the stub API (p10)
 # ---------------------------------------------------------------------------

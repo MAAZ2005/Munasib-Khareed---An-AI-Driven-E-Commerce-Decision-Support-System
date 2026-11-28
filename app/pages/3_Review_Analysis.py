@@ -1,18 +1,21 @@
 """Page 3: Review Analysis.
 
-Shows the weak-supervision review picture of the selected product - star
-distribution, sentiment breakdown, sentiment over time and dominant aspects - with
-metric cards for the verified-purchase and helpfulness evidence indicators, and a
-filterable, paged sample of the underlying reviews from
-``GET /products/{asin}/reviews``. Sentiment labels are weak supervision from star
-ratings, never model sentiment, and the stub banner is shown whenever the analysis
-still comes from the stub engine.
+Shows the review picture of the selected product - star distribution, sentiment
+breakdown, sentiment over time and dominant aspects - with metric cards for the
+verified-purchase and helpfulness evidence indicators, and a filterable, paged
+sample of the underlying reviews from ``GET /products/{asin}/reviews``.
+
+Banner governance: the pure stub shows its full banner at the top (its sentiment
+shares are star-derived weak labels). Hybrid output is stored data, so it gets no
+placeholder banner; a caption says so, and the sentiment chart labels its counts
+as stored model predictions with the star-derived shares alongside.
 """
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Literal
 
 # Ensure repository root is on sys.path so 'app.*' imports resolve
 _REPO_ROOT = str(Path(__file__).resolve().parents[2])
@@ -31,7 +34,12 @@ from app.components import (  # noqa: E402
     render_sentiment_breakdown_chart,
     render_sentiment_over_time_chart,
 )
-from app.components.sidebar import render_sidebar, show_stub_banner  # noqa: E402
+from app.components.sidebar import (  # noqa: E402
+    is_hybrid_analysis,
+    is_stub_analysis,
+    render_sidebar,
+    show_stub_banner,
+)
 from app.errors import render_api_error  # noqa: E402
 from app.formatting import build_review_rows, format_unit  # noqa: E402
 from app.state import get_or_load_analysis, require_product  # noqa: E402
@@ -127,14 +135,20 @@ def _render_body() -> None:
         render_api_error(exc)
         return
 
-    show_stub_banner(analysis)
+    if is_stub_analysis(analysis):
+        show_stub_banner(analysis)
+    elif is_hybrid_analysis(analysis):
+        st.caption("Computed from stored data (sentiment predictions, aspects)")
 
     review_analysis = analysis.review_analysis
+    sentiment_source: Literal["weak", "predicted"] = (
+        "predicted" if is_hybrid_analysis(analysis) else "weak"
+    )
     col_rating, col_sentiment = st.columns(2)
     with col_rating:
         render_rating_distribution_chart(review_analysis.rating_distribution)
     with col_sentiment:
-        render_sentiment_breakdown_chart(review_analysis.sentiment)
+        render_sentiment_breakdown_chart(review_analysis.sentiment, source=sentiment_source)
 
     render_sentiment_over_time_chart(review_analysis.temporal_trend)
     render_aspect_bar_chart(review_analysis.aspects)

@@ -38,7 +38,12 @@ from app.components import (  # noqa: E402
     render_risk_gauge,
     verdict_badge,
 )
-from app.components.sidebar import is_stub_analysis, render_sidebar, show_stub_banner  # noqa: E402
+from app.components.sidebar import (  # noqa: E402
+    is_hybrid_analysis,
+    is_stub_analysis,
+    render_sidebar,
+    show_stub_banner,
+)
 from app.errors import render_api_error  # noqa: E402
 from app.formatting import (  # noqa: E402
     BRAND_NOT_LISTED,
@@ -59,10 +64,10 @@ IMAGE_WIDTH = 240
 #: Path of the full-analysis page the panel links to.
 VERDICT_PAGE = "pages/7_Consumer_Verdict.py"
 
-#: Caption shown under the stub banner inside the advocate panel.
+#: Caption shown under the placeholder banner inside the advocate panel.
 PLACEHOLDER_LABEL = (
-    "Placeholder: this Consumer Advocate summary is illustrative while the stub "
-    "engine is active and is not a real recommendation."
+    "Placeholder: this Consumer Advocate summary is illustrative until the fuzzy + "
+    "TOPSIS decision engine lands and is not a real recommendation."
 )
 
 
@@ -91,7 +96,7 @@ def _render_advocate_panel(analysis: AnalysisResponse | None) -> None:
         if verdict is not None:
             st.caption(verdict.rationale)
 
-        if is_stub_analysis(analysis):
+        if is_stub_analysis(analysis) or is_hybrid_analysis(analysis):
             st.caption(PLACEHOLDER_LABEL)
 
         render_risk_gauge(analysis.risk_score)

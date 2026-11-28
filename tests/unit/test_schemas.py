@@ -17,6 +17,7 @@ missing). Hermetic apart from that optional check: no network, no GPU.
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import re
 from datetime import UTC, datetime
@@ -215,6 +216,47 @@ def test_indicator_unit_bounds_are_inclusive() -> None:
             description="x",
         )
         assert indicator.value == value
+
+
+def test_indicator_null_value_requires_a_missing_reason() -> None:
+    """An uncomputable indicator must say why instead of reporting a fake 0/1."""
+    with pytest.raises(ValidationError, match="missing_reason"):
+        EvidenceIndicator(
+            name="price_position",
+            value=None,
+            direction="cost",
+            description="No usable price.",
+        )
+
+
+def test_indicator_null_value_with_reason_is_valid() -> None:
+    """The stored ``price_missing`` case parses and keeps both fields."""
+    indicator = EvidenceIndicator(
+        name="price_position",
+        value=None,
+        raw_value=None,
+        direction="cost",
+        description="No usable price percentile; not imputed.",
+        missing_reason="price_missing",
+    )
+    assert indicator.value is None
+    assert indicator.missing_reason == "price_missing"
+
+
+def test_pre_hybrid_analysis_payload_still_parses() -> None:
+    """A payload from before the star shares existed still validates unchanged."""
+    payload = copy.deepcopy(ANALYSIS_EXAMPLE)
+    sentiment = payload["review_analysis"]["sentiment"]
+    for key in ("star_negative_share", "star_neutral_share", "star_positive_share"):
+        sentiment.pop(key, None)
+
+    response = AnalysisResponse.model_validate(payload)
+    breakdown = response.review_analysis.sentiment
+    assert breakdown.star_negative_share is None
+    assert breakdown.star_neutral_share is None
+    assert breakdown.star_positive_share is None
+    assert breakdown.negative_share == sentiment["negative_share"]
+    assert breakdown.total == sentiment["total"]
 
 
 def test_evidence_strength_above_one_is_rejected() -> None:
@@ -606,6 +648,40 @@ def test_payload_written_before_the_extension_still_parses() -> None:
     response = AnalysisResponse.model_validate(payload)
     assert response.evidence.details == []
     assert response.risk_indicators == []
+
+
+def test_payload_written_before_hybrid_extensions_parses() -> None:
+    """Payloads written before star_* shares and nullable indicator values still parse."""
+    payload = copy.deepcopy(ANALYSIS_EXAMPLE)
+    sentiment = payload["review_analysis"]["sentiment"]
+    sentiment.pop("star_negative_share", None)
+    sentiment.pop("star_neutral_share", None)
+    sentiment.pop("star_positive_share", None)
+
+    for ind in [
+        payload["evidence"]["verified_purchase"],
+        payload["evidence"]["helpfulness"],
+        payload["evidence"]["review_depth"],
+    ]:
+        ind.pop("missing_reason", None)
+
+    response = AnalysisResponse.model_validate(payload)
+    assert response.review_analysis.sentiment.star_negative_share is None
+    assert response.evidence.verified_purchase.missing_reason is None
+
+
+def test_indicator_nullable_value_and_missing_reason() -> None:
+    """An indicator with null value and a missing_reason parses cleanly."""
+    ind = EvidenceIndicator.model_validate({
+        "name": "price_position",
+        "value": None,
+        "raw_value": None,
+        "direction": "cost",
+        "description": "Price position relative to peers",
+        "missing_reason": "price_missing",
+    })
+    assert ind.value is None
+    assert ind.missing_reason == "price_missing"
 
 
 def test_risk_indicators_default_to_an_empty_list() -> None:

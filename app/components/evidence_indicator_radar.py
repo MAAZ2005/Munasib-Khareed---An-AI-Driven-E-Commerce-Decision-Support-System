@@ -47,11 +47,12 @@ def _trace(indicators: Sequence[EvidenceIndicator], name: str) -> go.Scatterpola
         The trace, or None when the group is empty, so that no empty legend
         entry is created.
     """
-    if not indicators:
+    valid_indicators = [item for item in indicators if item.value is not None]
+    if not valid_indicators:
         return None
     return go.Scatterpolar(
-        r=[item.value for item in indicators],
-        theta=[_label(item) for item in indicators],
+        r=[item.value for item in valid_indicators],
+        theta=[_label(item) for item in valid_indicators],
         mode="lines+markers",
         fill="toself",
         name=name,
@@ -60,14 +61,14 @@ def _trace(indicators: Sequence[EvidenceIndicator], name: str) -> go.Scatterpola
             "size": 8,
             "color": [
                 CHART_PALETTE["cost"] if item.direction == IndicatorDirection.COST else CHART_PALETTE["benefit"]
-                for item in indicators
+                for item in valid_indicators
             ],
         },
         text=[
             f"{item.name} · direction {item.direction.value} · "
             + ("no raw value" if item.raw_value is None else f"raw {item.raw_value:g}")
             + f" · {item.description}"
-            for item in indicators
+            for item in valid_indicators
         ],
         hovertemplate="%{text}<br>normalised value %{r:.2f} of 1.00<extra></extra>",
     )

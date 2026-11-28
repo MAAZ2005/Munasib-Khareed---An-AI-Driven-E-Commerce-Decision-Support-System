@@ -14,6 +14,7 @@ here is created inside ``with``.
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -366,23 +367,24 @@ def test_review_text_and_label_never_expose_codes(client: TestClient) -> None:
     assert "sentiment_label_weak" not in item
 
 
-def test_analysis_carries_real_evidence_and_stub_markers(client: TestClient) -> None:
-    """The analysis mixes real evidence numbers with clearly-marked placeholders."""
+def test_analysis_carries_stored_review_evidence_and_hybrid_markers(
+    client: TestClient,
+) -> None:
+    """The analysis mixes stored review evidence with clearly-marked placeholders.
+
+    The fixture cache has no ``product_evidence``/``product_risk_indicators``
+    rows, so the evidence block falls back to the live computation and the risk
+    indicators stay empty (the hybrid never seeds stand-ins for stored criteria).
+    """
     body = client.get(f"/products/{SUBJECT}/analysis").json()
-    assert body["pipeline_version"] == "stub-0"
-    assert body["warnings"][0].startswith("STUB:")
+    assert body["pipeline_version"] == "hybrid-0"
+    assert body["warnings"][0].startswith("PARTIAL:")
     assert body["evidence"]["evidence_strength"] == 0.5
     assert body["review_analysis"]["rating_distribution"]["counts"]["1"] == 1
     assert body["decision"] is not None
     assert body["decision"]["topsis"]["criteria"][0]["name"] == "product_quality"
     assert body["risk_score"] == body["verdict"]["risk_score"]
-    assert [indicator["name"] for indicator in body["risk_indicators"]] == [
-        "product_quality",
-        "evidence_strength",
-        "rating_reliability",
-        "negative_feedback_concentration",
-        "price_position",
-    ]
+    assert body["risk_indicators"] == []
     assert body["alternatives"]["total_related"] == 3  # ALT_ONE, ALT_TWO, OUTSIDE999
     assert body["alternatives"]["usable"] == 2
     assert body["data_basis"]["reference_date"] == "2018-10-04T00:00:00Z"
@@ -657,16 +659,46 @@ def test_selecting_real_service_fails_with_documented_error(
     assert body["detail"] == {"service": "real"}
     assert body["request_id"]
     assert "analysis.service" in caplog.text
-    assert 'Set analysis.service to "stub"' in caplog.text
-    # The stub is never silently substituted for the requested real engine.
-    assert body.get("pipeline_version") != "stub-0"
+    assert 'Set analysis.service to "hybrid"' in caplog.text
+    # No placeholder service is ever silently substituted for the real engine.
+    assert body.get("pipeline_version") not in {"stub-0", "hybrid-0"}
 
 
-def test_default_service_is_stub(settings: Settings) -> None:
-    """The shipped default serves the stub, so the frontend can be built now."""
-    assert settings.analysis.service == "stub"
+def test_default_service_is_hybrid(settings: Settings) -> None:
+    """The default serves the hybrid engine with stored data and placeholders."""
+    assert settings.analysis.service == "hybrid"
     with TestClient(create_app(settings)) as client:
-        assert client.get(f"/products/{SUBJECT}/analysis").json()["pipeline_version"] == "stub-0"
+        assert (
+            client.get(f"/products/{SUBJECT}/analysis").json()["pipeline_version"]
+            == "hybrid-0"
+        )
+
+
+def test_service_switch_can_pin_stub(settings: Settings) -> None:
+    """Explicitly selecting 'stub' still returns stub-0 output and seeded criteria."""
+    pinned = settings.model_copy(
+        update={"analysis": settings.analysis.model_copy(update={"service": "stub"})}
+    )
+    with TestClient(create_app(pinned)) as client:
+        body = client.get(f"/products/{SUBJECT}/analysis").json()
+    assert body["pipeline_version"] == "stub-0"
+    assert body["warnings"][0].startswith("STUB:")
+    assert [indicator["name"] for indicator in body["risk_indicators"]] == [
+        "product_quality",
+        "evidence_strength",
+        "rating_reliability",
+        "negative_feedback_concentration",
+        "price_position",
+    ]
+
+
+def test_hybrid_analysis_warns_when_no_predictions_are_stored(client: TestClient) -> None:
+    """A cache without review_features says so instead of implying zero sentiment."""
+    body = client.get(f"/products/{SUBJECT}/analysis").json()
+    sentiment = body["review_analysis"]["sentiment"]
+    assert sentiment["total"] > 0
+    assert sentiment["unlabelled_count"] == sentiment["total"]
+    assert any("No stored sentiment predictions" in warning for warning in body["warnings"])
 
 
 # ------------------------------------------------------------------------------
@@ -701,22 +733,59 @@ def test_real_cache_meta_matches_meta_json(real_client: TestClient | None) -> No
 def test_real_analysis_matches_documented_example_numbers(
     real_client: TestClient | None,
 ) -> None:
-    """The real analysis reproduces the numbers recorded in docs/api.md."""
+    """The default analysis serves the stored evidence and prediction values."""
     if real_client is None:
         pytest.skip("SQLite serving cache not built (python scripts/ingest_db.py)")
     body = real_client.get("/products/B00009V3UF/analysis").json()
-    assert body["evidence"]["evidence_strength"] == pytest.approx(0.7173, abs=1e-4)
+    assert body["pipeline_version"] == "hybrid-0"
+    assert any(w.startswith("PARTIAL:") for w in body["warnings"])
+    assert body["evidence"]["evidence_strength"] == pytest.approx(0.5152, abs=1e-4)
     distribution = body["review_analysis"]["rating_distribution"]
     assert distribution["counts"] == {"1": 19, "2": 4, "3": 14, "4": 7, "5": 8}
     assert body["review_analysis"]["sentiment"]["negative_count"] == 23
-    details = {item["name"]: item for item in body["evidence"]["details"]}
-    assert details["rating_distribution_entropy"]["value"] == pytest.approx(0.9173, abs=1e-4)
-    assert details["helpfulness_weighted_sentiment"]["value"] == pytest.approx(0.5517, abs=1e-4)
-    assert details["negative_severity_share"]["value"] == pytest.approx(0.8261, abs=1e-4)
+    # Aspects and the five criteria come from their stored tables, not the stub.
+    assert body["review_analysis"]["aspects"]
+    assert [item["name"] for item in body["risk_indicators"]] == [
+        "product_quality",
+        "evidence_strength",
+        "rating_reliability",
+        "negative_feedback_concentration",
+        "price_position",
+    ]
     alternatives = body["alternatives"]
     assert alternatives["total_related"] == 60
     assert alternatives["usable"] == 11
-    assert body["pipeline_version"] == "stub-0"
+
+
+def test_real_hybrid_evidence_strength_equals_stored_row(
+    real_client: TestClient | None,
+) -> None:
+    """The hybrid headline evidence strength is the stored composite, verbatim.
+
+    Reads ``product_evidence.evidence_strength`` straight from the SQLite file
+    (read-only) and compares it with the API, so the test cannot drift into
+    asserting a copied constant. Skipped when the serving cache is absent.
+    """
+    if real_client is None:
+        pytest.skip("SQLite serving cache not built (python scripts/ingest_db.py)")
+    db_path = Path(get_settings().paths.db_path)
+    if not db_path.exists():
+        pytest.skip("SQLite serving cache not built (python scripts/ingest_db.py)")
+    connection = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    try:
+        row = connection.execute(
+            "SELECT evidence_strength FROM product_evidence WHERE asin = ?",
+            ("B00009V3UF",),
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None or row[0] is None:
+        pytest.skip("product_evidence has no strength for B00009V3UF")
+
+    body = real_client.get("/products/B00009V3UF/analysis").json()
+    # The service rounds the stored composite to 4 decimals.
+    assert body["evidence_strength"] == pytest.approx(row[0], abs=1e-4)
+    assert body["evidence"]["evidence_strength"] == pytest.approx(row[0], abs=1e-4)
 
 
 def test_real_b00009v3uf_counts_distinct_related_products(
